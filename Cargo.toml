@@ -25,7 +25,7 @@ ignore = "0.4.33"
 ropey = "1.6.1"
 serde_json = "1.0.151"
 thiserror = "2.0.20"
-tokio = { version = "1.45", features = ["io-std", "io-util", "net", "rt"] }
+tokio = { version = "1.53.1", features = ["io-std", "io-util", "net", "rt"] }
 tower = "0.5.3"
 
 tracing = { version = "0.1.44", optional = true }
