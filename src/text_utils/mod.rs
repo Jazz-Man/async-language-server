@@ -1,3 +1,10 @@
+//! Utilities for positions, ranges, and position encodings.
+//!
+//! Exposes the crate's [`Position`] type, [`Encoding`],
+//! [`position_to_encoding`], and [`RangeExt`], used to convert between
+//! UTF-8, UTF-16, and UTF-32 coordinates and to manipulate byte, LSP,
+//! and tree-sitter ranges.
+
 mod conversions;
 mod encoding;
 mod position;

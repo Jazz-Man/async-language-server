@@ -1,3 +1,8 @@
+//! Helpers for working with tree-sitter syntax trees in an LSP context.
+//!
+//! All conversions between tree-sitter and LSP coordinates assume UTF-8
+//! positions, matching the crate-wide invariant.
+
 use std::collections::VecDeque;
 
 use async_lsp::lsp_types::{Position as LspPosition, Range as LspRange};

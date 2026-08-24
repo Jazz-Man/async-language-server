@@ -42,3 +42,6 @@ module_name_repetitions = { level = "allow", priority = 1 }
 multiple_crate_versions = { level = "allow", priority = 1 }
 similar_names = { level = "allow", priority = 1 }
 unnecessary_wraps = { level = "allow", priority = 1 }
+
+[lints.rust]
+missing_docs = "warn"

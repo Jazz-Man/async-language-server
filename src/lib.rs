@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 pub use async_lsp::lsp_types;
 
 #[cfg(feature = "tree-sitter")]
@@ -23,6 +25,17 @@ pub mod text_utils;
 pub mod tree_sitter_utils;
 
 pub mod server {
+    //! High-level API for implementing language servers.
+    //!
+    //! Implement [`Server`] with only the methods you need, configure
+    //! [`ServerOptions`] and [`DocumentMatcher`]s, then run it with [`serve`]
+    //! over a [`Transport`]. Each request receives a [`ServerState`], which
+    //! tracks open documents as [`Document`] snapshots.
+    //!
+    //! All [`Server`] methods work with UTF-8 positions regardless of the
+    //! encoding negotiated with the client — conversions between UTF-8,
+    //! UTF-16, and UTF-32 are handled internally.
+
     pub use crate::document::{Document, DocumentReader};
     pub use crate::document_matcher::DocumentMatcher;
     pub use crate::result::{ServerError, ServerErrorCode, ServerResult};
