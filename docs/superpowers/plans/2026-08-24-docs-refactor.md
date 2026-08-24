@@ -627,7 +627,7 @@ Then confirm read-only: `git log --oneline -1` shows the new commit, `git status
 
 **Interfaces:**
 - Consumes: docs from Phases 1–2.
-- Produces: every public doc with a standalone ≤ ~15-word summary sentence, details prose after a blank line, full-path intra-doc links. Canonical section order after Phase 3/4: summary → details → `# Examples` → `# Errors` → `# Panics` → `# Safety` (only the applicable ones). The two `# Example Usage` blocks in `range_ext/mod.rs` are intentionally left for Task 11 to replace wholesale with runnable `# Examples`.
+- Produces: every public doc with a standalone ≤ ~15-word summary sentence, details prose after a blank line, full-path intra-doc links. Canonical section order after Phase 3/4: summary → details → `# Examples` → `# Errors` → `# Panics` → `# Safety` (only the applicable ones). The two `# Example Usage` blocks in `range_ext/mod.rs` are intentionally left for Task 10 to replace wholesale with runnable `# Examples`.
 
 - [ ] **Step 1:** Rewrite the failing first sentences (current → new). The summary line(s) move into one short opening sentence; the rest of the old text stays in the details paragraph unchanged where still accurate:
 
