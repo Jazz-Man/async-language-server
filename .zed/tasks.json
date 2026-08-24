@@ -1,0 +1,18 @@
+[
+	{
+		"allow_concurrent_runs": false,
+		"args": [
+			"--dangerously-skip-permissions",
+			"--resume",
+			"async-language-server"
+		],
+		"command": "claude",
+		"hide": "never",
+		"label": "claude-code-ide",
+		"reveal": "always",
+		"reveal_target": "dock",
+		"show_command": true,
+		"tags": ["claude"],
+		"use_new_terminal": false
+	}
+]
