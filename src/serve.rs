@@ -30,6 +30,21 @@ const MAX_CONCURRENT_REQUESTS: NonZeroUsize = match NonZeroUsize::new(8) {
 /// - Catching panics and safely returning internal server error statuses
 /// - Client process monitoring and automatic server shutdown when client exits
 ///
+/// # Examples
+///
+/// A stdio server cannot run inside a doctest, so this example only compiles:
+///
+/// ```no_run
+/// use async_language_server::server::{Transport, serve};
+/// # #[derive(Clone)]
+/// # struct MyServer;
+/// # impl async_language_server::server::Server for MyServer {}
+/// # #[tokio::main]
+/// # async fn main() -> async_language_server::server::ServerResult<()> {
+/// serve(Transport::Stdio, MyServer).await
+/// # }
+/// ```
+///
 /// # Errors
 ///
 /// - If the transport uses a socket and it could not connect

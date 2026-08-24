@@ -129,6 +129,80 @@ impl DocumentDiagnostics {
 /// This uses the same stateful server wrapper as the regular transport path,
 /// but drives initialization, document opening, and diagnostic requests directly.
 ///
+/// # Examples
+///
+/// Run a `Server` over a directory without an LSP client:
+///
+/// ```
+/// use async_lsp::lsp_types::{
+///     Diagnostic, DocumentDiagnosticParams, DocumentDiagnosticReport,
+///     DocumentDiagnosticReportResult, FullDocumentDiagnosticReport, Position, Range,
+///     RelatedFullDocumentDiagnosticReport,
+/// };
+/// use async_language_server::oneshot::WorkspaceDiagnosticConfig;
+/// use async_language_server::server::{
+///     DocumentMatcher, Server, ServerResult, ServerState,
+/// };
+///
+/// struct LongLineServer;
+///
+/// impl Server for LongLineServer {
+///     fn server_document_matchers() -> Vec<DocumentMatcher> {
+///         vec![DocumentMatcher::new("demo").with_url_globs(["**/*.demo", "*.demo"])]
+///     }
+///
+///     async fn document_diagnostics(
+///         &self,
+///         state: ServerState,
+///         params: DocumentDiagnosticParams,
+///     ) -> ServerResult<DocumentDiagnosticReportResult> {
+///         let document = state
+///             .document(&params.text_document.uri)
+///             .expect("document is open");
+///         let mut items = Vec::new();
+///         for (line, text) in document.text_contents().lines().enumerate() {
+///             if text.len() > 20 {
+///                 items.push(Diagnostic {
+///                     range: Range {
+///                         start: Position { line: line as u32, character: 0 },
+///                         end: Position { line: line as u32, character: text.len() as u32 },
+///                     },
+///                     message: format!("line is {} bytes long", text.len()),
+///                     ..Diagnostic::default()
+///                 });
+///             }
+///         }
+///         Ok(DocumentDiagnosticReportResult::Report(
+///             DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+///                 related_documents: None,
+///                 full_document_diagnostic_report: FullDocumentDiagnosticReport {
+///                     result_id: None,
+///                     items,
+///                 },
+///             }),
+///         ))
+///     }
+/// }
+///
+/// # fn main() -> Result<(), async_language_server::server::ServerError> {
+/// # use async_language_server::oneshot::workspace_diagnostics;
+/// # let root = std::env::temp_dir().join("async-language-server-oneshot-doctest");
+/// # let _ = std::fs::remove_dir_all(&root);
+/// # std::fs::create_dir_all(&root)?;
+/// std::fs::write(root.join("sample.demo"), "short\nthis line is much too long\n")?;
+///
+/// let report =
+///     futures::executor::block_on(workspace_diagnostics(LongLineServer, WorkspaceDiagnosticConfig::new(&root)))?;
+///
+/// assert_eq!(report.documents.len(), 1);
+/// assert!(report.documents[0].uri.path().ends_with("sample.demo"));
+/// assert_eq!(report.documents[0].diagnostics().len(), 1);
+///
+/// std::fs::remove_dir_all(root)?;
+/// Ok(())
+/// # }
+/// ```
+///
 /// # Errors
 ///
 /// Returns an error if a workspace root cannot be read, a matched document
