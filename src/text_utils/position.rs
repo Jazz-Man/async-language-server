@@ -1,11 +1,9 @@
 use async_lsp::lsp_types::Position as LspPosition;
 
-/**
-    A position including a line and column.
-
-    May be cheaply copied, as well as converted
-    to / from language server positions.
-*/
+/// A position including a line and column.
+///
+/// May be cheaply copied, as well as converted
+/// to / from language server positions.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Position {
     pub line: usize,

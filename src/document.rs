@@ -17,27 +17,25 @@ use crate::{
     tree_sitter_utils::{lsp_position_to_ts_point, ts_range_to_lsp_range},
 };
 
-/**
-    A document tracked by the language server, containing
-    the URL, text, version, and language of the document.
-
-    May be cloned somewhat cheaply to take a snapshot
-    of the current state of the document.
-
-    Not meant to be updated by external sources, only read,
-    since the language server should be responsible for
-    always keeping the document up-to-date when edits occur.
-
-    # `tree-sitter`
-
-    With the `tree-sitter` crate feature enabled, the document
-    may also optionally store a [`tree_sitter::Language`] and
-    a parsed [`tree_sitter::Tree`] for the document's text.
-
-    If a `tree-sitter` language has been associated with the
-    document, the respective tree will be parsed using the initial
-    contents, and incrementally updated thereafter, transparently.
-*/
+/// A document tracked by the language server, containing
+/// the URL, text, version, and language of the document.
+///
+/// May be cloned somewhat cheaply to take a snapshot
+/// of the current state of the document.
+///
+/// Not meant to be updated by external sources, only read,
+/// since the language server should be responsible for
+/// always keeping the document up-to-date when edits occur.
+///
+/// # `tree-sitter`
+///
+/// With the `tree-sitter` crate feature enabled, the document
+/// may also optionally store a [`tree_sitter::Language`] and
+/// a parsed [`tree_sitter::Tree`] for the document's text.
+///
+/// If a `tree-sitter` language has been associated with the
+/// document, the respective tree will be parsed using the initial
+/// contents, and incrementally updated thereafter, transparently.
 #[derive(Debug, Clone)]
 pub struct Document {
     pub(crate) uri: Url,
@@ -52,30 +50,24 @@ pub struct Document {
 }
 
 impl Document {
-    /**
-        Returns the URL of the document.
-    */
+    /// Returns the URL of the document.
     #[must_use]
     pub fn url(&self) -> &Url {
         &self.uri
     }
 
-    /**
-        Returns the text of the document, as
-        its underlying [`Rope`] representation.
-
-        It is usually easier to use one of the several convenience
-        methods that [`Document`] provides for accessing and searching
-        through text, but this method exists as an escape hatch.
-    */
+    /// Returns the text of the document, as
+    /// its underlying [`Rope`] representation.
+    ///
+    /// It is usually easier to use one of the several convenience
+    /// methods that [`Document`] provides for accessing and searching
+    /// through text, but this method exists as an escape hatch.
     #[must_use]
     pub fn text(&self) -> &Rope {
         &self.text
     }
 
-    /**
-        Returns a reader over the full text in the document.
-    */
+    /// Returns a reader over the full text in the document.
     #[must_use]
     pub fn text_reader(&self) -> DocumentReader<'_> {
         DocumentReader {
@@ -85,54 +77,44 @@ impl Document {
         }
     }
 
-    /**
-        Returns the full text of the document, as a string.
-
-        When possible, prefer [`Document::text_reader`]
-        for improved performance and less allocations.
-    */
+    /// Returns the full text of the document, as a string.
+    ///
+    /// When possible, prefer [`Document::text_reader`]
+    /// for improved performance and less allocations.
     #[must_use]
     pub fn text_contents(&self) -> String {
         self.text.to_string()
     }
 
-    /**
-        Returns the full text of the document, as a string.
-
-        When possible, prefer [`Document::text_reader`]
-        for improved performance and less allocations.
-    */
+    /// Returns the full text of the document, as a string.
+    ///
+    /// When possible, prefer [`Document::text_reader`]
+    /// for improved performance and less allocations.
     #[must_use]
     pub fn text_bytes(&self) -> Vec<u8> {
         self.text.bytes().collect()
     }
 
-    /**
-        Returns the version of the document.
-
-        This number should be strictly increasing with
-        each change to the document, including undo/redo.
-    */
+    /// Returns the version of the document.
+    ///
+    /// This number should be strictly increasing with
+    /// each change to the document, including undo/redo.
     #[must_use]
     pub fn version(&self) -> i32 {
         self.version
     }
 
-    /**
-        Returns the language of the document.
-    */
+    /// Returns the language of the document.
     #[must_use]
     pub fn language(&self) -> &str {
         &self.language
     }
 
-    /**
-        Returns the name of the document matcher that this document
-        was matched against, if one was configured, and either a
-        language or glob pattern was matched against.
-
-        See [`DocumentMatcher`] for more information.
-    */
+    /// Returns the name of the document matcher that this document
+    /// was matched against, if one was configured, and either a
+    /// language or glob pattern was matched against.
+    ///
+    /// See [`DocumentMatcher`] for more information.
     #[must_use]
     pub fn matched_name(&self) -> Option<&str> {
         self.matcher.as_ref().map(|matcher| matcher.name.as_str())
@@ -141,43 +123,33 @@ impl Document {
 
 #[cfg(feature = "tree-sitter")]
 impl Document {
-    /**
-        Returns `true` if the document has an assigned tree-sitter language, otherwise `false`.
-    */
+    /// Returns `true` if the document has an assigned tree-sitter language, otherwise `false`.
     #[must_use]
     pub fn has_syntax_language(&self) -> bool {
         self.tree_sitter_lang.is_some()
     }
 
-    /**
-        Returns `true` if the document has a parsed tree-sitter syntax tree, otherwise `false`.
-    */
+    /// Returns `true` if the document has a parsed tree-sitter syntax tree, otherwise `false`.
     #[must_use]
     pub fn has_syntax_tree(&self) -> bool {
         self.tree_sitter_tree.is_some()
     }
 
-    /**
-        Returns the UTF-8 text of a [`Node`].
-
-        Panics if the node is not valid for the document.
-    */
+    /// Returns the UTF-8 text of a [`Node`].
+    ///
+    /// Panics if the node is not valid for the document.
     #[must_use]
     pub fn node_text(&self, node: Node) -> String {
         self.text.byte_slice(node.byte_range()).to_string()
     }
 
-    /**
-        Returns a [`Node`] at the root of the syntax tree, if one exists.
-    */
+    /// Returns a [`Node`] at the root of the syntax tree, if one exists.
     #[must_use]
     pub fn node_at_root(&self) -> Option<Node<'_>> {
         self.tree_sitter_tree.as_ref().map(|tree| tree.root_node())
     }
 
-    /**
-        Returns a [`Node`] at the given LSP position, if one exists.
-    */
+    /// Returns a [`Node`] at the given LSP position, if one exists.
     #[must_use]
     pub fn node_at_position(&self, position: Position) -> Option<Node<'_>> {
         let root = self.node_at_root()?;
@@ -185,9 +157,7 @@ impl Document {
         root.descendant_for_point_range(point, point)
     }
 
-    /**
-        Similar to [`node_at_position`], except the node must be named.
-    */
+    /// Similar to [`Document::node_at_position`], except the node must be named.
     #[must_use]
     pub fn node_at_position_named(&self, position: Position) -> Option<Node<'_>> {
         let root = self.node_at_root()?;
@@ -195,11 +165,9 @@ impl Document {
         root.named_descendant_for_point_range(point, point)
     }
 
-    /**
-        Creates and runs a query for the given query string.
-
-        Returns `Some(captures)` if the query was successful, otherwise `None`.
-    */
+    /// Creates and runs a query for the given query string.
+    ///
+    /// Returns `Some(captures)` if the query was successful, otherwise `None`.
     #[must_use]
     pub fn query(&self, query: impl AsRef<str>) -> Option<Vec<DocumentQueryCapture>> {
         let lang = self.tree_sitter_lang.as_ref()?;
@@ -235,11 +203,9 @@ impl AsRef<Rope> for Document {
     }
 }
 
-/**
-    A reader over the full text contents of a document.
-
-    Created by calling [`Document::text_reader`].
-*/
+/// A reader over the full text contents of a document.
+///
+/// Created by calling [`Document::text_reader`].
 pub struct DocumentReader<'d> {
     chunks: ropey::iter::Chunks<'d>,
     current: Option<&'d str>,
@@ -281,12 +247,10 @@ impl Read for DocumentReader<'_> {
     }
 }
 
+/// A capture from a tree-sitter query on a document.
+///
+/// Created by calling [`Document::query`].
 #[cfg(feature = "tree-sitter")]
-/**
-    A capture from a tree-sitter query on a document.
-
-    Created by calling [`Document::query`].
-*/
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentQueryCapture {
     /// The capture name

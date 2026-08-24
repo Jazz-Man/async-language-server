@@ -19,9 +19,7 @@ use tokio::{
 
 use crate::result::{ServerError, ServerResult};
 
-/**
-    Transport implementation for sockets and stdio.
-*/
+/// Transport implementation for sockets and stdio.
 #[derive(Debug, Default, Clone, Copy)]
 #[non_exhaustive]
 pub enum Transport {
@@ -31,14 +29,12 @@ pub enum Transport {
 }
 
 impl Transport {
-    /**
-        Creates the reader and writer for the transport.
-
-        # Errors
-
-        - If the `Socket` transport is used, and the port is not valid.
-        - If the `Socket` transport is used, and an I/O error occurs.
-    */
+    /// Creates the reader and writer for the transport.
+    ///
+    /// # Errors
+    ///
+    /// - If the `Socket` transport is used, and the port is not valid.
+    /// - If the `Socket` transport is used, and an I/O error occurs.
     pub async fn into_read_write(self) -> ServerResult<(LspTransportRead, LspTransportWrite)> {
         if let Self::Socket(port) = self {
             let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -73,9 +69,7 @@ impl fmt::Display for Transport {
     }
 }
 
-/**
-    The read half of an LSP transport.
-*/
+/// The read half of an LSP transport.
 #[derive(Debug)]
 pub enum LspTransportRead {
     Socket(OwnedReadHalf),
@@ -103,9 +97,7 @@ impl AsyncRead for LspTransportRead {
     }
 }
 
-/**
-    The write half of an LSP transport.
-*/
+/// The write half of an LSP transport.
 #[derive(Debug)]
 pub enum LspTransportWrite {
     Socket(OwnedWriteHalf),

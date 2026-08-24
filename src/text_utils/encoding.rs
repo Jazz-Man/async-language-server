@@ -1,31 +1,23 @@
 use async_lsp::lsp_types::PositionEncodingKind as LspPositionEncoding;
 
-/**
-    A position encoding supported by this library.
-
-    Easy to copy and match against, unlike `PositionEncodingKind`, and
-    contains several similar utilities, that are additionally `const`.
-*/
+/// A position encoding supported by this library.
+///
+/// Easy to copy and match against, unlike `PositionEncodingKind`, and
+/// contains several similar utilities, that are additionally `const`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Encoding {
-    /**
-        Character offsets count UTF-8 code units.
-    */
+    /// Character offsets count UTF-8 code units.
     UTF8,
-    /**
-        Character offsets count UTF-16 code units.
-
-        This is the default for the Language Server Protocol - if a client
-        does not specify which position encoding they prefer and / or support,
-        this encoding must always be used.
-    */
+    /// Character offsets count UTF-16 code units.
+    ///
+    /// This is the default for the Language Server Protocol - if a client
+    /// does not specify which position encoding they prefer and / or support,
+    /// this encoding must always be used.
     UTF16,
-    /**
-        Character offsets count UTF-32 code units.
-
-        This encoding is equivalent to Unicode code points, so it may also
-        be used for an encoding-agnostic representation of character offsets.
-    */
+    /// Character offsets count UTF-32 code units.
+    ///
+    /// This encoding is equivalent to Unicode code points, so it may also
+    /// be used for an encoding-agnostic representation of character offsets.
     UTF32,
 }
 

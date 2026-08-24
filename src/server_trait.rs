@@ -23,16 +23,14 @@ use crate::{
     server_state::ServerState,
 };
 
-/**
-    The main entrypoint to LSP functionality for a server.
-
-    All of the LSP methods in this trait are optional - if implemented,
-    the respective capabilities must also be registered using the
-    `server_capabilities` function.
-
-    The only exception to this rule are the `*_resolve` methods, which
-    default to doing nothing, and simply resolving the item as-is.
-*/
+/// The main entrypoint to LSP functionality for a server.
+///
+/// All of the LSP methods in this trait are optional - if implemented,
+/// the respective capabilities must also be registered using the
+/// `server_capabilities` function.
+///
+/// The only exception to this rule are the `*_resolve` methods, which
+/// default to doing nothing, and simply resolving the item as-is.
 pub trait Server {
     fn server_info() -> Option<ServerInfo> {
         None

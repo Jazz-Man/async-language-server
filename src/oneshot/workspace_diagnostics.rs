@@ -14,9 +14,7 @@ use crate::{
 
 use super::server::{OneshotDocument, OneshotServer};
 
-/**
-    Configuration for running a language server once over a workspace.
-*/
+/// Configuration for running a language server once over a workspace.
 #[derive(Debug, Clone)]
 pub struct WorkspaceDiagnosticConfig {
     roots: Vec<PathBuf>,
@@ -24,9 +22,7 @@ pub struct WorkspaceDiagnosticConfig {
 }
 
 impl WorkspaceDiagnosticConfig {
-    /**
-        Creates a new workspace diagnostic configuration for the given root.
-    */
+    /// Creates a new workspace diagnostic configuration for the given root.
     #[must_use]
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self {
@@ -35,36 +31,28 @@ impl WorkspaceDiagnosticConfig {
         }
     }
 
-    /**
-        Adds another root to scan for matching documents.
-    */
+    /// Adds another root to scan for matching documents.
     #[must_use]
     pub fn with_root(mut self, root: impl Into<PathBuf>) -> Self {
         self.roots.push(root.into());
         self
     }
 
-    /**
-        Adds several more roots to scan for matching documents.
-    */
+    /// Adds several more roots to scan for matching documents.
     #[must_use]
     pub fn with_roots(mut self, root: impl IntoIterator<Item = impl Into<PathBuf>>) -> Self {
         self.roots.extend(root.into_iter().map(Into::into));
         self
     }
 
-    /**
-        Controls whether hidden files are included when scanning roots.
-    */
+    /// Controls whether hidden files are included when scanning roots.
     #[must_use]
     pub fn with_hidden_files(mut self, yes: bool) -> Self {
         self.walk = self.walk.with_hidden_files(yes);
         self
     }
 
-    /**
-        Controls whether `.gitignore` and related ignore files are respected.
-    */
+    /// Controls whether `.gitignore` and related ignore files are respected.
     #[must_use]
     pub fn with_ignore_files(mut self, yes: bool) -> Self {
         self.walk = self.walk.with_ignore_files(yes);
@@ -72,27 +60,21 @@ impl WorkspaceDiagnosticConfig {
     }
 }
 
-/**
-    Diagnostics produced by running a server over a workspace.
-*/
+/// Diagnostics produced by running a server over a workspace.
 #[derive(Debug, Clone)]
 pub struct WorkspaceDiagnosticReport {
     pub documents: Vec<DocumentDiagnostics>,
 }
 
 impl WorkspaceDiagnosticReport {
-    /**
-        Returns `true` if no document reported diagnostics.
-    */
+    /// Returns `true` if no document reported diagnostics.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.documents.iter().all(DocumentDiagnostics::is_empty)
     }
 }
 
-/**
-    Diagnostics produced for a single document in a workspace.
-*/
+/// Diagnostics produced for a single document in a workspace.
 #[derive(Debug, Clone)]
 pub struct DocumentDiagnostics {
     pub uri: Url,
@@ -101,17 +83,13 @@ pub struct DocumentDiagnostics {
 }
 
 impl DocumentDiagnostics {
-    /**
-        Returns `true` if this document diagnostic result contains no diagnostics.
-    */
+    /// Returns `true` if this document diagnostic result contains no diagnostics.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.diagnostics().is_empty()
     }
 
-    /**
-        Gets all diagnostics contained in this document diagnostic result.
-    */
+    /// Gets all diagnostics contained in this document diagnostic result.
     #[must_use]
     pub fn diagnostics(&self) -> Vec<&Diagnostic> {
         match &self.report {
@@ -142,17 +120,15 @@ impl DocumentDiagnostics {
     }
 }
 
-/**
-    Runs workspace diagnostics against a server without starting an LSP transport.
-
-    This uses the same stateful server wrapper as the regular transport path,
-    but drives initialization, document opening, and diagnostic requests directly.
-
-    # Errors
-
-    Returns an error if a workspace root cannot be read, a matched document
-    cannot be opened, or the server returns an error from a diagnostic request.
-*/
+/// Runs workspace diagnostics against a server without starting an LSP transport.
+///
+/// This uses the same stateful server wrapper as the regular transport path,
+/// but drives initialization, document opening, and diagnostic requests directly.
+///
+/// # Errors
+///
+/// Returns an error if a workspace root cannot be read, a matched document
+/// cannot be opened, or the server returns an error from a diagnostic request.
 pub async fn workspace_diagnostics<S>(
     server: S,
     config: WorkspaceDiagnosticConfig,

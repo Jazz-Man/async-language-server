@@ -2,9 +2,7 @@ use ropey::Rope;
 
 use super::{encoding::Encoding, position::Position};
 
-/**
-    Converts a position from using one encoding to another.
-*/
+/// Converts a position from using one encoding to another.
 pub fn position_to_encoding<P>(
     contents: &Rope,
     position: P,

@@ -1,17 +1,13 @@
 use async_lsp::lsp_types::{ConfigurationItem, LSPAny};
 
-/**
-    Options for the language server wrapper.
-*/
+/// Options for the language server wrapper.
 #[derive(Debug, Default, Clone)]
 pub struct ServerOptions {
     pub(crate) workspace_diagnostics: WorkspaceDiagnostics,
 }
 
 impl ServerOptions {
-    /**
-        Sets how workspace diagnostics should be exposed by the server.
-    */
+    /// Sets how workspace diagnostics should be exposed by the server.
     #[must_use]
     pub fn with_workspace_diagnostics(
         mut self,
@@ -22,9 +18,7 @@ impl ServerOptions {
     }
 }
 
-/**
-    Controls how workspace diagnostics are made available.
-*/
+/// Controls how workspace diagnostics are made available.
 #[derive(Debug, Default, Clone)]
 pub enum WorkspaceDiagnostics {
     /// Do not advertise or handle workspace diagnostics.
@@ -37,25 +31,19 @@ pub enum WorkspaceDiagnostics {
 }
 
 impl WorkspaceDiagnostics {
-    /**
-        Do not advertise or handle workspace diagnostics.
-    */
+    /// Do not advertise or handle workspace diagnostics.
     #[must_use]
     pub const fn disabled() -> Self {
         Self::Disabled
     }
 
-    /**
-        Advertise and handle workspace diagnostics.
-    */
+    /// Advertise and handle workspace diagnostics.
     #[must_use]
     pub const fn enabled() -> Self {
         Self::Enabled
     }
 
-    /**
-        Toggles workspace diagnostics using the given workspace setting.
-    */
+    /// Toggles workspace diagnostics using the given workspace setting.
     #[must_use]
     pub fn setting(key: impl Into<ConfigurationKey>) -> WorkspaceDiagnosticsSetting {
         WorkspaceDiagnosticsSetting {
@@ -65,9 +53,7 @@ impl WorkspaceDiagnostics {
     }
 }
 
-/**
-    Runtime setting for workspace diagnostics.
-*/
+/// Runtime setting for workspace diagnostics.
 #[derive(Debug, Clone)]
 pub struct WorkspaceDiagnosticsSetting {
     pub(crate) key: ConfigurationKey,
@@ -75,9 +61,7 @@ pub struct WorkspaceDiagnosticsSetting {
 }
 
 impl WorkspaceDiagnosticsSetting {
-    /**
-        Sets the initial value used before client configuration is available.
-    */
+    /// Sets the initial value used before client configuration is available.
     #[must_use]
     pub fn with_default_enabled(mut self, yes: bool) -> Self {
         self.default_enabled = yes;
@@ -91,9 +75,7 @@ impl From<WorkspaceDiagnosticsSetting> for WorkspaceDiagnostics {
     }
 }
 
-/**
-    Key for a workspace configuration setting.
-*/
+/// Key for a workspace configuration setting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigurationKey {
     section: String,
@@ -101,9 +83,7 @@ pub struct ConfigurationKey {
 }
 
 impl ConfigurationKey {
-    /**
-        Creates a configuration key from an LSP configuration section.
-    */
+    /// Creates a configuration key from an LSP configuration section.
     #[must_use]
     pub fn new(section: impl Into<String>) -> Self {
         Self {
@@ -112,9 +92,7 @@ impl ConfigurationKey {
         }
     }
 
-    /**
-        Looks up a nested boolean value inside the configuration section.
-    */
+    /// Looks up a nested boolean value inside the configuration section.
     #[must_use]
     pub fn with_path(mut self, path: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.path = path.into_iter().map(Into::into).collect();

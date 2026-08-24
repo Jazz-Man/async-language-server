@@ -16,23 +16,21 @@ use crate::{
     transport::Transport,
 };
 
-/**
-    Serves a language server over the given transport.
-
-    The server must be clonable, and shareable across threads.
-
-    This will automatically attach middleware for:
-
-    - Tracing metadata for each request
-    - Maximum concurrency of 8 in-flight LSP requests at a time
-    - Catching panics and safely returning internal server error statuses
-    - Client process monitoring and automatic server shutdown when client exits
-
-    # Errors
-
-    - If the transport uses a socket and it could not connect
-    - If the server encounters an I/O error while running
-*/
+/// Serves a language server over the given transport.
+///
+/// The server must be clonable, and shareable across threads.
+///
+/// This will automatically attach middleware for:
+///
+/// - Tracing metadata for each request
+/// - Maximum concurrency of 8 in-flight LSP requests at a time
+/// - Catching panics and safely returning internal server error statuses
+/// - Client process monitoring and automatic server shutdown when client exits
+///
+/// # Errors
+///
+/// - If the transport uses a socket and it could not connect
+/// - If the server encounters an I/O error while running
 pub async fn serve<S>(transport: Transport, server: S) -> ServerResult<()>
 where
     S: Server + Clone,

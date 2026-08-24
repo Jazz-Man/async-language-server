@@ -121,13 +121,11 @@ fn workspace_folders(params: &InitializeParams) -> Vec<WorkspaceFolder> {
         .collect()
 }
 
-/**
-    The low-level language server implementation that automatically
-    manages documents and forwards requests to the underlying server.
-
-    Supports incremental updates of documents where possible, falling
-    back to other implementations whenever incremental updates fail.
-*/
+/// The low-level language server implementation that automatically
+/// manages documents and forwards requests to the underlying server.
+///
+/// Supports incremental updates of documents where possible, falling
+/// back to other implementations whenever incremental updates fail.
 pub(crate) struct LanguageServerWithState<T: Server> {
     server: Arc<T>,
     state: ServerState,

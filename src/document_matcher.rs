@@ -6,42 +6,31 @@ use globset::{Glob, GlobSet};
 #[cfg(feature = "tree-sitter")]
 use tree_sitter::Language;
 
-/**
-    Options for matching documents based on their URLs and
-    language identifiers, and associating them with an optional
-    tree-sitter language grammar when tree-sitter feature is enabled.
-*/
+/// Options for matching documents based on their URLs and
+/// language identifiers, and associating them with an optional
+/// tree-sitter language grammar when tree-sitter feature is enabled.
 #[derive(Debug, Default, Clone)]
 pub struct DocumentMatcher {
-    /**
-        The name of the document matcher.
-
-        This may be used as a unique identifier for the matcher,
-        and can be retrieved on documents using [`Document::matched_name`].
-    */
+    /// The name of the document matcher.
+    ///
+    /// This may be used as a unique identifier for the matcher,
+    /// and can be retrieved on documents using
+    /// [`crate::server::Document::matched_name`].
     pub name: String,
-    /**
-        Optional globs to match documents based on their URLs.
-    */
+    /// Optional globs to match documents based on their URLs.
     pub url_globs: Vec<String>,
-    /**
-        Strings to match documents based on their language identifiers.
-    */
+    /// Strings to match documents based on their language identifiers.
     pub lang_strings: Vec<String>,
+    /// The tree-sitter language grammar to associate with the matched document.
     #[cfg(feature = "tree-sitter")]
-    /**
-        The tree-sitter language grammar to associate with the matched document.
-    */
     pub lang_grammar: Option<Language>,
 }
 
 impl DocumentMatcher {
-    /**
-        Creates a new document matcher with the given name.
-
-        The name is only used for debugging purposes and will not be
-        used for identifying documents. It does not need to be unique.
-    */
+    /// Creates a new document matcher with the given name.
+    ///
+    /// The name is only used for debugging purposes and will not be
+    /// used for identifying documents. It does not need to be unique.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self {
@@ -53,9 +42,7 @@ impl DocumentMatcher {
         }
     }
 
-    /**
-        Adds the given URL globs to the matcher.
-    */
+    /// Adds the given URL globs to the matcher.
     #[must_use]
     pub fn with_url_globs<I, U>(mut self, url_globs: I) -> Self
     where
@@ -66,9 +53,7 @@ impl DocumentMatcher {
         self
     }
 
-    /**
-        Adds the given language identifiers to the matcher.
-    */
+    /// Adds the given language identifiers to the matcher.
     #[must_use]
     pub fn with_lang_strings<I, U>(mut self, lang_strings: I) -> Self
     where
@@ -80,11 +65,9 @@ impl DocumentMatcher {
         self
     }
 
+    /// Sets the tree-sitter language grammar
+    /// to associate with the document matcher.
     #[cfg(feature = "tree-sitter")]
-    /**
-        Sets the tree-sitter language grammar
-        to associate with the document matcher.
-    */
     #[must_use]
     pub fn with_lang_grammar(mut self, lang_grammar: Language) -> Self {
         self.lang_grammar = Some(lang_grammar);
@@ -92,10 +75,8 @@ impl DocumentMatcher {
     }
 }
 
-/**
-    Private struct created from individual [`DocumentMatcher`]s
-    to easily match against documents and find the original matcher.
-*/
+/// Private struct created from individual [`DocumentMatcher`]s
+/// to easily match against documents and find the original matcher.
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone)]
 pub(crate) struct DocumentMatchers {

@@ -5,14 +5,12 @@ use tree_sitter::{Node, Point as TsPoint, Range as TsRange};
 
 use crate::text_utils::Position;
 
-/**
-    Converts a tree sitter `Point` to an LSP `Position`
-
-    # LSP Compatibility
-
-    This function assumes that the returned LSP `Position` is one that will
-    be used with this language server, using UTF-8 encoding specifically.
-*/
+/// Converts a tree sitter `Point` to an LSP `Position`
+///
+/// # LSP Compatibility
+///
+/// This function assumes that the returned LSP `Position` is one that will
+/// be used with this language server, using UTF-8 encoding specifically.
 #[must_use]
 pub const fn ts_point_to_lsp_position(pos: TsPoint) -> LspPosition {
     #[allow(clippy::cast_possible_truncation)]
@@ -22,14 +20,12 @@ pub const fn ts_point_to_lsp_position(pos: TsPoint) -> LspPosition {
     }
 }
 
-/**
-    Converts a tree sitter `Range` to an LSP `Range`
-
-    # LSP Compatibility
-
-    This function assumes that the returned LSP `Range` is one that will
-    be used with this language server, using UTF-8 encoding specifically.
-*/
+/// Converts a tree sitter `Range` to an LSP `Range`
+///
+/// # LSP Compatibility
+///
+/// This function assumes that the returned LSP `Range` is one that will
+/// be used with this language server, using UTF-8 encoding specifically.
 #[must_use]
 pub const fn ts_range_to_lsp_range(range: TsRange) -> LspRange {
     LspRange {
@@ -38,32 +34,28 @@ pub const fn ts_range_to_lsp_range(range: TsRange) -> LspRange {
     }
 }
 
-/**
-    Returns `true` if the given tree sitter `Range`
-    contains the given LSP `Position`, otherwise `false`
-
-    This is an **inclusive** bounds check, meaning the position is
-    considered *inside* even if it lies on a line or column boundary
-
-    # LSP Compatibility
-
-    This function assumes that the given LSP `Position` is one returned
-    by this language server, using UTF-8 encoding specifically. Using
-    any other encoding **will** return an invalid result here.
-*/
+/// Returns `true` if the given tree sitter `Range`
+/// contains the given LSP `Position`, otherwise `false`
+///
+/// This is an **inclusive** bounds check, meaning the position is
+/// considered *inside* even if it lies on a line or column boundary
+///
+/// # LSP Compatibility
+///
+/// This function assumes that the given LSP `Position` is one returned
+/// by this language server, using UTF-8 encoding specifically. Using
+/// any other encoding **will** return an invalid result here.
 #[must_use]
 pub const fn ts_range_contains_lsp_position(range: TsRange, pos: LspPosition) -> bool {
     let point = lsp_position_to_ts_point(pos);
     ts_range_contains_ts_point(range, point)
 }
 
-/**
-    Returns `true` if the given tree sitter `Range`
-    contains the given tree sitter `Point`, otherwise `false`
-
-    This is an **inclusive** bounds check, meaning the point is
-    considered *inside* even if it lies on a line or column boundary
-*/
+/// Returns `true` if the given tree sitter `Range`
+/// contains the given tree sitter `Point`, otherwise `false`
+///
+/// This is an **inclusive** bounds check, meaning the point is
+/// considered *inside* even if it lies on a line or column boundary
 #[must_use]
 pub const fn ts_range_contains_ts_point(range: TsRange, point: TsPoint) -> bool {
     (point.row > range.start_point.row
@@ -72,15 +64,13 @@ pub const fn ts_range_contains_ts_point(range: TsRange, point: TsPoint) -> bool 
             || point.row == range.end_point.row && point.column <= range.end_point.column)
 }
 
-/**
-    Converts an LSP `Position` to a tree sitter `Point`
-
-    # LSP Compatibility
-
-    This function assumes that the given LSP `Position` is one returned
-    by this language server, using UTF-8 encoding specifically. Using
-    any other encoding **will** return an invalid result here.
-*/
+/// Converts an LSP `Position` to a tree sitter `Point`
+///
+/// # LSP Compatibility
+///
+/// This function assumes that the given LSP `Position` is one returned
+/// by this language server, using UTF-8 encoding specifically. Using
+/// any other encoding **will** return an invalid result here.
 #[must_use]
 pub const fn lsp_position_to_ts_point(pos: LspPosition) -> TsPoint {
     TsPoint {
@@ -89,9 +79,7 @@ pub const fn lsp_position_to_ts_point(pos: LspPosition) -> TsPoint {
     }
 }
 
-/**
-    Finds the first child node that matches the given predicate.
-*/
+/// Finds the first child node that matches the given predicate.
 #[must_use]
 pub fn find_child<'a, F>(node: Node<'a>, predicate: F) -> Option<Node<'a>>
 where
@@ -101,9 +89,7 @@ where
     node.children(&mut cursor).find(|child| predicate(*child))
 }
 
-/**
-    Finds the first ancestor node that matches the given predicate.
-*/
+/// Finds the first ancestor node that matches the given predicate.
 #[must_use]
 pub fn find_ancestor<'a, F>(node: Node<'a>, predicate: F) -> Option<Node<'a>>
 where
@@ -121,11 +107,9 @@ where
     None
 }
 
-/**
-    Finds the first descendant node that matches the given predicate.
-
-    This will search descendants in a depth-first manner.
-*/
+/// Finds the first descendant node that matches the given predicate.
+///
+/// This will search descendants in a depth-first manner.
 #[must_use]
 pub fn find_descendant<'a, F>(node: Node<'a>, predicate: F) -> Option<Node<'a>>
 where
@@ -146,17 +130,15 @@ where
     None
 }
 
-/**
-    Finds the nearest node at `pos` that also matches the given predicate
-
-    1. If the given node itself matches the predicate, returns the node
-    2. If the given node has a child that matches the predicate, returns the child
-    3. If the given node has a descendant that matches the predicate, returns the descendant
-    4. If the given node has an ancestor that matches the predicate, returns the ancestor
-
-    Note that this uses **inclusive** bounds checks, meaning that points
-    are considered *inside* even if they lie on a line or column boundary
-*/
+/// Finds the nearest node at `pos` that also matches the given predicate
+///
+/// 1. If the given node itself matches the predicate, returns the node
+/// 2. If the given node has a child that matches the predicate, returns the child
+/// 3. If the given node has a descendant that matches the predicate, returns the descendant
+/// 4. If the given node has an ancestor that matches the predicate, returns the ancestor
+///
+/// Note that this uses **inclusive** bounds checks, meaning that points
+/// are considered *inside* even if they lie on a line or column boundary
 pub fn find_nearest<'a, F>(
     node: Node<'a>,
     pos: impl Into<Position>,
