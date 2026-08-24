@@ -1381,7 +1381,7 @@ jobs:
 - [ ] **Step 4:** Hand the commit to the user. Present this command and wait until the user runs it (suggest the `!` prefix) — do not run it yourself:
 
 ```bash
-git add -A && git commit -m "Enable doctests, add examples and metadata, enforce in CI"
+git add -A && git commit -m "Enforce full verification battery in CI"
 ```
 
 Then confirm read-only: `git log --oneline -1` shows the new commit, `git status --short` is empty.
