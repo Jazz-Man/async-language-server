@@ -179,12 +179,12 @@ Expected: no output.
 git diff -w --stat
 ```
 
-Expected: near-zero changed lines (only the `/**`, `*/`, and indentation churn disappear under `-w`; what remains is the cfg swaps and stray indentation). Spot-check `git diff -w` on `src/document.rs` and `src/server_trait.rs` — the `-w` diff should show no wording differences.
+Note: `git diff -w` does NOT collapse this conversion to near-zero — the `///` prefix is non-whitespace text, so converted lines still appear as changed. Use it only to spot-check that wording is untouched: `git diff -w` on `src/document.rs` and `src/server_trait.rs` should show doc lines differing solely by the comment markers and indentation, never by words or punctuation.
 
 - [ ] **Step 5:** Hand the commit to the user. Present this command and wait until the user runs it (suggest the `!` prefix) — do not run it yourself:
 
 ```bash
-git add -A && git commit -m "Convert doc comments to /// and move cfg after docs"
+git add -A && git commit -m "Convert doc comments to ///, move cfg after docs, fix two broken intra-doc links"
 ```
 
 Then confirm read-only: `git log --oneline -1` shows the new commit, `git status --short` is empty.
@@ -640,7 +640,7 @@ Then confirm read-only: `git log --oneline -1` shows the new commit, `git status
 - `src/document.rs` `Document::text_bytes` (line ~100): copy-paste bug — its doc duplicates `text_contents`. Change the summary to "Returns the full text of the document, as bytes." and keep the `text_reader` preference sentence.
 - `src/document_matcher.rs` `DocumentMatcher::new`: reconcile the contradiction with the `name` field doc ("only used for debugging purposes" vs "unique identifier"). New details text: "The name is exposed on matched documents through [`Document::matched_name`]; it does not need to be unique."
 
-- [ ] **Step 2:** Unify intra-doc links to full paths. Known bare link — `src/document.rs` `node_at_position_named` (line ~189): `[`node_at_position`]` → `[`Document::node_at_position`]`. Then sweep for any other bare method links:
+- [ ] **Step 2:** Unify intra-doc links to full paths. The two baseline-broken links were already fixed right after Task 1 (user decision, 2026-08-24, carried by the phase-1 commit): `src/document.rs` `node_at_position_named` now links [`Document::node_at_position`], and `src/document_matcher.rs` `name` now links [`crate::server::Document::matched_name`]. Sweep for any other bare method links:
 
 ```bash
 grep -rnE '\[`[a-z_]+`\]' src/ | grep -v '#[' | grep -v tests
