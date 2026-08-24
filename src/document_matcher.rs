@@ -6,9 +6,10 @@ use globset::{Glob, GlobSet};
 #[cfg(feature = "tree-sitter")]
 use tree_sitter::Language;
 
-/// Options for matching documents based on their URLs and
-/// language identifiers, and associating them with an optional
-/// tree-sitter language grammar when tree-sitter feature is enabled.
+/// Associates documents with a name by URL glob and/or language id.
+///
+/// May associate an optional tree-sitter language grammar with matched
+/// documents when the tree-sitter feature is enabled.
 #[derive(Debug, Default, Clone)]
 pub struct DocumentMatcher {
     /// The name of the document matcher.
@@ -29,8 +30,9 @@ pub struct DocumentMatcher {
 impl DocumentMatcher {
     /// Creates a new document matcher with the given name.
     ///
-    /// The name is only used for debugging purposes and will not be
-    /// used for identifying documents. It does not need to be unique.
+    /// The name is exposed on matched documents through
+    /// [`crate::server::Document::matched_name`]; it does not
+    /// need to be unique.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self {

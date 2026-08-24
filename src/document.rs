@@ -17,8 +17,7 @@ use crate::{
     tree_sitter_utils::{lsp_position_to_ts_point, ts_range_to_lsp_range},
 };
 
-/// A document tracked by the language server, containing
-/// the URL, text, version, and language of the document.
+/// A snapshot of a text document tracked by the language server.
 ///
 /// May be cloned somewhat cheaply to take a snapshot
 /// of the current state of the document.
@@ -86,7 +85,7 @@ impl Document {
         self.text.to_string()
     }
 
-    /// Returns the full text of the document, as a string.
+    /// Returns the full text of the document, as bytes.
     ///
     /// When possible, prefer [`Document::text_reader`]
     /// for improved performance and less allocations.

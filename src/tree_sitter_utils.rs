@@ -10,7 +10,7 @@ use tree_sitter::{Node, Point as TsPoint, Range as TsRange};
 
 use crate::text_utils::Position;
 
-/// Converts a tree sitter `Point` to an LSP `Position`
+/// Converts a tree sitter `Point` to an LSP `Position`.
 ///
 /// # LSP Compatibility
 ///
@@ -25,7 +25,7 @@ pub const fn ts_point_to_lsp_position(pos: TsPoint) -> LspPosition {
     }
 }
 
-/// Converts a tree sitter `Range` to an LSP `Range`
+/// Converts a tree sitter `Range` to an LSP `Range`.
 ///
 /// # LSP Compatibility
 ///
@@ -40,7 +40,7 @@ pub const fn ts_range_to_lsp_range(range: TsRange) -> LspRange {
 }
 
 /// Returns `true` if the given tree sitter `Range`
-/// contains the given LSP `Position`, otherwise `false`
+/// contains the given LSP `Position`, otherwise `false`.
 ///
 /// This is an **inclusive** bounds check, meaning the position is
 /// considered *inside* even if it lies on a line or column boundary
@@ -57,7 +57,7 @@ pub const fn ts_range_contains_lsp_position(range: TsRange, pos: LspPosition) ->
 }
 
 /// Returns `true` if the given tree sitter `Range`
-/// contains the given tree sitter `Point`, otherwise `false`
+/// contains the given tree sitter `Point`, otherwise `false`.
 ///
 /// This is an **inclusive** bounds check, meaning the point is
 /// considered *inside* even if it lies on a line or column boundary
@@ -69,7 +69,7 @@ pub const fn ts_range_contains_ts_point(range: TsRange, point: TsPoint) -> bool 
             || point.row == range.end_point.row && point.column <= range.end_point.column)
 }
 
-/// Converts an LSP `Position` to a tree sitter `Point`
+/// Converts an LSP `Position` to a tree sitter `Point`.
 ///
 /// # LSP Compatibility
 ///
@@ -135,7 +135,7 @@ where
     None
 }
 
-/// Finds the nearest node at `pos` that also matches the given predicate
+/// Finds the nearest node at `pos` that also matches the given predicate.
 ///
 /// 1. If the given node itself matches the predicate, returns the node
 /// 2. If the given node has a child that matches the predicate, returns the child

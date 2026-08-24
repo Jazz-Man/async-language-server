@@ -1,6 +1,6 @@
 use async_lsp::lsp_types::Position as LspPosition;
 
-/// A position including a line and column.
+/// A zero-based line and column position.
 ///
 /// May be cheaply copied, as well as converted
 /// to / from language server positions.

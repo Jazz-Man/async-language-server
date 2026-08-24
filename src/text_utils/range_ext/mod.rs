@@ -12,7 +12,9 @@ mod tree_sitter;
 #[cfg(all(test, feature = "tree-sitter"))]
 mod tree_sitter_tests;
 
-/// Extension trait for different kinds of ranges:
+/// Extensions for splitting, shrinking, and delimiting ranges.
+///
+/// Works with different kinds of ranges:
 ///
 /// 1. Byte ranges
 /// 2. LSP protocol ranges

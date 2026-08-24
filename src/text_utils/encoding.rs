@@ -1,6 +1,6 @@
 use async_lsp::lsp_types::PositionEncodingKind as LspPositionEncoding;
 
-/// A position encoding supported by this library.
+/// A position encoding supported by this crate.
 ///
 /// Easy to copy and match against, unlike `PositionEncodingKind`, and
 /// contains several similar utilities, that are additionally `const`.
