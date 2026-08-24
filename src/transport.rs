@@ -1,5 +1,3 @@
-#![allow(clippy::missing_panics_doc)]
-
 use std::{
     fmt,
     io::Result,
@@ -37,6 +35,12 @@ impl Transport {
     ///
     /// - If the `Socket` transport is used, and the port is not valid.
     /// - If the `Socket` transport is used, and an I/O error occurs.
+    ///
+    /// # Panics
+    ///
+    /// Panics on a `Transport` variant other than [`Transport::Socket`] and
+    /// [`Transport::Stdio`]. There is no such variant today; the branch
+    /// exists so a future variant fails loudly instead of silently.
     pub async fn into_read_write(self) -> ServerResult<(LspTransportRead, LspTransportWrite)> {
         if let Self::Socket(port) = self {
             let addr = SocketAddr::from(([127, 0, 0, 1], port));

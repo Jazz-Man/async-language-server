@@ -136,7 +136,9 @@ impl Document {
 
     /// Returns the UTF-8 text of a [`Node`].
     ///
-    /// Panics if the node is not valid for the document.
+    /// # Panics
+    ///
+    /// Panics if the node's byte range is not within this document.
     #[must_use]
     pub fn node_text(&self, node: Node) -> String {
         self.text.byte_slice(node.byte_range()).to_string()
@@ -166,7 +168,8 @@ impl Document {
 
     /// Creates and runs a query for the given query string.
     ///
-    /// Returns `Some(captures)` if the query was successful, otherwise `None`.
+    /// Returns `None` when the document has no tree-sitter language or
+    /// parsed tree assigned, or when the query string fails to compile.
     #[must_use]
     pub fn query(&self, query: impl AsRef<str>) -> Option<Vec<DocumentQueryCapture>> {
         let lang = self.tree_sitter_lang.as_ref()?;

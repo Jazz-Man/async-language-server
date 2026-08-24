@@ -1,5 +1,3 @@
-#![allow(clippy::missing_panics_doc)]
-
 use std::num::NonZeroUsize;
 
 use async_lsp::{
@@ -14,6 +12,11 @@ use async_lsp::tracing::TracingLayer;
 use crate::{
     result::ServerResult, server_trait::Server, server_with_state::LanguageServerWithState,
     transport::Transport,
+};
+
+const MAX_CONCURRENT_REQUESTS: NonZeroUsize = match NonZeroUsize::new(8) {
+    Some(value) => value,
+    None => unreachable!(),
 };
 
 /// Serves a language server over the given transport.
@@ -45,7 +48,7 @@ where
         let builder = builder.layer(TracingLayer::default());
 
         builder
-            .layer(ConcurrencyLayer::new(NonZeroUsize::new(8).unwrap()))
+            .layer(ConcurrencyLayer::new(MAX_CONCURRENT_REQUESTS))
             .layer(CatchUnwindLayer::default())
             .layer(ClientProcessMonitorLayer::new(client.clone()))
             .service(Router::from_language_server(LanguageServerWithState::new(

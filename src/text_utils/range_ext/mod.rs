@@ -34,6 +34,10 @@ pub trait RangeExt: Sized {
     /// - The `text` parameter must be the exact text corresponding to this range.
     ///   It is used for tree-sitter ranges, where both line+col and byte offsets are needed.
     /// - The `at` position is _relative_ to the start of the range.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `at` lies beyond the end of the range.
     #[must_use]
     fn split_at(self, text: &str, at: Self::Position) -> (Self, Self);
 
@@ -63,7 +67,9 @@ pub trait RangeExt: Sized {
 
     /// Shrinks the same-line range by the given character count, on both the left and right.
     ///
-    /// Panics if the range spans across multiple lines.
+    /// # Panics
+    ///
+    /// Panics if the range spans multiple lines.
     #[must_use]
     fn shrink(self, amount_left: usize, amount_right: usize) -> Self;
 
@@ -73,6 +79,10 @@ pub trait RangeExt: Sized {
     ///   It is used for tree-sitter ranges, where both line+col and byte offsets are needed.
     /// - Both positions are _relative_ to the start of the range, and that the range itself
     ///   must be an absolute range.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `from` or `to` lie beyond the end of the range, or if `from > to`.
     #[must_use]
     fn sub(self, text: &str, from: Self::Position, to: Self::Position) -> Self;
 

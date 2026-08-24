@@ -31,6 +31,9 @@ use crate::{
 ///
 /// The only exception to this rule are the `*_resolve` methods, which
 /// default to doing nothing, and simply resolving the item as-is.
+///
+/// Handlers report failures by returning `Err(ServerError)`; the wrapper
+/// converts them to LSP error responses.
 pub trait Server {
     /// Returns the server name and version reported to the client during initialization.
     fn server_info() -> Option<ServerInfo> {

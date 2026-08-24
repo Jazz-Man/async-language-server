@@ -48,8 +48,11 @@ impl Encoding {
         }
     }
 
-    #[allow(clippy::missing_panics_doc)]
     /// Creates an encoding from its `lsp_types` counterpart.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the encoding kind is not one of UTF-8, UTF-16, or UTF-32.
     #[must_use]
     pub fn from_lsp(encoding: &LspPositionEncoding) -> Self {
         if encoding == &LspPositionEncoding::UTF8 {
