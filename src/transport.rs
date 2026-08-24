@@ -23,7 +23,9 @@ use crate::result::{ServerError, ServerResult};
 #[derive(Debug, Default, Clone, Copy)]
 #[non_exhaustive]
 pub enum Transport {
+    /// Connects to a TCP socket on the given port of `127.0.0.1`.
     Socket(u16),
+    /// Uses the process standard input and output.
     #[default]
     Stdio,
 }
@@ -72,7 +74,9 @@ impl fmt::Display for Transport {
 /// The read half of an LSP transport.
 #[derive(Debug)]
 pub enum LspTransportRead {
+    /// Read half of a connected [`Transport::Socket`].
     Socket(OwnedReadHalf),
+    /// Read half of [`Transport::Stdio`].
     Stdio(Stdin),
 }
 
@@ -100,7 +104,9 @@ impl AsyncRead for LspTransportRead {
 /// The write half of an LSP transport.
 #[derive(Debug)]
 pub enum LspTransportWrite {
+    /// Write half of a connected [`Transport::Socket`].
     Socket(OwnedWriteHalf),
+    /// Write half of [`Transport::Stdio`].
     Stdio(Stdout),
 }
 

@@ -22,11 +22,13 @@ pub enum Encoding {
 }
 
 impl Encoding {
+    /// Returns the LSP default encoding, [`Encoding::UTF16`].
     #[must_use]
     pub const fn default() -> Self {
         Self::UTF16
     }
 
+    /// Converts the encoding into its `lsp_types` counterpart.
     #[must_use]
     pub const fn into_lsp(self) -> LspPositionEncoding {
         match self {
@@ -36,6 +38,7 @@ impl Encoding {
         }
     }
 
+    /// Returns the wire representation of the encoding (`utf-8`, `utf-16`, or `utf-32`).
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
@@ -46,6 +49,7 @@ impl Encoding {
     }
 
     #[allow(clippy::missing_panics_doc)]
+    /// Creates an encoding from its `lsp_types` counterpart.
     #[must_use]
     pub fn from_lsp(encoding: &LspPositionEncoding) -> Self {
         if encoding == &LspPositionEncoding::UTF8 {

@@ -6,11 +6,14 @@ use async_lsp::lsp_types::Position as LspPosition;
 /// to / from language server positions.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Position {
+    /// Zero-based line index.
     pub line: usize,
+    /// Column offset within the line, in the units of the encoding in use.
     pub col: usize,
 }
 
 impl Position {
+    /// Creates a position from an LSP position.
     #[must_use]
     pub const fn from_lsp(position: LspPosition) -> Self {
         Self {
@@ -19,6 +22,7 @@ impl Position {
         }
     }
 
+    /// Converts the position into an LSP position.
     #[must_use]
     pub const fn into_lsp(self) -> LspPosition {
         #[allow(clippy::cast_possible_truncation)]
@@ -64,6 +68,7 @@ use tree_sitter::Point as TsPoint;
 
 #[cfg(feature = "tree-sitter")]
 impl Position {
+    /// Creates a position from a tree-sitter point.
     #[must_use]
     pub const fn from_ts(point: TsPoint) -> Self {
         Self {
@@ -72,6 +77,7 @@ impl Position {
         }
     }
 
+    /// Converts the position into a tree-sitter point.
     #[must_use]
     pub const fn into_ts(self) -> TsPoint {
         TsPoint {

@@ -24,6 +24,7 @@ mod tree_sitter_tests;
 /// - Expanding and shrinking ranges
 /// - Creating subranges based on positions and/or string delimiters
 pub trait RangeExt: Sized {
+    /// The position type used by this kind of range.
     type Position;
 
     /// Splits the given range into two parts at the specified position.

@@ -63,6 +63,7 @@ impl WorkspaceDiagnosticConfig {
 /// Diagnostics produced by running a server over a workspace.
 #[derive(Debug, Clone)]
 pub struct WorkspaceDiagnosticReport {
+    /// Diagnostics for each matched document, one entry per document.
     pub documents: Vec<DocumentDiagnostics>,
 }
 
@@ -77,8 +78,11 @@ impl WorkspaceDiagnosticReport {
 /// Diagnostics produced for a single document in a workspace.
 #[derive(Debug, Clone)]
 pub struct DocumentDiagnostics {
+    /// URI of the document the diagnostics belong to.
     pub uri: Url,
+    /// Document version at the time the diagnostics were produced.
     pub version: i32,
+    /// The diagnostic report returned by the server.
     pub report: DocumentDiagnosticReportResult,
 }
 
