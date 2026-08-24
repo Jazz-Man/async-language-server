@@ -8,12 +8,12 @@ Library crate (no binary) that wraps `async-lsp` to make language servers with l
 
 ## Commands
 
-- `cargo build` / `cargo test` — what CI runs (push/PR to `main`)
+- CI runs the full battery on push/PR to `main`: `cargo build --all-targets`, `cargo test` in three feature configurations (default, `--no-default-features`, `--all-features`), `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`
 - `cargo test <test_name>` — run a single test; tests are inline `#[cfg(test)] mod tests` blocks inside each `src/` module
 - `cargo clippy --all-targets` — `clippy::all` is `deny` in `Cargo.toml` `[lints.clippy]`, so default lints are hard errors; `pedantic`/`cargo` warn, with an explicit allow list there
 - `cargo fmt` — rustfmt and clippy are pinned via `rust-toolchain.toml`
 - Feature gates matter: defaults are `tracing` and `tree-sitter`. Changes touching `#[cfg(feature = "tree-sitter")]` paths should also be checked with `cargo test --no-default-features` and/or `cargo test --no-default-features --features tree-sitter`
-- Doctests are disabled (`doctest = false` in `Cargo.toml`)
+- Doctests are enabled and run as part of `cargo test` in all three feature configurations; keep them free of tree-sitter-gated API
 
 ## Architecture
 
@@ -57,6 +57,6 @@ The `implement_method!` macro glues each async-lsp method to a `Server` method t
 ## Conventions
 
 - All written documents and artifacts (specs, plans, code and doc comments, commit messages) are in English only.
-- Public docs use `/** ... */` blocks with `# Errors` sections on fallible functions.
+- Public docs use `///` doc comments with `# Errors` sections on fallible functions, `# Panics` where a panic path exists, and `# Examples` doctests on doctest-friendly API; `missing_docs` is enabled in `[lints.rust]`
 - Tests are inline per module and create real temp workspaces on disk (millisecond-unique names under `std::env::temp_dir()`).
 - Rust edition 2024 — let-chains (`if let ... && ...`) are used freely.
