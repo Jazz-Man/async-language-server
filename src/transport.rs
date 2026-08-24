@@ -18,6 +18,15 @@ use tokio::{
 use crate::result::{ServerError, ServerResult};
 
 /// Transport implementation for sockets and stdio.
+///
+/// # Examples
+///
+/// ```
+/// use async_language_server::server::Transport;
+///
+/// assert_eq!(Transport::Stdio.to_string(), "Stdio");
+/// assert_eq!(Transport::Socket(9999).to_string(), "Socket(9999)");
+/// ```
 #[derive(Debug, Default, Clone, Copy)]
 #[non_exhaustive]
 pub enum Transport {

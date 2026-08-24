@@ -3,6 +3,19 @@ use ropey::Rope;
 use super::{encoding::Encoding, position::Position};
 
 /// Converts a position from using one encoding to another.
+///
+/// # Examples
+///
+/// ```
+/// use async_language_server::text_utils::{Encoding, Position, position_to_encoding};
+///
+/// let text = ropey::Rope::from_str("a\u{1f642}b");
+///
+/// // The smiley is 4 UTF-8 bytes but 2 UTF-16 units.
+/// let position = Position { line: 0, col: 5 };
+/// let converted = position_to_encoding(&text, position, Encoding::UTF8, Encoding::UTF16);
+/// assert_eq!(converted, Position { line: 0, col: 3 });
+/// ```
 pub fn position_to_encoding<P>(
     contents: &Rope,
     position: P,

@@ -11,6 +11,18 @@ pub use async_lsp::ErrorCode as ServerErrorCode;
 pub type ServerResult<T> = Result<T, ServerError>;
 
 /// An error that can occur while running a language server.
+///
+/// # Examples
+///
+/// ```
+/// use async_language_server::server::ServerError;
+///
+/// let error = ServerError::TcpConnect(9999);
+/// assert_eq!(error.to_string(), "Failed to connect to port 9999");
+///
+/// let error = ServerError::from("boom");
+/// assert_eq!(error.to_string(), "Uncategorized error: boom");
+/// ```
 #[derive(Debug, Error)]
 pub enum ServerError {
     /// Failed to connect to the given TCP port.

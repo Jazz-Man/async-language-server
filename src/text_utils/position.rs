@@ -4,6 +4,18 @@ use async_lsp::lsp_types::Position as LspPosition;
 ///
 /// May be cheaply copied, as well as converted
 /// to / from language server positions.
+///
+/// # Examples
+///
+/// ```
+/// use async_language_server::text_utils::Position;
+/// use async_lsp::lsp_types::Position as LspPosition;
+///
+/// let position = Position { line: 3, col: 7 };
+/// let lsp = position.into_lsp();
+/// assert_eq!(lsp, LspPosition { line: 3, character: 7 });
+/// assert_eq!(Position::from_lsp(lsp), position);
+/// ```
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Position {
     /// Zero-based line index.

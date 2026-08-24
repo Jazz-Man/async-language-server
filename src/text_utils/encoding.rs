@@ -4,6 +4,16 @@ use async_lsp::lsp_types::PositionEncodingKind as LspPositionEncoding;
 ///
 /// Easy to copy and match against, unlike `PositionEncodingKind`, and
 /// contains several similar utilities, that are additionally `const`.
+///
+/// # Examples
+///
+/// ```
+/// use async_language_server::text_utils::Encoding;
+///
+/// // The LSP default when the client does not negotiate an encoding.
+/// assert_eq!(Encoding::default(), Encoding::UTF16);
+/// assert_eq!(Encoding::UTF8.as_str(), "utf-8");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Encoding {
     /// Character offsets count UTF-8 code units.

@@ -10,6 +10,19 @@ use tree_sitter::Language;
 ///
 /// May associate an optional tree-sitter language grammar with matched
 /// documents when the tree-sitter feature is enabled.
+///
+/// # Examples
+///
+/// ```
+/// use async_language_server::server::DocumentMatcher;
+///
+/// let matcher = DocumentMatcher::new("json")
+///     .with_url_globs(["**/*.json", "*.jsonc"])
+///     .with_lang_strings(["json", "jsonc"]);
+///
+/// assert_eq!(matcher.name, "json");
+/// assert_eq!(matcher.url_globs, ["**/*.json", "*.jsonc"]);
+/// ```
 #[derive(Debug, Default, Clone)]
 pub struct DocumentMatcher {
     /// The name of the document matcher.

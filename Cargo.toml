@@ -13,7 +13,6 @@ rust-version = "1.88"
 [lib]
 name = "async_language_server"
 path = "src/lib.rs"
-doctest = false
 
 [features]
 default = ["tracing", "tree-sitter"]
@@ -34,6 +33,9 @@ tower = "0.5.3"
 
 tracing = { version = "0.1.44", optional = true }
 tree-sitter = { version = "0.26.12", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["rt", "rt-multi-thread", "macros"] }
 
 [lints.clippy]
 all = { level = "deny", priority = -3 }

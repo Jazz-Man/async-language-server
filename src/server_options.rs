@@ -8,6 +8,15 @@ pub struct ServerOptions {
 
 impl ServerOptions {
     /// Sets how workspace diagnostics should be exposed by the server.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use async_language_server::server::{ServerOptions, WorkspaceDiagnostics};
+    ///
+    /// let options = ServerOptions::default()
+    ///     .with_workspace_diagnostics(WorkspaceDiagnostics::disabled());
+    /// ```
     #[must_use]
     pub fn with_workspace_diagnostics(
         mut self,

@@ -25,6 +25,19 @@ mod tree_sitter_tests;
 /// - Splitting ranges into parts
 /// - Expanding and shrinking ranges
 /// - Creating subranges based on positions and/or string delimiters
+///
+/// # Examples
+///
+/// ```
+/// use async_language_server::text_utils::RangeExt;
+///
+/// let (left, right) = (0..7).split_at("one/two", 3);
+/// assert_eq!(left, 0..3);
+/// assert_eq!(right, 3..7);
+///
+/// assert_eq!((0..7).shrink(1, 2), 1..5);
+/// assert_eq!((0..7).sub("one/two", 1, 5), 1..5);
+/// ```
 pub trait RangeExt: Sized {
     /// The position type used by this kind of range.
     type Position;
@@ -90,25 +103,18 @@ pub trait RangeExt: Sized {
     ///
     /// The range should be the exact range for the given text.
     ///
-    /// # Example Usage
+    /// # Examples
     ///
-    /// ```rust no_run
+    /// ```
+    /// use async_language_server::text_utils::RangeExt;
+    ///
     /// const D: char = '/';
     ///
-    /// (0..7).sub_delimited("one/two", D);
-    /// // --> (Some(0..3), Some(4..7))
-    ///
-    /// (0..4).sub_delimited("/two", D);
-    /// // --> (None, Some(1..4))
-    ///
-    /// (0..4).sub_delimited("one/", D);
-    /// // --> (Some(0..3), None)
-    ///
-    /// (0..3).sub_delimited("one", D);
-    /// // --> (Some(0..3), None)
-    ///
-    /// (0..0).sub_delimited("", D);
-    /// // --> (None, None)
+    /// assert_eq!((0..7).sub_delimited("one/two", D), (Some(0..3), Some(4..7)));
+    /// assert_eq!((0..4).sub_delimited("/two", D), (None, Some(1..4)));
+    /// assert_eq!((0..4).sub_delimited("one/", D), (Some(0..3), None));
+    /// assert_eq!((0..3).sub_delimited("one", D), (Some(0..3), None));
+    /// assert_eq!((0..0).sub_delimited("", D), (None, None));
     /// ```
     ///
     /// # Panics
@@ -129,23 +135,27 @@ pub trait RangeExt: Sized {
     ///
     /// The range should be the exact range corresponding to the given text.
     ///
-    /// # Example Usage
+    /// # Examples
     ///
-    /// ```rust no_run
+    /// ```
+    /// use async_language_server::text_utils::RangeExt;
+    ///
     /// const D0: char = '/';
     /// const D1: char = '@';
     ///
-    /// (0..13).sub_delimited_tri("one/two@three", D0, D1);
-    /// // --> (Some(0..3), Some(4..7), Some(8..13))
-    ///
-    /// (0..7).sub_delimited_tri("one/two", D0, D1);
-    /// // --> (Some(0..3), Some(4..7), None)
-    ///
-    /// (0..3).sub_delimited_tri("one", D0, D1);
-    /// // --> (Some(0..3), None, None)
-    ///
-    /// (0..0).sub_delimited_tri("", D0, D1);
-    /// // --> (None, None, None)
+    /// assert_eq!(
+    ///     (0..13).sub_delimited_tri("one/two@three", D0, D1),
+    ///     (Some(0..3), Some(4..7), Some(8..13)),
+    /// );
+    /// assert_eq!(
+    ///     (0..7).sub_delimited_tri("one/two", D0, D1),
+    ///     (Some(0..3), Some(4..7), None),
+    /// );
+    /// assert_eq!(
+    ///     (0..3).sub_delimited_tri("one", D0, D1),
+    ///     (Some(0..3), None, None),
+    /// );
+    /// assert_eq!((0..0).sub_delimited_tri("", D0, D1), (None, None, None));
     /// ```
     ///
     /// # Panics
