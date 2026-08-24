@@ -348,6 +348,14 @@ pub struct Position {
 pub type ServerResult<T> = Result<T, ServerError>;
 ```
 
+The `ServerError` enum itself (line 13) also needs a doc — it is part of this task's gap list:
+
+```rust
+/// An error that can occur while running a language server.
+#[derive(Debug, Error)]
+pub enum ServerError {
+```
+
 ```rust
 #[derive(Debug, Error)]
 pub enum ServerError {
@@ -429,13 +437,13 @@ pub struct DocumentDiagnostics {
 }
 ```
 
-- [ ] **Step 6:** Re-run the doc lint and confirm only the `Server` trait items remain:
+- [ ] **Step 6:** Re-run the doc lint and confirm only the `Server` trait items remain. Note: warning summary lines carry no filename — map via the `--> path:line` lines instead:
 
 ```bash
-cargo doc --no-deps 2>&1 | grep 'missing documentation' | grep -v 'server_trait'
+cargo doc --no-deps 2>&1 | grep -A2 'missing documentation' | grep -- '-->' | grep -v server_trait
 ```
 
-Expected: no output.
+Expected: no output. Two easy-to-miss items belong to this task (found during execution 2026-08-24): the `ServerError` enum itself (`src/result.rs`) — `/// An error that can occur while running a language server.` — and the `RangeExt::Position` associated type (`src/text_utils/range_ext/mod.rs`) — `/// The position type used by this kind of range.` directly above `type Position;`.
 
 ### Task 4: Document every `Server` trait method
 
