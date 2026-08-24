@@ -56,6 +56,7 @@ The `implement_method!` macro glues each async-lsp method to a `Server` method t
 
 ## Conventions
 
+- All written documents and artifacts (specs, plans, code and doc comments, commit messages) are in English only.
 - Public docs use `/** ... */` blocks with `# Errors` sections on fallible functions.
 - Tests are inline per module and create real temp workspaces on disk (millisecond-unique names under `std::env::temp_dir()`).
 - Rust edition 2024 — let-chains (`if let ... && ...`) are used freely.
