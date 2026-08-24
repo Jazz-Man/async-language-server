@@ -36,6 +36,11 @@ tree-sitter = { version = "0.26.12", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.53.1", features = ["rt", "rt-multi-thread", "macros"] }
+tree-sitter-json = "0.24.8"
+
+[[example]]
+name = "tree_sitter"
+required-features = ["tree-sitter"]
 
 [lints.clippy]
 all = { level = "deny", priority = -3 }
