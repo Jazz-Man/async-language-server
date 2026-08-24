@@ -5,6 +5,10 @@ version = "0.0.0"
 edition = "2024"
 license = "MIT"
 publish = false
+description = "A higher-level abstraction on top of async-lsp for building language servers with less boilerplate"
+repository = "https://github.com/Jazz-Man/async-language-server"
+readme = "README.md"
+rust-version = "1.88"
 
 [lib]
 name = "async_language_server"
@@ -36,7 +40,6 @@ all = { level = "deny", priority = -3 }
 cargo = { level = "warn", priority = -2 }
 pedantic = { level = "warn", priority = -1 }
 
-cargo_common_metadata = { level = "allow", priority = 1 }
 module_inception = { level = "allow", priority = 1 }
 module_name_repetitions = { level = "allow", priority = 1 }
 multiple_crate_versions = { level = "allow", priority = 1 }
