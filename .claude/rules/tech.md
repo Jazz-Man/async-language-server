@@ -63,9 +63,10 @@ rule; suppression is not a way forward in this fork.
 
 Public items need `///` docs (`missing_docs` is enforced):
 
-- `# Errors` on every fallible public function.
-- `# Panics` wherever a panic path exists.
 - `# Examples` doctests on doctest-friendly API.
+
+Error-documentation duties (`# Errors`, `# Panics` sections) are governed by
+`error-handling.md`.
 
 Doctests run in all three feature configurations. Keep them free of
 tree-sitter-gated API so they compile under `--no-default-features`, and use
