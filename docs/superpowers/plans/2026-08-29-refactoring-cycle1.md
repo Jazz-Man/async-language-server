@@ -14,7 +14,7 @@
 - `.claude/rules/error-handling.md` is normative for all touched code: typed variants, preserved `source()` chains, one wire boundary, no swallowed failures, no panics on external input, lowercase Display.
 - rust-skills acceptance rules: `err-thiserror-lib`, `err-source-chain`, `err-lowercase-msg`, `err-edge-mapping`, `api-dir-enumeration`, `api-parse-dont-validate`, `err-expect-bugs-only`, `doc-errors-section`, `test-arrange-act-assert`, `test-no-tautology`.
 - **No new lint `#[allow]`s anywhere** (tech.md). Existing allows in touched files stay unless this plan removes one explicitly (only `clippy::unused_async` in `server_trait.rs`).
-- **No git write commands.** The agent never commits; every task ends by handing the user the exact commit command (the user runs it, optionally with the `!` prefix). Verify the commit landed with read-only `git log --oneline -1` before starting the next task.
+- **No git operations in tasks.** The agent never runs git write commands; commits, their content, and their timing are entirely the user's. Tasks end at verified-green, nothing else.
 - All code comments and commit messages in English. Tests inline per module, real temp workspaces with millisecond-unique names.
 - Feature gates: every task must compile under `--no-default-features`; task 6's cfg pairs exist exactly for that.
 - Full battery gates the cycle's end (task 7), not each task; per-task minimum is the affected tests plus `cargo build --all-targets`.
@@ -156,12 +156,6 @@ Replace the impl:
 Run: `cargo clippy --all-targets -- -D warnings && cargo test`
 Expected: clippy exits 0; all tests pass (87 + 12, default features).
 
-- [ ] **Step 8: Hand the commit to the user**
-
-```
-git add src/server_trait.rs examples/minimal.rs examples/tree_sitter.rs src/oneshot/workspace_diagnostics.rs && git commit -m "Fix unused_async at the root: sync-ready futures, drop the module allow"
-```
-
 ---
 
 ### Task 2: `ServerError` hard break + module rename to `error.rs`
@@ -176,6 +170,7 @@ git add src/server_trait.rs examples/minimal.rs examples/tree_sitter.rs src/ones
 **Interfaces:**
 - Produces (breaking): `ServerError::{TcpConnect{port,error}, InvalidFilePath{path}, Rpc{code,message}, Lsp, Io, Other}`; `ServerError::rpc(code, message)` stays; `unknown()` and all string `From`s are gone; `From<BoxDynError>` now targets `Other`.
 - Public re-export path `async_language_server::server::{ServerError, ServerResult, ServerErrorCode}` is unchanged.
+- **This is the cycle's breaking change** — the user's commit message for this task should name it (product.md).
 
 - [ ] **Step 1: Write the failing tests** — append to the end of the (renamed in step 3) module:
 
@@ -354,12 +349,6 @@ pub(crate) fn path_to_url(path: &Path) -> ServerResult<Url> {
 Run: `cargo build --all-targets && cargo test`
 Expected: builds; new error tests pass; all existing tests pass. (`ServerError::from("…")` sites must be gone — compiler enforces the hard break.)
 
-- [ ] **Step 6: Hand the commit to the user (breaking)**
-
-```
-git add -A src/ && git commit -m "Rework ServerError with chain-preserving variants; rename module to error.rs (BREAKING: Unknown/unknown()/string From impls removed)"
-```
-
 ---
 
 ### Task 3: Walker resilience — skip-and-trace per entry
@@ -442,12 +431,6 @@ Replace the entry loop in `files()`:
 
 Run: `cargo test --lib workspace_walker && cargo test --no-default-features --lib workspace_walker`
 Expected: PASS in both feature configurations.
-
-- [ ] **Step 5: Hand the commit to the user**
-
-```
-git add src/workspace_walker.rs && git commit -m "Skip and trace unreadable workspace entries instead of aborting the scan"
-```
 
 ---
 
@@ -568,12 +551,6 @@ with:
 Run: `cargo test initialize_ignores_unknown try_from_lsp && cargo test --no-default-features`
 Expected: PASS — no panic, negotiated UTF-16.
 
-- [ ] **Step 6: Hand the commit to the user**
-
-```
-git add src/text_utils/encoding.rs src/server_with_state.rs && git commit -m "Filter unknown client position encodings during negotiation instead of panicking"
-```
-
 ---
 
 ### Task 5: `didChange` fallback keeps the document
@@ -671,12 +648,6 @@ Replace the fallback block in `handle_document_change`:
 Run: `cargo test --lib server_state && cargo test --no-default-features --lib server_state`
 Expected: PASS — new test green, existing change/close tests unchanged.
 
-- [ ] **Step 5: Hand the commit to the user**
-
-```
-git add src/server_state.rs && git commit -m "Keep last-known document text when the didChange fallback re-read fails"
-```
-
 ---
 
 ### Task 6: Tracing on invalid queries and fire-and-forget requests
@@ -740,12 +711,6 @@ In `refresh_diagnostics`, the same shape with the `WorkspaceDiagnosticRefresh` r
 Run: `cargo test && cargo test --no-default-features && cargo test --all-features`
 Expected: PASS everywhere — the cfg pairs are exactly what the featureless build checks.
 
-- [ ] **Step 4: Hand the commit to the user**
-
-```
-git add src/document.rs src/workspace_diagnostics.rs && git commit -m "Trace invalid tree-sitter queries and failed fire-and-forget client requests"
-```
-
 ---
 
 ### Task 7: Full battery and cycle close
@@ -770,10 +735,6 @@ Expected: all green, clippy included. Any failure → follow `no-workarounds` + 
 
 Check every file touched in this cycle against `.claude/rules/error-handling.md`: typed variants only, `source()` chains intact, `ResponseError` constructed only in the `From` impl, no bare `let _ =` on fallible calls outside the documented `not(tracing)` degradations, no panics on external input, lowercase Display.
 
-- [ ] **Step 3: Hand the final commit/verification to the user**
+- [ ] **Step 3: Report**
 
-If anything is uncommitted, hand the command. The breaking change is already flagged in Task 2's commit message (product.md).
-
-- [ ] **Step 4: Report**
-
-Report battery results and rule-compliance outcome; Cycle 2 (lint-allow shedding, README, doc wording) remains for its own brainstorm.
+Report battery results and rule-compliance outcome. Commits and their messages are the user's; the breaking change to name is Task 2's. Cycle 2 (lint-allow shedding, README, doc wording) remains for its own brainstorm.
