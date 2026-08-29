@@ -219,6 +219,14 @@ mod tests {
         assert_eq!(response.code, ErrorCode::INTERNAL_ERROR);
         assert_eq!(response.message, "boom");
     }
+
+    #[test]
+    fn io_errors_preserve_their_source() {
+        let error = ServerError::Io(std::io::Error::other("disk gone"));
+
+        assert_eq!(error.to_string(), "disk gone");
+        assert_eq!(error.source().unwrap().to_string(), "disk gone");
+    }
 }
 ```
 
@@ -285,14 +293,14 @@ pub enum ServerError {
         message: String,
     },
     /// Error raised by the underlying async-lsp machinery.
-    #[error(transparent)]
+    #[error("{0}")]
     Lsp(#[from] async_lsp::Error),
     /// I/O error raised by a transport or a file read.
-    #[error(transparent)]
+    #[error("{0}")]
     Io(#[from] std::io::Error),
-    /// An error that does not fit any other variant; `Display` and `source()`
-    /// delegate to the boxed error.
-    #[error(transparent)]
+    /// An error that does not fit any other variant; the boxed error
+    /// provides the `Display` message and is exposed as the `source()` node.
+    #[error("{0}")]
     Other(#[from] BoxDynError),
 }
 
