@@ -698,13 +698,11 @@ In `register_configuration`, replace the `spawn` block:
             tracing::warn!("workspace diagnostics capability registration failed: {error}");
         }
         #[cfg(not(feature = "tracing"))]
-        let _ = result;
+        drop(result);
     });
 ```
 
-In `refresh_diagnostics`, the same shape with the `WorkspaceDiagnosticRefresh` request and the message "workspace diagnostic refresh request failed: {error}".
-
-(`refresh_diagnostics` uses `WorkspaceDiagnosticRefresh` and the message "workspace diagnostic refresh request failed: {error}". The `let _ = result` exists only in `not(tracing)` builds, where no observation channel exists — the request's side effect has already run.)
+(`refresh_diagnostics` uses `WorkspaceDiagnosticRefresh` and the message "workspace diagnostic refresh request failed: {error}". The `drop(result)` exists only in `not(tracing)` builds, where no observation channel exists — the request's side effect has already run.)
 
 - [ ] **Step 3: Verify all three configurations compile and pass**
 
@@ -733,7 +731,7 @@ Expected: all green, clippy included. Any failure → follow `no-workarounds` + 
 
 - [ ] **Step 2: Rule-compliance pass**
 
-Check every file touched in this cycle against `.claude/rules/error-handling.md`: typed variants only, `source()` chains intact, `ResponseError` constructed only in the `From` impl, no bare `let _ =` on fallible calls outside the documented `not(tracing)` degradations, no panics on external input, lowercase Display.
+Check every file touched in this cycle against `.claude/rules/error-handling.md`: typed variants only, `source()` chains intact, `ResponseError` constructed only in the `From` impl, no bare `let _ =` on fallible calls, no panics on external input, lowercase Display.
 
 - [ ] **Step 3: Report**
 
