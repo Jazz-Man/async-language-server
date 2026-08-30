@@ -7,8 +7,8 @@ pub use tree_sitter;
 
 mod document;
 mod document_matcher;
+mod error;
 mod requests;
-mod result;
 mod serve;
 mod server_options;
 mod server_state;
@@ -38,7 +38,7 @@ pub mod server {
 
     pub use crate::document::{Document, DocumentReader};
     pub use crate::document_matcher::DocumentMatcher;
-    pub use crate::result::{ServerError, ServerErrorCode, ServerResult};
+    pub use crate::error::{ServerError, ServerErrorCode, ServerResult};
     pub use crate::serve::serve;
     pub use crate::server_options::{
         ConfigurationKey, ServerOptions, WorkspaceDiagnostics, WorkspaceDiagnosticsSetting,

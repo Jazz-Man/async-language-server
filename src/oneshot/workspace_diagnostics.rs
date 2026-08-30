@@ -7,7 +7,7 @@ use async_lsp::lsp_types::{
 
 use crate::{
     document_matcher::DocumentMatchers,
-    result::ServerResult,
+    error::ServerResult,
     server_trait::Server,
     workspace_walker::{WorkspaceWalkConfig, WorkspaceWalker, path_to_url},
 };
@@ -320,15 +320,17 @@ mod tests {
             ]
         }
 
-        async fn document_diagnostics(
+        fn document_diagnostics(
             &self,
             state: ServerState,
             _params: DocumentDiagnosticParams,
-        ) -> ServerResult<async_lsp::lsp_types::DocumentDiagnosticReportResult> {
-            Ok(full_report(vec![diagnostic(format!(
+        ) -> impl std::future::Future<
+            Output = ServerResult<async_lsp::lsp_types::DocumentDiagnosticReportResult>,
+        > + Send {
+            std::future::ready(Ok(full_report(vec![diagnostic(format!(
                 "{} documents",
                 state.documents().len()
-            ))]))
+            ))])))
         }
     }
 

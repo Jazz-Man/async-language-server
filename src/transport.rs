@@ -15,7 +15,7 @@ use tokio::{
     },
 };
 
-use crate::result::{ServerError, ServerResult};
+use crate::error::{ServerError, ServerResult};
 
 /// Transport implementation for sockets and stdio.
 ///
@@ -56,7 +56,7 @@ impl Transport {
 
             let stream = TcpStream::connect(addr)
                 .await
-                .map_err(|_| ServerError::TcpConnect(port))?;
+                .map_err(|error| ServerError::TcpConnect { port, error })?;
 
             let (stream_read, stream_write) = stream.into_split();
 

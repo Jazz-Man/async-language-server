@@ -6,7 +6,7 @@ use std::{
 use async_lsp::lsp_types::Url;
 use ignore::WalkBuilder;
 
-use crate::{result::ServerError, server::ServerResult};
+use crate::{error::ServerError, server::ServerResult};
 
 #[derive(Debug, Clone)]
 pub(crate) struct WorkspaceWalkConfig {
@@ -63,7 +63,16 @@ impl WorkspaceWalker {
             configure_walker(&mut builder, &self.config);
 
             for entry in builder.build() {
-                let entry = entry.map_err(ServerError::unknown)?;
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(error) => {
+                        #[cfg(feature = "tracing")]
+                        tracing::warn!("skipping unreadable workspace entry: {error}");
+                        #[cfg(not(feature = "tracing"))]
+                        drop(error);
+                        continue;
+                    }
+                };
                 if entry.file_type().is_some_and(|ty| ty.is_file()) {
                     files.push(entry.into_path());
                 }
@@ -87,10 +96,48 @@ fn configure_walker(builder: &mut WalkBuilder, config: &WorkspaceWalkConfig) {
 }
 
 pub(crate) fn path_to_url(path: &Path) -> ServerResult<Url> {
-    Url::from_file_path(path).map_err(|()| {
-        ServerError::from(format!(
-            "Failed to convert '{}' to a file URL",
-            path.display()
-        ))
+    Url::from_file_path(path).map_err(|()| ServerError::InvalidFilePath {
+        path: path.to_path_buf(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use super::{WorkspaceWalkConfig, WorkspaceWalker};
+
+    // One unreadable entry must not abort the scan; this test is unix-only
+    // because the failure is injected with filesystem permissions.
+    #[test]
+    #[cfg(unix)]
+    fn files_skips_unreadable_entries() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let millis = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time is after epoch")
+            .as_millis();
+        let root = std::env::temp_dir().join(format!("als-walker-skip-{millis}"));
+        fs::create_dir_all(root.join("bad")).expect("bad dir can be created");
+        fs::write(root.join("good.test"), "good").expect("good file can be written");
+        fs::set_permissions(root.join("bad"), fs::Permissions::from_mode(0o000))
+            .expect("permissions can be restricted");
+
+        let walker =
+            WorkspaceWalker::new(std::slice::from_ref(&root), WorkspaceWalkConfig::default())
+                .expect("walker can be created");
+        let files = walker
+            .files()
+            .expect("walk succeeds despite unreadable entry");
+
+        assert!(files.iter().any(|file| file.ends_with("good.test")));
+
+        fs::set_permissions(root.join("bad"), fs::Permissions::from_mode(0o755))
+            .expect("permissions can be restored");
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
 }

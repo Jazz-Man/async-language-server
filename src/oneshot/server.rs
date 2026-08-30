@@ -14,7 +14,7 @@ use async_lsp::{
 };
 
 use crate::{
-    result::{ServerError, ServerResult},
+    error::{ServerError, ServerResult},
     server_trait::Server,
     server_with_state::LanguageServerWithState,
     workspace_walker::path_to_url,

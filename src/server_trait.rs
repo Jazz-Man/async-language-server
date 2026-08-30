@@ -1,6 +1,5 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
-#![allow(clippy::unused_async)]
 #![allow(clippy::must_use_candidate)]
 
 use async_lsp::{
@@ -18,7 +17,7 @@ use async_lsp::{
 
 use crate::{
     document_matcher::DocumentMatcher,
-    result::{ServerError, ServerResult},
+    error::{ServerError, ServerResult},
     server_options::ServerOptions,
     server_state::ServerState,
 };
@@ -256,9 +255,9 @@ pub trait Server {
     }
 }
 
-async fn method_not_implemented<T>(name: &'static str) -> Result<T, ServerError> {
-    Err(ServerError::rpc(
+fn method_not_implemented<T>(name: &'static str) -> std::future::Ready<Result<T, ServerError>> {
+    std::future::ready(Err(ServerError::rpc(
         ErrorCode::METHOD_NOT_FOUND,
         format!("LSP method '{name}' has not been implemented"),
-    ))
+    )))
 }

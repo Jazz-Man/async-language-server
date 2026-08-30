@@ -75,6 +75,25 @@ impl Encoding {
             panic!("unsupported position encoding kind: {encoding:?}")
         }
     }
+
+    /// Creates an encoding from its `lsp_types` counterpart, if it is one of
+    /// the supported kinds (UTF-8, UTF-16, UTF-32).
+    ///
+    /// Returns `None` for any other kind: client capabilities can carry
+    /// values this crate does not know, and negotiation ignores them
+    /// instead of failing.
+    #[must_use]
+    pub fn try_from_lsp(encoding: &LspPositionEncoding) -> Option<Self> {
+        if encoding == &LspPositionEncoding::UTF8 {
+            Some(Self::UTF8)
+        } else if encoding == &LspPositionEncoding::UTF16 {
+            Some(Self::UTF16)
+        } else if encoding == &LspPositionEncoding::UTF32 {
+            Some(Self::UTF32)
+        } else {
+            None
+        }
+    }
 }
 
 impl From<&Encoding> for Encoding {
@@ -110,5 +129,32 @@ impl From<Encoding> for LspPositionEncoding {
 impl Default for Encoding {
     fn default() -> Self {
         Self::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use async_lsp::lsp_types::PositionEncodingKind;
+
+    use super::{Encoding, LspPositionEncoding};
+
+    #[test]
+    fn try_from_lsp_returns_none_for_unknown_kinds() {
+        assert_eq!(
+            Encoding::try_from_lsp(&PositionEncodingKind::new("utf-7")),
+            None
+        );
+        assert_eq!(
+            Encoding::try_from_lsp(&LspPositionEncoding::UTF8),
+            Some(Encoding::UTF8)
+        );
+        assert_eq!(
+            Encoding::try_from_lsp(&LspPositionEncoding::UTF16),
+            Some(Encoding::UTF16)
+        );
+        assert_eq!(
+            Encoding::try_from_lsp(&LspPositionEncoding::UTF32),
+            Some(Encoding::UTF32)
+        );
     }
 }

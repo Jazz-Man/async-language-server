@@ -19,7 +19,7 @@ use tree_sitter::{InputEdit, Parser, Point};
 use crate::{
     document::Document,
     document_matcher::DocumentMatchers,
-    result::ServerResult,
+    error::ServerResult,
     server::Server,
     server_options::ServerOptions,
     text_utils::{Encoding, position_to_encoding},
@@ -492,7 +492,7 @@ impl ServerState {
         }
 
         // If the incremental update failed, we will re-insert the entire file instead
-        // Note that we must first drop the document reference to prevent a deadlock
+        // Note: we must first drop the document reference to prevent a deadlock
         if incremental_update_failed {
             let uri = doc.uri.clone();
             let version = doc.version();
@@ -502,11 +502,35 @@ impl ServerState {
 
             // NOTE: We must read the contents of the file synchronously
             // as the fallback here, since notification handlers are actually
-            // synchronous both according to LSP spec and the async-lsp crate
+            // synchronous both according to LSP spec and the async-lsp crate.
+            // The re-read intentionally replaces the in-memory text, whose
+            // edits were only partially applied; this discards unsaved
+            // editor changes, which is the accepted trade-off of the
+            // synchronous-handler constraint.
             if let Ok(text) = std::fs::read_to_string(uri.path()) {
                 self.insert_document::<T>(uri, text, version, language, DocumentOrigin::Open);
             } else {
-                self.documents.remove(&uri);
+                // Keeping the last-known (possibly partially edited) text is
+                // better than dropping the document: the editor still
+                // considers it open, and handlers keep resolving it.
+                #[cfg(feature = "tracing")]
+                tracing::warn!(
+                    "did_change: incremental update failed and '{}' could not be re-read; keeping last-known text",
+                    uri
+                );
+
+                // The kept tree may already carry `tree.edit()` calls for
+                // changes whose rope edits never applied, and the finalize
+                // re-parse above never ran; re-parse the kept text from
+                // scratch so the tree cannot diverge from the text.
+                #[cfg(feature = "tree-sitter")]
+                if let Some(mut entry) = self.documents.get_mut(&uri) {
+                    let doc = &mut entry.document;
+                    let mut parser = doc_parser(doc);
+                    doc.tree_sitter_tree = parser
+                        .as_mut()
+                        .and_then(|parser| parser.parse(doc.text_contents(), None));
+                }
             }
         }
 
@@ -602,8 +626,8 @@ mod tests {
         ClientSocket,
         lsp_types::{
             DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-            TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Url,
-            VersionedTextDocumentIdentifier, WorkspaceFolder,
+            Position, Range, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+            TextDocumentItem, Url, VersionedTextDocumentIdentifier, WorkspaceFolder,
         },
     };
 
@@ -775,6 +799,100 @@ mod tests {
         });
 
         assert!(state.document(&uri).is_none());
+
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
+
+    #[test]
+    fn failed_incremental_change_keeps_document_when_reread_fails() {
+        let root = temp_workspace("keep-last-known");
+        let uri = {
+            let path = root.join("missing.test");
+            Url::from_file_path(path).expect("path can be converted to a URL")
+        };
+        let mut state = ServerState::new::<TestServer>(ClientSocket::new_closed());
+        open_document(&mut state, uri.clone(), "original");
+
+        let _ = state.handle_document_change::<TestServer>(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 2,
+            },
+            content_changes: vec![TextDocumentContentChangeEvent {
+                // Out-of-bounds line makes the incremental application fail
+                // (columns are clamped); no file on disk means re-read fails.
+                range: Some(Range::new(Position::new(50, 0), Position::new(50, 1))),
+                range_length: None,
+                text: "x".into(),
+            }],
+        });
+
+        let document = state.document(&uri).expect("document stays tracked");
+        assert_eq!(document.text_contents(), "original");
+
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
+
+    #[cfg(feature = "tree-sitter")]
+    #[test]
+    fn failed_incremental_change_reparses_kept_text_tree() {
+        struct JsonServer;
+
+        impl Server for JsonServer {
+            fn server_document_matchers() -> Vec<DocumentMatcher> {
+                vec![
+                    DocumentMatcher::new("json")
+                        .with_url_globs(["**/*.json"])
+                        .with_lang_grammar(tree_sitter_json::LANGUAGE.into()),
+                ]
+            }
+        }
+
+        let root = temp_workspace("keep-last-known-tree");
+        let uri = {
+            let path = root.join("missing.json");
+            Url::from_file_path(path).expect("path can be converted to a URL")
+        };
+        let mut state = ServerState::new::<JsonServer>(ClientSocket::new_closed());
+        let _ = state.handle_document_open::<JsonServer>(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                uri.clone(),
+                "json".into(),
+                1,
+                r#"{"a": 1}"#.into(),
+            ),
+        });
+
+        let _ = state.handle_document_change::<JsonServer>(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 2,
+            },
+            content_changes: vec![
+                TextDocumentContentChangeEvent {
+                    // Applies: replaces the number with a nested object.
+                    range: Some(Range::new(Position::new(0, 6), Position::new(0, 7))),
+                    range_length: None,
+                    text: "{}".into(),
+                },
+                TextDocumentContentChangeEvent {
+                    // Out-of-bounds line fails the batch, and the re-read
+                    // fails too (the file was never written), keeping the text.
+                    range: Some(Range::new(Position::new(50, 0), Position::new(50, 1))),
+                    range_length: None,
+                    text: "x".into(),
+                },
+            ],
+        });
+
+        let document = state.document(&uri).expect("document stays tracked");
+        assert_eq!(document.text_contents(), r#"{"a": {}}"#);
+        // The kept tree must be a fresh parse of the kept text: a stale,
+        // edited-but-never-reparsed tree still holds the old `number` node.
+        let numbers = document
+            .query("(number) @n")
+            .expect("query runs against the kept tree");
+        assert!(numbers.is_empty(), "stale tree captures: {numbers:?}");
 
         fs::remove_dir_all(root).expect("temp workspace can be removed");
     }

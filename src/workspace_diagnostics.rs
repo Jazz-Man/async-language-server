@@ -274,7 +274,7 @@ fn register_configuration(state: ServerState) {
     };
 
     spawn(async move {
-        let _ = state
+        let result = state
             .client()
             .request::<RegisterCapability>(RegistrationParams {
                 registrations: vec![Registration {
@@ -286,6 +286,12 @@ fn register_configuration(state: ServerState) {
                 }],
             })
             .await;
+        #[cfg(feature = "tracing")]
+        if let Err(error) = &result {
+            tracing::warn!("workspace diagnostics capability registration failed: {error}");
+        }
+        #[cfg(not(feature = "tracing"))]
+        drop(result);
     });
 }
 
@@ -336,10 +342,16 @@ fn refresh_diagnostics(state: ServerState) {
     }
 
     spawn(async move {
-        let _ = state
+        let result = state
             .client()
             .request::<WorkspaceDiagnosticRefresh>(())
             .await;
+        #[cfg(feature = "tracing")]
+        if let Err(error) = &result {
+            tracing::warn!("workspace diagnostic refresh request failed: {error}");
+        }
+        #[cfg(not(feature = "tracing"))]
+        drop(result);
     });
 }
 

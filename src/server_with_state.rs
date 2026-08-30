@@ -181,7 +181,7 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         if let Some(client_available_encodings) = client_position_encodings {
             let client_available_encodings: Vec<Encoding> = client_available_encodings
                 .into_iter()
-                .map(Into::into)
+                .filter_map(|kind| Encoding::try_from_lsp(&kind))
                 .collect();
             for server_preferred_encoding in POSITION_ENCODING_PREFERRED_ORDER {
                 if client_available_encodings.contains(&server_preferred_encoding) {
@@ -342,11 +342,11 @@ mod tests {
             DidChangeConfigurationParams, DidChangeWorkspaceFoldersParams,
             DidOpenTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
             DocumentDiagnosticReportKind, DocumentDiagnosticReportResult,
-            FullDocumentDiagnosticReport, InitializeParams, OneOf, PartialResultParams, Position,
-            PreviousResultId, Range, RelatedFullDocumentDiagnosticReport, ServerCapabilities,
-            TextDocumentItem, Url, WorkDoneProgressParams, WorkspaceDiagnosticParams,
-            WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport, WorkspaceFolder,
-            WorkspaceFoldersChangeEvent,
+            FullDocumentDiagnosticReport, GeneralClientCapabilities, InitializeParams, OneOf,
+            PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
+            RelatedFullDocumentDiagnosticReport, ServerCapabilities, TextDocumentItem, Url,
+            WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
+            WorkspaceDocumentDiagnosticReport, WorkspaceFolder, WorkspaceFoldersChangeEvent,
         },
     };
 
@@ -368,12 +368,13 @@ mod tests {
             test_document_matchers()
         }
 
-        async fn document_diagnostics(
+        fn document_diagnostics(
             &self,
             state: ServerState,
             params: DocumentDiagnosticParams,
-        ) -> ServerResult<DocumentDiagnosticReportResult> {
-            test_document_diagnostics(state, params).await
+        ) -> impl std::future::Future<Output = ServerResult<DocumentDiagnosticReportResult>> + Send
+        {
+            std::future::ready(test_document_diagnostics(&state, params))
         }
     }
 
@@ -392,12 +393,13 @@ mod tests {
             ServerOptions::default().with_workspace_diagnostics(WorkspaceDiagnostics::disabled())
         }
 
-        async fn document_diagnostics(
+        fn document_diagnostics(
             &self,
             state: ServerState,
             params: DocumentDiagnosticParams,
-        ) -> ServerResult<DocumentDiagnosticReportResult> {
-            test_document_diagnostics(state, params).await
+        ) -> impl std::future::Future<Output = ServerResult<DocumentDiagnosticReportResult>> + Send
+        {
+            std::future::ready(test_document_diagnostics(&state, params))
         }
     }
 
@@ -419,12 +421,13 @@ mod tests {
             )
         }
 
-        async fn document_diagnostics(
+        fn document_diagnostics(
             &self,
             state: ServerState,
             params: DocumentDiagnosticParams,
-        ) -> ServerResult<DocumentDiagnosticReportResult> {
-            test_document_diagnostics(state, params).await
+        ) -> impl std::future::Future<Output = ServerResult<DocumentDiagnosticReportResult>> + Send
+        {
+            std::future::ready(test_document_diagnostics(&state, params))
         }
     }
 
@@ -447,9 +450,8 @@ mod tests {
         ]
     }
 
-    #[allow(clippy::unused_async)]
-    async fn test_document_diagnostics(
-        state: ServerState,
+    fn test_document_diagnostics(
+        state: &ServerState,
         params: DocumentDiagnosticParams,
     ) -> ServerResult<DocumentDiagnosticReportResult> {
         let message = if let Some(previous) = params.previous_result_id {
@@ -531,6 +533,31 @@ mod tests {
             futures::executor::block_on(server.workspace_diagnostic(workspace_diagnostic_params()))
                 .expect_err("workspace diagnostics should be disabled");
         assert_eq!(error.code, ErrorCode::METHOD_NOT_FOUND);
+
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
+
+    #[test]
+    fn initialize_ignores_unknown_client_encodings() {
+        let root = temp_workspace("unknown-encoding");
+        let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
+
+        let mut params = initialize_params(&root);
+        params.capabilities.general = Some(GeneralClientCapabilities {
+            position_encodings: Some(vec![
+                PositionEncodingKind::new("utf-7"),
+                PositionEncodingKind::UTF16,
+            ]),
+            ..Default::default()
+        });
+
+        let result =
+            futures::executor::block_on(server.initialize(params)).expect("server can initialize");
+
+        assert_eq!(
+            result.capabilities.position_encoding,
+            Some(PositionEncodingKind::UTF16)
+        );
 
         fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
