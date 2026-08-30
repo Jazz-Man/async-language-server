@@ -40,7 +40,7 @@ encoding conversion, matcher configuration, workspace scanning, and
 tree-sitter bookkeeping belong here. Language-specific behavior — Markdown
 link checking, JSON validation rules, per-language formatting rules — does
 not; it belongs in downstream servers implementing the `Server` trait
-(`src/server_trait.rs`). When a request only makes sense for one language,
+(`src/server/server_trait.rs`). When a request only makes sense for one language,
 raise that once, then build what was asked.
 
 Add generality only when a downstream server needs it now, not in
