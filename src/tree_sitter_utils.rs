@@ -17,11 +17,10 @@ use crate::text_utils::Position;
 /// This function assumes that the returned LSP `Position` is one that will
 /// be used with this language server, using UTF-8 encoding specifically.
 #[must_use]
-pub const fn ts_point_to_lsp_position(pos: TsPoint) -> LspPosition {
-    #[allow(clippy::cast_possible_truncation)]
+pub fn ts_point_to_lsp_position(pos: TsPoint) -> LspPosition {
     LspPosition {
-        line: pos.row as u32,
-        character: pos.column as u32,
+        line: u32::try_from(pos.row).unwrap_or(u32::MAX),
+        character: u32::try_from(pos.column).unwrap_or(u32::MAX),
     }
 }
 
@@ -32,7 +31,7 @@ pub const fn ts_point_to_lsp_position(pos: TsPoint) -> LspPosition {
 /// This function assumes that the returned LSP `Range` is one that will
 /// be used with this language server, using UTF-8 encoding specifically.
 #[must_use]
-pub const fn ts_range_to_lsp_range(range: TsRange) -> LspRange {
+pub fn ts_range_to_lsp_range(range: TsRange) -> LspRange {
     LspRange {
         start: ts_point_to_lsp_position(range.start_point),
         end: ts_point_to_lsp_position(range.end_point),
