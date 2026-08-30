@@ -1,38 +1,87 @@
 # arch-lint configuration
-# See https://github.com/example/arch-lint for documentation
+# Real documentation: https://github.com/ynishi/arch-lint
+#
+# Verified against the published 0.5.0 source; do not configure by README:
+#   - "strict = All rules" is false: 8 rules, and it sets allow_in_tests(false),
+#     flagging every ordinary test .expect().
+#   - [rules.*] honors only `enabled` and `severity`; behavior options such as
+#     allow_in_tests are inert through check!().
+#   - [analyzer] root is ignored through check!() (the runner passes the
+#     project root), and `exclude_files` / `respect_gitignore` are never read.
+#
+# Per-item suppressions in src/ use the comment form (arch-lint is a
+# dev-dependency, so its attribute form cannot compile inside the lib):
+#   // arch-lint: allow(rule-name) reason="why this is deliberate"
 
-# Preset: "recommended" (default), "strict", or "minimal"
-preset = "strict"
-
-# Fail threshold: "error" (default), "warning", or "info"
+preset = "recommended"
 fail_on = "error"
 
 [analyzer]
-# Root directory to analyze (default: current directory)
-root = "./src"
+exclude = ["**/target/**"]
 
-# Glob patterns to exclude from analysis
-exclude = [
-    "**/target/**",
-    # "**/vendor/**",
-    # "**/generated/**",
-]
+# Clippy owns unwrap/expect discipline (expect_used/unwrap_used = deny with
+# allow-*-in-tests and #[expect(..., reason)]); this rule is not test-aware.
+[rules.no-unwrap-expect]
+enabled = false
 
-# Respect .gitignore files
-respect_gitignore = true
+# --- Layer rules mirroring .claude/rules/structure.md -------------------------
+# The dependency direction: text_utils is the bottom leaf; documents,
+# requests, and workspace are siblings below the server wiring; oneshot is
+# the top-level clientless consumer. Siblings never import each other, with
+# one blessed reuse edge: workspace -> requests (encoding conversion for
+# workspace reports). The domains' imports of crate::server facade types are
+# the designed route to shared types and stay allowed.
 
-# Rule configurations
-# Each rule can be enabled/disabled and have its severity overridden
+[[scopes]]
+name = "text-utils"
+paths = ["src/text_utils/**"]
 
-# [rules.no-unwrap-expect]
-# enabled = true
-# # severity = "warning"  # Override default severity
-# allow_in_tests = true
+[[scopes]]
+name = "documents"
+paths = ["src/documents/**"]
 
-# [rules.no-sync-io]
-# enabled = true
+[[scopes]]
+name = "workspace"
+paths = ["src/workspace/**"]
 
-# [rules.handler-complexity]
-# enabled = true
-# max_lines = 150
-# max_match_arms = 20
+[[scopes]]
+name = "requests"
+paths = ["src/requests/**"]
+
+[[scopes]]
+name = "server"
+paths = ["src/server/**"]
+
+[[scopes]]
+name = "oneshot"
+paths = ["src/oneshot/**"]
+
+[[deny-scope-dep]]
+name = "text-utils-is-leaf"
+from = "text-utils"
+to = ["documents", "requests", "workspace", "server", "oneshot"]
+message = "text_utils is a leaf; conversion machinery must not leak into it."
+
+[[deny-scope-dep]]
+name = "documents-stays-below-wiring"
+from = "documents"
+to = ["requests", "workspace", "oneshot"]
+message = "documents must not depend on request handling, workspace scanning, or the clientless entry point."
+
+[[deny-scope-dep]]
+name = "requests-stays-below-wiring"
+from = "requests"
+to = ["documents", "workspace", "oneshot"]
+message = "encoding conversion must not reach into sibling domains or the clientless entry point."
+
+[[deny-scope-dep]]
+name = "workspace-stays-below-wiring"
+from = "workspace"
+to = ["documents", "oneshot"]
+message = "workspace scanning stays below the document store and the clientless entry point."
+
+[[deny-scope-dep]]
+name = "server-above-domains"
+from = "server"
+to = ["oneshot"]
+message = "server plumbing must not depend on the clientless oneshot entry point."

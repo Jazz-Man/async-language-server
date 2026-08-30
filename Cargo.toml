@@ -35,7 +35,9 @@ tracing = { version = "0.1.44", optional = true }
 tree-sitter = { version = "0.26.12", optional = true }
 
 [dev-dependencies]
-arch-lint = "0.5.0"
+# Pinned exactly: 0.4 -> 0.5 silently changed what the "strict" preset means,
+# and a `cargo update` must not shift preset semantics.
+arch-lint = "=0.5.0"
 tokio = { version = "1.53.1", features = ["rt", "rt-multi-thread", "macros"] }
 tree-sitter-json = "0.24.8"
 
@@ -45,8 +47,10 @@ required-features = ["tree-sitter"]
 
 [lints.clippy]
 all = { level = "deny", priority = -3 }
-cargo = { level = "warn", priority = -2 }
-pedantic = { level = "warn", priority = -1 }
+# warn -> deny: CI already promotes warnings to errors via `-D warnings`;
+# these levels make local runs and the manifest explicit.
+cargo = { level = "deny", priority = -2 }
+pedantic = { level = "deny", priority = -1 }
 
 module_inception = { level = "allow", priority = 1 }
 module_name_repetitions = { level = "allow", priority = 1 }
@@ -54,5 +58,33 @@ multiple_crate_versions = { level = "allow", priority = 1 }
 similar_names = { level = "allow", priority = 1 }
 unnecessary_wraps = { level = "allow", priority = 1 }
 
+# Restriction lints, measured at zero fires on this codebase.
+print_stdout = "warn"                # stdout is the protocol channel over stdio
+print_stderr = "warn"
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+mem_forget = "warn"
+exit = "warn"                        # a library must not kill the process
+undocumented_unsafe_blocks = "warn"  # crate is 100% safe code today
+multiple_unsafe_ops_per_block = "warn"
+allow_attributes_without_reason = "warn"  # encodes the suppression policy
+unwrap_in_result = "warn"
+panic_in_result_fn = "warn"
+verbose_file_reads = "warn"
+clone_on_ref_ptr = "warn"
+integer_division = "warn"
+error_impl_error = "warn"
+self_named_module_files = "warn"     # locks in the mod.rs layout
+
+# Fires today, adopted as explicit work items (see clippy.toml thresholds).
+str_to_string = "warn"
+cognitive_complexity = "warn"
+
+# Takes over arch-lint's no-unwrap-expect rule, test-aware via clippy.toml.
+expect_used = "deny"
+unwrap_used = "deny"
+
 [lints.rust]
-missing_docs = "warn"
+missing_docs = "deny"
+unsafe_code = "deny"

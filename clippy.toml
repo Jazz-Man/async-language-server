@@ -1,0 +1,13 @@
+# Clippy configuration (keys verified against clippy_config @ rust-1.98.0).
+# Note: cargo does not fingerprint this file — touch sources after editing it.
+
+# Production code is unwrap/expect-clean; tests may use both freely.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+
+# Complexity thresholds for a plumbing library. Current maxima: exactly two
+# functions score 13 (both workspace-edit converters in requests/conversion.rs);
+# the longest function is a 75-line test; one 6-argument function exists.
+cognitive-complexity-threshold = 15
+too-many-lines-threshold = 75
+too-many-arguments-threshold = 6

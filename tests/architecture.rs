@@ -1,6 +1,8 @@
 //! Architecture checks via `arch-lint`.
 //!
-//! Temporarily disabled during the structure cycle; the owner re-enables the
-//! check and refines its configuration once that cycle completes.
+//! The macro expands to a `#[test]` function, so the checks ride every
+//! `cargo test` run. Built-in rules come from the `recommended` preset;
+//! layer rules and per-item suppressions (comment form, mandatory reason)
+//! live in `arch-lint.toml` at the crate root.
 
-// arch_lint::check!(preset = "strict"); // expands to a #[test] function
+arch_lint::check!(preset = "recommended"); // expands to a #[test] function
