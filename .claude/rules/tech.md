@@ -12,7 +12,7 @@ them over nested matches.
 
 Two features, both on by default (`[features]` in `Cargo.toml`):
 
-- `tracing` — adds `TracingLayer` to the middleware stack in `src/serve.rs`
+- `tracing` — adds `TracingLayer` to the middleware stack in `src/server/serve.rs`
   and `debug!`/`info!` calls in handlers.
 - `tree-sitter` — adds `tree_sitter_utils`, the grammar field on
   `DocumentMatcher`, and syntax-tree access on `Document`.
@@ -71,14 +71,16 @@ Error-documentation duties (`# Errors`, `# Panics` sections) are governed by
 Doctests run in all three feature configurations. Keep them free of
 tree-sitter-gated API so they compile under `--no-default-features`, and use
 `no_run` fences for anything that opens a transport (see `serve` in
-`src/serve.rs`).
+`src/server/serve.rs`).
 
 ## Tests
 
 Tests live inline as `#[cfg(test)] mod tests` at the bottom of each `src/`
-module — not in a separate tests directory. They create real temporary
-workspaces on disk with millisecond-unique names under `std::env::temp_dir()`;
-follow the pattern in the `server_with_state.rs` tests.
+module, or in a sibling `tests.rs` file for the larger modules
+(`#[cfg(test)] mod tests;`) — not in a separate tests directory. They create
+real temporary workspaces on disk with millisecond-unique names under
+`std::env::temp_dir()`; follow the pattern in the
+`src/server/with_state/tests.rs` tests.
 
 ## Dependencies
 
