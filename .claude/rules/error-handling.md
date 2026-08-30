@@ -48,9 +48,14 @@ TcpConnect {
 ## One boundary, both directions
 
 - Exactly one `From<ServerError>` conversion turns a domain error into a wire
-  error (`ResponseError`); construct no `ResponseError` anywhere else. All
-  upstream code — trait impls, state, walkers — returns `Err(ServerError)`
+  error (`ResponseError`); domain code constructs no `ResponseError` at all.
+  All upstream code — trait impls, state, walkers — returns `Err(ServerError)`
   and stays protocol-neutral (`err-edge-mapping`).
+- The wire adapter — `LanguageServerWithState` and the workspace-diagnostics
+  request layer — is itself the boundary and constructs protocol-native
+  `ResponseError` values directly (the staleness `CONTENT_MODIFIED` reply,
+  the workspace-diagnostics-disabled `METHOD_NOT_FOUND` reply). Domain code
+  below it stays `ServerError`-only.
 - Clientless entry points (oneshot-style batch runs) convert the other way —
   wire error into `ServerError::rpc(code, message)`, preserving code and
   message. Every new entry point follows the same discipline: convert at the
