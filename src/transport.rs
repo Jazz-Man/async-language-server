@@ -42,8 +42,8 @@ impl Transport {
     ///
     /// # Errors
     ///
-    /// - If the `Socket` transport is used, and the port is not valid.
-    /// - If the `Socket` transport is used, and an I/O error occurs.
+    /// - If the `Socket` transport is used and connecting to
+    ///   `127.0.0.1:{port}` fails.
     ///
     /// # Panics
     ///
