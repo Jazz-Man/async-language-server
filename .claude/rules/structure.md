@@ -97,7 +97,7 @@ crate: `.gitignore` respected by default, hidden files skipped.
   no LSP client or transport — it drives `LanguageServerWithState` directly
   with a closed `ClientSocket`. CLI-style batch diagnostics.
 
-Handlers report failures by returning `Err(ServerError)` (`src/result.rs`);
+Handlers report failures by returning `Err(ServerError)` (`src/error.rs`);
 the wrapper converts them to LSP error responses.
 
 ## Support modules
