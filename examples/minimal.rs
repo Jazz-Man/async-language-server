@@ -36,7 +36,6 @@ impl Server for LongLineServer {
         })
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     fn document_diagnostics(
         &self,
         state: ServerState,
@@ -53,8 +52,11 @@ impl Server for LongLineServer {
             if length > MAX_LINE_BYTES {
                 items.push(Diagnostic {
                     range: Range::new(
-                        Position::new(line as u32, 0),
-                        Position::new(line as u32, length as u32),
+                        Position::new(u32::try_from(line).unwrap_or(u32::MAX), 0),
+                        Position::new(
+                            u32::try_from(line).unwrap_or(u32::MAX),
+                            u32::try_from(length).unwrap_or(u32::MAX),
+                        ),
                     ),
                     message: format!(
                         "line is {length} bytes long, over the {MAX_LINE_BYTES}-byte limit"

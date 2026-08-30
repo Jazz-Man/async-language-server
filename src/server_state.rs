@@ -1,13 +1,10 @@
-#![allow(clippy::needless_pass_by_value)]
-#![allow(clippy::too_many_lines)]
-
 use std::{collections::HashSet, ops::ControlFlow, path::PathBuf, sync::Arc};
 
 use async_lsp::{
     ClientSocket, Result,
     lsp_types::{
         DidChangeTextDocumentParams, DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams,
-        DidOpenTextDocumentParams, DidSaveTextDocumentParams, Url, WorkspaceFolder,
+        DidOpenTextDocumentParams, DidSaveTextDocumentParams, Range, Url, WorkspaceFolder,
     },
 };
 use dashmap::DashMap;
@@ -37,7 +34,6 @@ pub struct ServerState {
     documents: Arc<DashMap<Url, DocumentEntry>>,
     workspace_roots: Arc<DashMap<Url, PathBuf>>,
     workspace_diagnostics: WorkspaceDiagnosticsState,
-    #[allow(dead_code)]
     matchers: DocumentMatchers,
     encoding: Arc<Encoding>,
 }
@@ -93,15 +89,15 @@ impl ServerState {
 // Private implementation
 
 impl ServerState {
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn new<T: Server>(client: ClientSocket) -> Self {
-        Self::with_options::<T>(client, ServerOptions::default())
+        Self::with_options::<T>(client, &ServerOptions::default())
     }
 
-    pub(crate) fn with_options<T: Server>(client: ClientSocket, options: ServerOptions) -> Self {
+    pub(crate) fn with_options<T: Server>(client: ClientSocket, options: &ServerOptions) -> Self {
         let documents = Arc::new(DashMap::new());
         let workspace_roots = Arc::new(DashMap::new());
-        let workspace_diagnostics = WorkspaceDiagnosticsState::new(&options);
+        let workspace_diagnostics = WorkspaceDiagnosticsState::new(options);
         let matchers = DocumentMatchers::new(T::server_document_matchers());
         let encoding = Arc::new(Encoding::default());
         Self {
@@ -114,8 +110,7 @@ impl ServerState {
         }
     }
 
-    #[allow(clippy::extra_unused_type_parameters)]
-    fn insert_document<T: Server>(
+    fn insert_document(
         &self,
         url: Url,
         text: String,
@@ -127,7 +122,7 @@ impl ServerState {
         let mut tree_sitter_lang = self
             .matchers
             .find(&url, language.as_str())
-            .and_then(|m| m.lang_grammar.clone());
+            .and_then(|m| m.lang_grammar());
 
         #[cfg(feature = "tree-sitter")]
         let tree_sitter_tree = if let Some(lang) = tree_sitter_lang.as_ref() {
@@ -238,7 +233,7 @@ impl ServerState {
         changed
     }
 
-    pub(crate) fn refresh_workspace_documents<T: Server>(&self) -> ServerResult<Vec<Url>> {
+    pub(crate) fn refresh_workspace_documents(&self) -> ServerResult<Vec<Url>> {
         if !self.workspace_diagnostics.enabled() {
             return Ok(self.document_urls());
         }
@@ -267,12 +262,12 @@ impl ServerState {
             }
 
             let language = matcher
-                .lang_strings
+                .lang_strings()
                 .first()
                 .cloned()
-                .unwrap_or_else(|| matcher.name.to_ascii_lowercase());
+                .unwrap_or_else(|| matcher.name().to_ascii_lowercase());
             let text = std::fs::read_to_string(&path)?;
-            self.insert_document::<T>(uri, text, 0, language, DocumentOrigin::Workspace);
+            self.insert_document(uri, text, 0, language, DocumentOrigin::Workspace);
         }
 
         let urls: HashSet<_> = urls.into_iter().collect();
@@ -310,11 +305,11 @@ impl ServerState {
         self.encoding = Arc::new(kind.into());
     }
 
-    pub(crate) fn handle_document_open<T: Server>(
+    pub(crate) fn handle_document_open(
         &mut self,
         params: DidOpenTextDocumentParams,
     ) -> ControlFlow<Result<()>> {
-        self.insert_document::<T>(
+        self.insert_document(
             params.text_document.uri,
             params.text_document.text,
             params.text_document.version,
@@ -325,7 +320,7 @@ impl ServerState {
         ControlFlow::Continue(())
     }
 
-    pub(crate) fn handle_document_close<T: Server>(
+    pub(crate) fn handle_document_close(
         &self,
         params: DidCloseTextDocumentParams,
     ) -> ControlFlow<Result<()>> {
@@ -347,7 +342,7 @@ impl ServerState {
         }
 
         if let Ok(text) = std::fs::read_to_string(url.path()) {
-            self.insert_document::<T>(url, text, 0, language, DocumentOrigin::Workspace);
+            self.insert_document(url, text, 0, language, DocumentOrigin::Workspace);
         } else {
             self.documents.remove(&url);
         }
@@ -355,7 +350,7 @@ impl ServerState {
         ControlFlow::Continue(())
     }
 
-    pub(crate) fn handle_document_change<T: Server>(
+    pub(crate) fn handle_document_change(
         &mut self,
         params: DidChangeTextDocumentParams,
     ) -> ControlFlow<Result<()>> {
@@ -391,24 +386,9 @@ impl ServerState {
 
             // 1. Convert the LSP positions, using their arbitrary encoding,
             //    to what Ropey expects to use for its incremental updates
-            let start_char_absolute = if let Ok(line_start_char_offset) =
-                doc.text.try_line_to_char(range.start.line as usize)
-            {
-                let start =
-                    position_to_encoding(doc.text(), range.start, encoding, Encoding::UTF32);
-                line_start_char_offset + start.character as usize
-            } else {
-                incremental_update_failed = true;
-                break;
-            };
-            let end_char_absolute = if let Ok(line_start_char_offset) =
-                doc.text.try_line_to_char(range.end.line as usize)
-            {
-                let end = position_to_encoding(doc.text(), range.end, encoding, Encoding::UTF32);
-                (line_start_char_offset + end.character as usize)
-                    .max(start_char_absolute)
-                    .min(doc.text.len_chars())
-            } else {
+            let Some((start_char_absolute, end_char_absolute)) =
+                change_char_range(doc, range, *encoding)
+            else {
                 incremental_update_failed = true;
                 break;
             };
@@ -500,45 +480,51 @@ impl ServerState {
 
             drop(entry);
 
-            // NOTE: We must read the contents of the file synchronously
-            // as the fallback here, since notification handlers are actually
-            // synchronous both according to LSP spec and the async-lsp crate.
-            // The re-read intentionally replaces the in-memory text, whose
-            // edits were only partially applied; this discards unsaved
-            // editor changes, which is the accepted trade-off of the
-            // synchronous-handler constraint.
-            if let Ok(text) = std::fs::read_to_string(uri.path()) {
-                self.insert_document::<T>(uri, text, version, language, DocumentOrigin::Open);
-            } else {
-                // Keeping the last-known (possibly partially edited) text is
-                // better than dropping the document: the editor still
-                // considers it open, and handlers keep resolving it.
-                #[cfg(feature = "tracing")]
-                tracing::warn!(
-                    "did_change: incremental update failed and '{}' could not be re-read; keeping last-known text",
-                    uri
-                );
-
-                // The kept tree may already carry `tree.edit()` calls for
-                // changes whose rope edits never applied, and the finalize
-                // re-parse above never ran; re-parse the kept text from
-                // scratch so the tree cannot diverge from the text.
-                #[cfg(feature = "tree-sitter")]
-                if let Some(mut entry) = self.documents.get_mut(&uri) {
-                    let doc = &mut entry.document;
-                    let mut parser = doc_parser(doc);
-                    doc.tree_sitter_tree = parser
-                        .as_mut()
-                        .and_then(|parser| parser.parse(doc.text_contents(), None));
-                }
-            }
+            self.recover_failed_incremental_update(uri, version, language);
         }
 
         ControlFlow::Continue(())
     }
 
-    #[allow(clippy::extra_unused_type_parameters)]
-    pub(crate) fn handle_document_save<T: Server>(
+    /// Recovers a document whose incremental update failed: reload from
+    /// disk when possible, otherwise keep the last-known text (and re-parse
+    /// its tree under the tree-sitter feature).
+    fn recover_failed_incremental_update(&mut self, uri: Url, version: i32, language: String) {
+        // NOTE: We must read the contents of the file synchronously
+        // as the fallback here, since notification handlers are actually
+        // synchronous both according to LSP spec and the async-lsp crate.
+        // The re-read intentionally replaces the in-memory text, whose
+        // edits were only partially applied; this discards unsaved
+        // editor changes, which is the accepted trade-off of the
+        // synchronous-handler constraint.
+        if let Ok(text) = std::fs::read_to_string(uri.path()) {
+            self.insert_document(uri, text, version, language, DocumentOrigin::Open);
+        } else {
+            // Keeping the last-known (possibly partially edited) text is
+            // better than dropping the document: the editor still
+            // considers it open, and handlers keep resolving it.
+            #[cfg(feature = "tracing")]
+            tracing::warn!(
+                "did_change: incremental update failed and '{}' could not be re-read; keeping last-known text",
+                uri
+            );
+
+            // The kept tree may already carry `tree.edit()` calls for
+            // changes whose rope edits never applied, and the finalize
+            // re-parse above never ran; re-parse the kept text from
+            // scratch so the tree cannot diverge from the text.
+            #[cfg(feature = "tree-sitter")]
+            if let Some(mut entry) = self.documents.get_mut(&uri) {
+                let doc = &mut entry.document;
+                let mut parser = doc_parser(doc);
+                doc.tree_sitter_tree = parser
+                    .as_mut()
+                    .and_then(|parser| parser.parse(doc.text_contents(), None));
+            }
+        }
+    }
+
+    pub(crate) fn handle_document_save(
         &self,
         params: DidSaveTextDocumentParams,
     ) -> ControlFlow<Result<()>> {
@@ -571,7 +557,7 @@ impl ServerState {
         // re-create the entire tree-sitter tree using those new contents
         #[cfg(feature = "tree-sitter")]
         {
-            let mut tree_sitter_lang = matcher.and_then(|m| m.lang_grammar.clone());
+            let mut tree_sitter_lang = matcher.and_then(|m| m.lang_grammar());
 
             let tree_sitter_tree = if let Some(lang) = tree_sitter_lang.as_ref() {
                 let mut parser = Parser::new();
@@ -602,6 +588,24 @@ fn doc_parser(doc: &Document) -> Option<Parser> {
     } else {
         None
     }
+}
+
+/// Converts the range of an incremental change, using its arbitrary encoding,
+/// to the char offsets Ropey expects for its incremental updates.
+///
+/// Returns `None` when either endpoint's line is out of bounds.
+fn change_char_range(doc: &Document, range: Range, encoding: Encoding) -> Option<(usize, usize)> {
+    let start_line_char_offset = doc.text.try_line_to_char(range.start.line as usize).ok()?;
+    let start = position_to_encoding(doc.text(), range.start, encoding, Encoding::UTF32);
+    let start_char_absolute = start_line_char_offset + start.character as usize;
+
+    let end_line_char_offset = doc.text.try_line_to_char(range.end.line as usize).ok()?;
+    let end = position_to_encoding(doc.text(), range.end, encoding, Encoding::UTF32);
+    let end_char_absolute = (end_line_char_offset + end.character as usize)
+        .max(start_char_absolute)
+        .min(doc.text.len_chars());
+
+    Some((start_char_absolute, end_char_absolute))
 }
 
 fn url_is_in_roots(url: &Url, roots: &[PathBuf]) -> bool {
@@ -652,7 +656,7 @@ mod tests {
     }
 
     fn open_document(state: &mut ServerState, uri: Url, text: impl Into<String>) {
-        let _ = state.handle_document_open::<TestServer>(DidOpenTextDocumentParams {
+        let _ = state.handle_document_open(DidOpenTextDocumentParams {
             text_document: TextDocumentItem::new(uri, "test".into(), 1, text.into()),
         });
     }
@@ -682,7 +686,7 @@ mod tests {
         let uri = url("full-change.txt");
         open_document(&mut state, uri.clone(), "old");
 
-        let _ = state.handle_document_change::<TestServer>(DidChangeTextDocumentParams {
+        let _ = state.handle_document_change(DidChangeTextDocumentParams {
             text_document: VersionedTextDocumentIdentifier::new(uri.clone(), 2),
             content_changes: vec![TextDocumentContentChangeEvent {
                 range: None,
@@ -704,7 +708,7 @@ mod tests {
         let state = ServerState::new::<TestServer>(ClientSocket::new_closed());
         state.set_workspace_folders([workspace_folder(&root)]);
         let urls = state
-            .refresh_workspace_documents::<TestServer>()
+            .refresh_workspace_documents()
             .expect("workspace documents can be refreshed");
 
         assert_eq!(urls.len(), 1);
@@ -727,7 +731,7 @@ mod tests {
         open_document(&mut state, uri.clone(), "open");
 
         let urls = state
-            .refresh_workspace_documents::<TestServer>()
+            .refresh_workspace_documents()
             .expect("workspace documents can be refreshed");
 
         assert_eq!(urls, vec![uri.clone()]);
@@ -749,7 +753,7 @@ mod tests {
         state.set_workspace_folders([workspace_folder(&root)]);
         open_document(&mut state, uri.clone(), "open");
 
-        let _ = state.handle_document_close::<TestServer>(DidCloseTextDocumentParams {
+        let _ = state.handle_document_close(DidCloseTextDocumentParams {
             text_document: TextDocumentIdentifier::new(uri.clone()),
         });
 
@@ -769,12 +773,12 @@ mod tests {
 
         let mut state = ServerState::with_options::<TestServer>(
             ClientSocket::new_closed(),
-            ServerOptions::default().with_workspace_diagnostics(WorkspaceDiagnostics::disabled()),
+            &ServerOptions::default().with_workspace_diagnostics(WorkspaceDiagnostics::disabled()),
         );
         state.set_workspace_folders([workspace_folder(&root)]);
         open_document(&mut state, uri.clone(), "open");
 
-        let _ = state.handle_document_close::<TestServer>(DidCloseTextDocumentParams {
+        let _ = state.handle_document_close(DidCloseTextDocumentParams {
             text_document: TextDocumentIdentifier::new(uri.clone()),
         });
 
@@ -794,7 +798,7 @@ mod tests {
         let mut state = ServerState::new::<TestServer>(ClientSocket::new_closed());
         open_document(&mut state, uri.clone(), "open");
 
-        let _ = state.handle_document_close::<TestServer>(DidCloseTextDocumentParams {
+        let _ = state.handle_document_close(DidCloseTextDocumentParams {
             text_document: TextDocumentIdentifier::new(uri.clone()),
         });
 
@@ -813,7 +817,7 @@ mod tests {
         let mut state = ServerState::new::<TestServer>(ClientSocket::new_closed());
         open_document(&mut state, uri.clone(), "original");
 
-        let _ = state.handle_document_change::<TestServer>(DidChangeTextDocumentParams {
+        let _ = state.handle_document_change(DidChangeTextDocumentParams {
             text_document: VersionedTextDocumentIdentifier {
                 uri: uri.clone(),
                 version: 2,
@@ -854,7 +858,7 @@ mod tests {
             Url::from_file_path(path).expect("path can be converted to a URL")
         };
         let mut state = ServerState::new::<JsonServer>(ClientSocket::new_closed());
-        let _ = state.handle_document_open::<JsonServer>(DidOpenTextDocumentParams {
+        let _ = state.handle_document_open(DidOpenTextDocumentParams {
             text_document: TextDocumentItem::new(
                 uri.clone(),
                 "json".into(),
@@ -863,7 +867,7 @@ mod tests {
             ),
         });
 
-        let _ = state.handle_document_change::<JsonServer>(DidChangeTextDocumentParams {
+        let _ = state.handle_document_change(DidChangeTextDocumentParams {
             text_document: VersionedTextDocumentIdentifier {
                 uri: uri.clone(),
                 version: 2,

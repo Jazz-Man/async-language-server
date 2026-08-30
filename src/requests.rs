@@ -29,18 +29,17 @@ use crate::{
 // Request Trait & Helper Functions
 // ════════════════════════════════
 
-#[allow(dead_code)]
-#[allow(unused_variables)]
 pub trait Request {
     type Params;
     type Response;
 
-    fn extract_url(params: &Self::Params) -> Option<Url> {
+    fn extract_url(_params: &Self::Params) -> Option<Url> {
         None
     }
 
-    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {}
-    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {}
+    fn modify_params(_state: &ServerState, _document: &Document, _params: &mut Self::Params) {}
+    fn modify_response(_state: &ServerState, _document: &Document, _response: &mut Self::Response) {
+    }
 }
 
 fn modify_incoming_position(state: &ServerState, document: &Document, position: &mut LspPosition) {
@@ -135,6 +134,10 @@ fn modify_outgoing_text_edit(state: &ServerState, document: &Document, edit: &mu
     modify_outgoing_range(state, document, &mut edit.range);
 }
 
+fn modify_incoming_text_edit(state: &ServerState, document: &Document, edit: &mut LspTextEdit) {
+    modify_incoming_range(state, document, &mut edit.range);
+}
+
 fn modify_incoming_diagnostic(state: &ServerState, document: &Document, diag: &mut LspDiagnostic) {
     modify_incoming_range(state, document, &mut diag.range);
     if let Some(related) = diag.related_information.as_mut() {
@@ -186,6 +189,20 @@ fn modify_outgoing_completion_text_edit(
         LspCompletionTextEdit::InsertAndReplace(edit) => {
             modify_outgoing_range(state, document, &mut edit.insert);
             modify_outgoing_range(state, document, &mut edit.replace);
+        }
+    }
+}
+
+fn modify_incoming_completion_text_edit(
+    state: &ServerState,
+    document: &Document,
+    edit: &mut LspCompletionTextEdit,
+) {
+    match edit {
+        LspCompletionTextEdit::Edit(edit) => modify_incoming_text_edit(state, document, edit),
+        LspCompletionTextEdit::InsertAndReplace(edit) => {
+            modify_incoming_range(state, document, &mut edit.insert);
+            modify_incoming_range(state, document, &mut edit.replace);
         }
     }
 }
@@ -262,6 +279,79 @@ fn modify_outgoing_workspace_edit(
                                     }
                                     OneOf::Right(r) => {
                                         modify_outgoing_range_at_url(
+                                            state,
+                                            document,
+                                            uri,
+                                            &mut r.text_edit.range,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        DocumentChangeOperation::Op(_) => {
+                            // File operations don't have positions to modify
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn modify_incoming_workspace_edit(
+    state: &ServerState,
+    document: &Document,
+    edit: &mut LspWorkspaceEdit,
+) {
+    use async_lsp::lsp_types::{DocumentChangeOperation, DocumentChanges};
+
+    if let Some(changes) = edit.changes.as_mut() {
+        for (uri, edits) in changes {
+            for text_edit in edits.iter_mut() {
+                modify_incoming_range_at_url(state, document, uri, &mut text_edit.range);
+            }
+        }
+    }
+
+    if let Some(document_changes) = edit.document_changes.as_mut() {
+        match document_changes {
+            DocumentChanges::Edits(edits) => {
+                for versioned_edit in edits.iter_mut() {
+                    let uri = &versioned_edit.text_document.uri;
+                    for text_edit in &mut versioned_edit.edits {
+                        match text_edit {
+                            OneOf::Left(l) => {
+                                modify_incoming_range_at_url(state, document, uri, &mut l.range);
+                            }
+                            OneOf::Right(r) => {
+                                modify_incoming_range_at_url(
+                                    state,
+                                    document,
+                                    uri,
+                                    &mut r.text_edit.range,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            DocumentChanges::Operations(ops) => {
+                for op in ops.iter_mut() {
+                    match op {
+                        DocumentChangeOperation::Edit(edit) => {
+                            let uri = &edit.text_document.uri;
+                            for text_edit in &mut edit.edits {
+                                match text_edit {
+                                    OneOf::Left(l) => {
+                                        modify_incoming_range_at_url(
+                                            state,
+                                            document,
+                                            uri,
+                                            &mut l.range,
+                                        );
+                                    }
+                                    OneOf::Right(r) => {
+                                        modify_incoming_range_at_url(
                                             state,
                                             document,
                                             uri,
@@ -360,6 +450,18 @@ impl Request for CompletionResolve {
 
     // CompletionItem doesn't contain a document URI
 
+    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
+        if let Some(edit) = params.text_edit.as_mut() {
+            modify_incoming_completion_text_edit(state, document, edit);
+        }
+
+        if let Some(additional_edits) = params.additional_text_edits.as_mut() {
+            for edit in additional_edits.iter_mut() {
+                modify_incoming_text_edit(state, document, edit);
+            }
+        }
+    }
+
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
         if let Some(edit) = response.text_edit.as_mut() {
             modify_outgoing_completion_text_edit(state, document, edit);
@@ -420,6 +522,17 @@ impl Request for CodeActionResolve {
 
     // CodeAction doesn't contain a document URI
 
+    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
+        if let Some(diagnostics) = params.diagnostics.as_mut() {
+            for diag in diagnostics {
+                modify_incoming_diagnostic(state, document, diag);
+            }
+        }
+        if let Some(edit) = params.edit.as_mut() {
+            modify_incoming_workspace_edit(state, document, edit);
+        }
+    }
+
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
         if let Some(diagnostics) = response.diagnostics.as_mut() {
             for diag in diagnostics {
@@ -430,6 +543,85 @@ impl Request for CodeActionResolve {
             modify_outgoing_workspace_edit(state, document, edit);
         }
     }
+}
+
+/// Converts a resolve request's item to UTF-8 against the sole tracked
+/// document.
+///
+/// Resolve requests carry no document URL, so there is no request document:
+/// when exactly one document is tracked (the normal completion-then-resolve
+/// flow, where the client echoes the item it was delivered), its snapshot
+/// converts the incoming positions; otherwise the item passes through
+/// unchanged.
+pub(crate) fn convert_incoming_completion_resolve(
+    state: &ServerState,
+    item: &mut LspCompletionItem,
+) {
+    if state.get_position_encoding() == Encoding::UTF8 {
+        return;
+    }
+    let documents = state.documents();
+    let [document] = documents.as_slice() else {
+        return;
+    };
+    <CompletionResolve as Request>::modify_params(state, document, item);
+}
+
+/// Converts a resolve response's edits against the sole tracked document.
+///
+/// Resolve requests carry no document URL, so there is no request document:
+/// when exactly one document is tracked (the normal completion-then-resolve
+/// flow), its snapshot converts the edits; otherwise the response passes
+/// through unchanged.
+pub(crate) fn convert_completion_resolve(state: &ServerState, response: &mut LspCompletionItem) {
+    if state.get_position_encoding() == Encoding::UTF8 {
+        return;
+    }
+    let documents = state.documents();
+    let [document] = documents.as_slice() else {
+        return;
+    };
+    <CompletionResolve as Request>::modify_response(state, document, response);
+}
+
+/// Converts a resolve request's action to UTF-8 against the sole tracked
+/// document.
+///
+/// Resolve requests carry no document URL, so there is no request document:
+/// when exactly one document is tracked (the normal code-action-then-resolve
+/// flow, where the client echoes the action it was delivered), its snapshot
+/// converts the incoming positions; otherwise the action passes through
+/// unchanged.
+pub(crate) fn convert_incoming_code_action_resolve(
+    state: &ServerState,
+    action: &mut LspCodeAction,
+) {
+    if state.get_position_encoding() == Encoding::UTF8 {
+        return;
+    }
+    let documents = state.documents();
+    let [document] = documents.as_slice() else {
+        return;
+    };
+    <CodeActionResolve as Request>::modify_params(state, document, action);
+}
+
+/// Converts a resolve response's diagnostics and edits against the sole
+/// tracked document.
+///
+/// Resolve requests carry no document URL, so there is no request document:
+/// when exactly one document is tracked (the normal code-action-then-resolve
+/// flow), its snapshot converts them; otherwise the response passes through
+/// unchanged.
+pub(crate) fn convert_code_action_resolve(state: &ServerState, response: &mut LspCodeAction) {
+    if state.get_position_encoding() == Encoding::UTF8 {
+        return;
+    }
+    let documents = state.documents();
+    let [document] = documents.as_slice() else {
+        return;
+    };
+    <CodeActionResolve as Request>::modify_response(state, document, response);
 }
 
 // ═══════════════════════════
@@ -740,12 +932,12 @@ mod tests {
     use async_lsp::{
         ClientSocket,
         lsp_types::{
-            CodeActionContext, CodeActionParams, CompletionItem, CompletionResponse, Diagnostic,
-            DidOpenTextDocumentParams, DocumentDiagnosticReport, DocumentDiagnosticReportKind,
-            DocumentDiagnosticReportResult, FullDocumentDiagnosticReport, GotoDefinitionResponse,
-            Location, PartialResultParams, Position, Range, RelatedFullDocumentDiagnosticReport,
-            TextDocumentIdentifier, TextDocumentItem, TextEdit, Url, WorkDoneProgressParams,
-            WorkspaceEdit,
+            CodeActionContext, CodeActionParams, CompletionItem, CompletionResponse,
+            CompletionTextEdit as LspCompletionTextEdit, Diagnostic, DidOpenTextDocumentParams,
+            DocumentDiagnosticReport, DocumentDiagnosticReportKind, DocumentDiagnosticReportResult,
+            FullDocumentDiagnosticReport, GotoDefinitionResponse, Location, PartialResultParams,
+            Position, Range, RelatedFullDocumentDiagnosticReport, TextDocumentIdentifier,
+            TextDocumentItem, TextEdit, Url, WorkDoneProgressParams, WorkspaceEdit,
         },
     };
 
@@ -773,7 +965,7 @@ mod tests {
     }
 
     fn open_document(state: &mut ServerState, uri: Url, text: impl Into<String>) {
-        let _ = state.handle_document_open::<TestServer>(DidOpenTextDocumentParams {
+        let _ = state.handle_document_open(DidOpenTextDocumentParams {
             text_document: TextDocumentItem::new(uri, "test".into(), 1, text.into()),
         });
     }
@@ -929,5 +1121,79 @@ mod tests {
         let edit = response.unwrap();
         let edit = edit.changes.unwrap().into_values().next().unwrap();
         assert_eq!(edit[0].range, r(0, 2, 2));
+    }
+
+    #[test]
+    fn resolve_edits_convert_against_the_sole_tracked_document() {
+        // Exactly one tracked document ("🙂abc"), UTF-16 negotiated.
+        let mut state = ServerState::new::<TestServer>(ClientSocket::new_closed());
+        state.set_position_encoding(Encoding::UTF16);
+        open_document(&mut state, url("only.txt"), "🙂abc");
+
+        let mut item = CompletionItem {
+            label: "item".into(),
+            text_edit: Some(LspCompletionTextEdit::Edit(TextEdit::new(
+                r(0, 4, 4),
+                "x".into(),
+            ))),
+            ..Default::default()
+        };
+
+        super::convert_completion_resolve(&state, &mut item);
+
+        let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
+            panic!("expected edit");
+        };
+        assert_eq!(edit.range, r(0, 2, 2));
+    }
+
+    #[test]
+    fn resolve_edits_pass_through_without_a_sole_document() {
+        // Two tracked documents: the sole-document rule does not apply.
+        let (state, _, _) = state_with_documents();
+
+        let mut item = CompletionItem {
+            label: "item".into(),
+            text_edit: Some(LspCompletionTextEdit::Edit(TextEdit::new(
+                r(0, 4, 4),
+                "x".into(),
+            ))),
+            ..Default::default()
+        };
+
+        super::convert_completion_resolve(&state, &mut item);
+
+        let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
+            panic!("expected edit");
+        };
+        assert_eq!(edit.range, r(0, 4, 4));
+    }
+
+    #[test]
+    fn resolve_echo_round_trip_is_identity() {
+        // Sole doc "🙂abc", UTF-16 negotiated. The client echoes the edit at
+        // the UTF-16 position it was delivered: the incoming converter must
+        // turn it into UTF-8 for the handler, and the outgoing converter must
+        // return the original position — no double conversion.
+        let mut state = ServerState::new::<TestServer>(ClientSocket::new_closed());
+        state.set_position_encoding(Encoding::UTF16);
+        open_document(&mut state, url("only.txt"), "🙂abc");
+
+        let mut item = CompletionItem {
+            label: "item".into(),
+            text_edit: Some(LspCompletionTextEdit::Edit(TextEdit::new(
+                r(0, 2, 2),
+                "x".into(),
+            ))),
+            ..Default::default()
+        };
+
+        super::convert_incoming_completion_resolve(&state, &mut item);
+        super::convert_completion_resolve(&state, &mut item);
+
+        let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
+            panic!("expected edit");
+        };
+        assert_eq!(edit.range, r(0, 2, 2));
     }
 }
