@@ -146,7 +146,7 @@ impl DocumentMatchers {
             }
 
             for lang in &matcher.lang_strings {
-                let mut lang = lang.trim().to_string();
+                let mut lang = lang.trim().to_owned();
                 lang.make_ascii_lowercase();
                 languages.insert(lang, Arc::clone(&matcher));
             }
@@ -159,7 +159,7 @@ impl DocumentMatchers {
     }
 
     pub(crate) fn find(&self, url: &Url, lang: &str) -> Option<Arc<DocumentMatcher>> {
-        let mut lang = lang.trim().to_string();
+        let mut lang = lang.trim().to_owned();
         lang.make_ascii_lowercase();
         self.languages
             .get(lang.as_str())

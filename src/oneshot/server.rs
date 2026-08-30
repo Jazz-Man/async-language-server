@@ -103,7 +103,7 @@ fn workspace_folder(path: &Path) -> ServerResult<WorkspaceFolder> {
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("workspace")
-        .to_string();
+        .to_owned();
 
     Ok(WorkspaceFolder { uri, name })
 }

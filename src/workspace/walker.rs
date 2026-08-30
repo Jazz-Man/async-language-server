@@ -73,6 +73,7 @@ impl WorkspaceWalker {
                         continue;
                     }
                 };
+                // arch-lint: allow(no-sync-io) reason="the ignore-crate walk is a synchronous batch scan by design"
                 if entry.file_type().is_some_and(|ty| ty.is_file()) {
                     files.push(entry.into_path());
                 }

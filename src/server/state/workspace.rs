@@ -109,6 +109,7 @@ impl ServerState {
                 .first()
                 .cloned()
                 .unwrap_or_else(|| matcher.name().to_ascii_lowercase());
+            // arch-lint: allow(no-sync-io) reason="workspace scanning is a synchronous batch pass over the ignore crate by design"
             let text = std::fs::read_to_string(&path)?;
             self.insert_document(uri, text, 0, language, DocumentOrigin::Workspace);
         }
@@ -148,5 +149,6 @@ pub(super) fn url_is_in_roots(url: &Url, roots: &[PathBuf]) -> bool {
 
 fn workspace_folder_path(folder: &WorkspaceFolder) -> Option<PathBuf> {
     let path = folder.uri.to_file_path().ok()?;
+    // arch-lint: allow(no-sync-io) reason="one-time path canonicalization during workspace-folder setup"
     Some(std::fs::canonicalize(&path).unwrap_or(path))
 }

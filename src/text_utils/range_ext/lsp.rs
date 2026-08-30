@@ -173,6 +173,10 @@ impl super::RangeExt for LspRange {
 
         if let Some(remainder) = remainder {
             // Extract the text corresponding to the remainder range
+            #[expect(
+                clippy::expect_used,
+                reason = "invariant: delim0 was confirmed present by the preceding search"
+            )]
             let delim0_offset = text.find(delim0).expect("delim0 was found");
             let remainder_start = delim0_offset + 1;
             let remainder_text = &text[remainder_start..];

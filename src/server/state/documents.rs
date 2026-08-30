@@ -108,6 +108,7 @@ impl ServerState {
             return ControlFlow::Continue(());
         }
 
+        // arch-lint: allow(no-sync-io) reason="LSP notification handlers must stay synchronous per the spec; closing keeps a disk snapshot via std::fs"
         if let Ok(text) = std::fs::read_to_string(url.path()) {
             self.insert_document(url, text, 0, language, DocumentOrigin::Workspace);
         } else {
@@ -198,6 +199,10 @@ impl ServerState {
             && tree_sitter_incrementally_edited
             && let Some(tree) = doc.tree_sitter_tree.as_ref()
         {
+            #[expect(
+                clippy::expect_used,
+                reason = "invariant: a document carrying a tree always has its parser"
+            )]
             let mut parser = doc_parser(doc).expect("has tree - must have parser");
             let updated_tree = parser.parse(doc.text_contents(), Some(tree));
             doc.tree_sitter_tree = updated_tree;
@@ -229,6 +234,7 @@ impl ServerState {
         // edits were only partially applied; this discards unsaved
         // editor changes, which is the accepted trade-off of the
         // synchronous-handler constraint.
+        // arch-lint: allow(no-sync-io) reason="LSP notification handlers must stay synchronous per the spec; the failed-incremental fallback re-reads via std::fs"
         if let Ok(text) = std::fs::read_to_string(uri.path()) {
             self.insert_document(uri, text, version, language, DocumentOrigin::Open);
         } else {
@@ -270,6 +276,7 @@ impl ServerState {
         // synchronous both according to LSP spec and the async-lsp crate
         let text = if let Some(text) = &params.text {
             Rope::from_str(text)
+            // arch-lint: allow(no-sync-io) reason="LSP notification handlers must stay synchronous per the spec; the no-text fallback reads via std::fs"
         } else if let Ok(text) = std::fs::read_to_string(url.path()) {
             Rope::from_str(&text)
         } else {

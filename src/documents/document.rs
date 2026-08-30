@@ -198,8 +198,8 @@ impl Document {
         while let Some(matched) = it.next() {
             for capture in matched.captures {
                 if let Ok(text) = capture.node.utf8_text(doc_bytes) {
-                    let name = query_names[capture.index as usize].to_string();
-                    let text = text.to_string();
+                    let name = query_names[capture.index as usize].to_owned();
+                    let text = text.to_owned();
                     let range = ts_range_to_lsp_range(capture.node.range());
                     items.push(DocumentQueryCapture { name, text, range });
                 }
