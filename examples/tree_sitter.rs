@@ -44,13 +44,14 @@ impl Server for JsonServer {
         })
     }
 
-    async fn document_diagnostics(
+    fn document_diagnostics(
         &self,
         state: ServerState,
         params: DocumentDiagnosticParams,
-    ) -> ServerResult<DocumentDiagnosticReportResult> {
+    ) -> impl std::future::Future<Output = ServerResult<DocumentDiagnosticReportResult>> + Send
+    {
         let Some(document) = state.document(&params.text_document.uri) else {
-            return Ok(full_report(Vec::new()));
+            return std::future::ready(Ok(full_report(Vec::new())));
         };
 
         let mut items = Vec::new();
@@ -67,7 +68,7 @@ impl Server for JsonServer {
             }
         }
 
-        Ok(full_report(items))
+        std::future::ready(Ok(full_report(items)))
     }
 }
 
