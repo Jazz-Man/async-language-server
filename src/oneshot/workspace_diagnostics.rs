@@ -269,10 +269,10 @@ fn workspace_document(
     };
 
     let language_id = matcher
-        .lang_strings
+        .lang_strings()
         .first()
         .cloned()
-        .unwrap_or_else(|| matcher.name.to_ascii_lowercase());
+        .unwrap_or_else(|| matcher.name().to_ascii_lowercase());
 
     Ok(Some(WorkspaceDocument {
         document: OneshotDocument {
