@@ -1,0 +1,32 @@
+# arch-lint configuration
+# See https://github.com/example/arch-lint for documentation
+
+[analyzer]
+# Root directory to analyze (default: current directory)
+root = "./src"
+
+# Glob patterns to exclude from analysis
+exclude = [
+    "**/target/**",
+    # "**/vendor/**",
+    # "**/generated/**",
+]
+
+# Respect .gitignore files
+respect_gitignore = true
+
+# Rule configurations
+# Each rule can be enabled/disabled and have its severity overridden
+
+# [rules.no-unwrap-expect]
+# enabled = true
+# # severity = "warning"  # Override default severity
+# allow_in_tests = true
+
+# [rules.no-sync-io]
+# enabled = true
+
+# [rules.handler-complexity]
+# enabled = true
+# max_lines = 150
+# max_match_arms = 20
