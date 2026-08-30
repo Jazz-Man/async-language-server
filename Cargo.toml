@@ -32,7 +32,7 @@ tokio = { version = "1.53.1", features = ["io-std", "io-util", "net", "rt"] }
 tower = "0.5.3"
 
 tracing = { version = "0.1.44", optional = true }
-tree-sitter = { version = "0.26.12", optional = true }
+tree-sitter = { version = "0.26.13", optional = true }
 
 [dev-dependencies]
 # Pinned exactly: 0.4 -> 0.5 silently changed what the "strict" preset means,
