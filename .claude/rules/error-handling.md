@@ -49,11 +49,11 @@ TcpConnect {
 
 - Exactly one `From<ServerError>` conversion turns a domain error into a wire
   error (`ResponseError`); domain code constructs no `ResponseError` at all.
-  All upstream code — trait impls, state, walkers — returns `Err(ServerError)`
+  All domain code — trait impls, state, walkers — returns `Err(ServerError)`
   and stays protocol-neutral (`err-edge-mapping`).
 - The wire adapter — `LanguageServerWithState` and the workspace-diagnostics
   request layer — is itself the boundary and constructs protocol-native
-  `ResponseError` values directly (the staleness `CONTENT_MODIFIED` reply,
+  `ResponseError` values directly (the staleness `CONTENT_MODIFIED` replies,
   the workspace-diagnostics-disabled `METHOD_NOT_FOUND` reply). Domain code
   below it stays `ServerError`-only.
 - Clientless entry points (oneshot-style batch runs) convert the other way —
