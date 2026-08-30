@@ -36,11 +36,10 @@ impl Position {
 
     /// Converts the position into an LSP position.
     #[must_use]
-    pub const fn into_lsp(self) -> LspPosition {
-        #[allow(clippy::cast_possible_truncation)]
+    pub fn into_lsp(self) -> LspPosition {
         LspPosition {
-            line: self.line as u32,
-            character: self.col as u32,
+            line: u32::try_from(self.line).unwrap_or(u32::MAX),
+            character: u32::try_from(self.col).unwrap_or(u32::MAX),
         }
     }
 }
