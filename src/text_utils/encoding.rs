@@ -14,7 +14,7 @@ use async_lsp::lsp_types::PositionEncodingKind as LspPositionEncoding;
 /// assert_eq!(Encoding::default(), Encoding::UTF16);
 /// assert_eq!(Encoding::UTF8.as_str(), "utf-8");
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum Encoding {
     /// Character offsets count UTF-8 code units.
     UTF8,
@@ -23,6 +23,7 @@ pub enum Encoding {
     /// This is the default for the Language Server Protocol - if a client
     /// does not specify which position encoding they prefer and / or support,
     /// this encoding must always be used.
+    #[default]
     UTF16,
     /// Character offsets count UTF-32 code units.
     ///
@@ -32,12 +33,6 @@ pub enum Encoding {
 }
 
 impl Encoding {
-    /// Returns the LSP default encoding, [`Encoding::UTF16`].
-    #[must_use]
-    pub const fn default() -> Self {
-        Self::UTF16
-    }
-
     /// Converts the encoding into its `lsp_types` counterpart.
     #[must_use]
     pub const fn into_lsp(self) -> LspPositionEncoding {
@@ -123,12 +118,6 @@ impl From<&Encoding> for LspPositionEncoding {
 impl From<Encoding> for LspPositionEncoding {
     fn from(value: Encoding) -> Self {
         value.into_lsp()
-    }
-}
-
-impl Default for Encoding {
-    fn default() -> Self {
-        Self::default()
     }
 }
 
