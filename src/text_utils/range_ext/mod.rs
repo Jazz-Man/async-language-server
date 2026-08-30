@@ -1,5 +1,3 @@
-use std::any::type_name;
-
 mod bytes;
 mod lsp;
 
@@ -121,14 +119,8 @@ pub trait RangeExt: Sized {
     ///
     /// - Panics if the text and range are not the exact same length.
     /// - Panics if the delimiter is not a single-byte UTF8 character.
-    #[allow(unused_variables)]
     #[must_use]
-    fn sub_delimited(self, text: &str, delimiter: char) -> (Option<Self>, Option<Self>) {
-        unimplemented!(
-            "sub_delimited is not implemented for {}",
-            type_name::<Self>()
-        )
-    }
+    fn sub_delimited(self, text: &str, delimiter: char) -> (Option<Self>, Option<Self>);
 
     /// Splits the given range into _three_ optional subranges,
     /// using the two given delimiters, consecutively.
@@ -162,17 +154,11 @@ pub trait RangeExt: Sized {
     ///
     /// - Panics if the text and range are not the exact same length.
     /// - Panics if any delimiter is not a single-byte UTF8 character.
-    #[allow(unused_variables)]
     #[must_use]
     fn sub_delimited_tri(
         self,
         text: &str,
         delim0: char,
         delim1: char,
-    ) -> (Option<Self>, Option<Self>, Option<Self>) {
-        unimplemented!(
-            "sub_delimited_tri is not implemented for {}",
-            type_name::<Self>()
-        )
-    }
+    ) -> (Option<Self>, Option<Self>, Option<Self>);
 }
