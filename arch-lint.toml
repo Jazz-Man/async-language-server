@@ -2,7 +2,7 @@
 # See https://github.com/example/arch-lint for documentation
 
 # Preset: "recommended" (default), "strict", or "minimal"
-preset = "recommended"
+preset = "strict"
 
 # Fail threshold: "error" (default), "warning", or "info"
 fail_on = "error"
