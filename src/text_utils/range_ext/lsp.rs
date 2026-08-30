@@ -27,7 +27,6 @@ impl super::RangeExt for LspRange {
         (left, right)
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     fn shrink(self, amount_left: usize, amount_right: usize) -> Self {
         assert_eq!(
             self.start.line, self.end.line,
@@ -37,12 +36,12 @@ impl super::RangeExt for LspRange {
         let start_char = self
             .start
             .character
-            .saturating_add(amount_left as u32)
+            .saturating_add(u32::try_from(amount_left).unwrap_or(u32::MAX))
             .min(self.end.character);
         let end_char = self
             .end
             .character
-            .saturating_sub(amount_right as u32)
+            .saturating_sub(u32::try_from(amount_right).unwrap_or(u32::MAX))
             .max(self.start.character);
 
         LspRange {
@@ -113,8 +112,8 @@ impl super::RangeExt for LspRange {
                 }
             }
 
-            #[allow(clippy::cast_possible_truncation)]
-            let character = text[line_byte..offset].chars().count() as u32;
+            let character =
+                u32::try_from(text[line_byte..offset].chars().count()).unwrap_or(u32::MAX);
             let delim_pos = LspPosition {
                 line: line_num,
                 character,
