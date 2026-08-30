@@ -16,7 +16,7 @@ Reorganize `src/` into domain modules with per-`Request` files and split server 
 - **D3 — One file per `impl Request`** (~15 files), plus `conversion.rs` for the shared `modify_incoming_*`/`modify_outgoing_*` family and `mod.rs` holding the `Request` trait and `pub use` re-exports so `crate::requests::<Type>` paths (used by the dispatch table) never change.
 - **D4 — Server giants: tests out, then code split.** Tests move verbatim as one block into sibling `tests.rs` files (`#[cfg(test)] mod tests;` — the `range_ext` precedent); then `server_state.rs` splits into `state/{mod,documents,workspace,tests}.rs` and `server_with_state.rs` into `with_state/{mod,initialize,tests}.rs`. Multiple `impl ServerState` blocks across files of one module are valid; private fields are visible to descendant modules.
 - **D5 — Tests are relocated, not reworked.** The owner has a separate test revision planned; D7 only moves test blocks mechanically (requests' block intact into `requests/tests.rs`; conversion-helper tests into `conversion.rs`; giants' blocks into their `tests.rs`). No distribution, no rewriting.
-- **D6 — Public API frozen.** The `pub mod server` facade moves verbatim from `lib.rs` into `src/server/server.rs` (module root, 2018 style) with internal paths updated; external paths (`async_language_server::server::*`, `::oneshot::*`, `::text_utils::*`, `::lsp_types`) are byte-identical. Verified in the final task by diffing the public rustdoc inventory before/after.
+- **D6 — Public API frozen.** The `pub mod server` facade moves verbatim from `lib.rs` into the `server` module root (implemented as `src/server/mod.rs`, matching the plan's `mod.rs`-style convention) with internal paths updated; external paths (`async_language_server::server::*`, `::oneshot::*`, `::text_utils::*`, `::lsp_types`) are byte-identical. Verified in the final task by diffing the public rustdoc inventory before/after.
 - **D7 — Steering and project docs updated with the tree.** `.claude/rules/structure.md` and `CLAUDE.md` describe the old layout; the final task rewrites their file-map sections for the new tree (they steer future agents — a stale map breeds wrong references).
 
 ## Target tree
@@ -38,7 +38,7 @@ src/
   workspace/
     mod.rs  diagnostics.rs  walker.rs
   server/
-    server.rs                 // the facade (ex lib.rs `pub mod server` block)
+    mod.rs                    // the facade (ex lib.rs `pub mod server` block)
     serve.rs  server_trait.rs  options.rs
     state/    mod.rs  documents.rs  workspace.rs  tests.rs
     with_state/  mod.rs  initialize.rs  tests.rs
@@ -50,7 +50,7 @@ src/
 1. **`documents/`** — move `document.rs` + `document_matcher.rs`→`matcher.rs`, add `mod.rs` re-exports; internal `crate::document::` references update.
 2. **`workspace/`** — move `workspace_diagnostics.rs` + `workspace_walker.rs`→`walker.rs`, `mod.rs`.
 3. **`requests/`** — split per D3/D5; dispatch-table paths stable via re-exports.
-4. **`server/` root** — facade to `server/server.rs`, move `serve.rs`/`server_trait.rs`/`options.rs`; move the two giants' test blocks out verbatim into `state/tests.rs`/`with_state/tests.rs` (files still monolithic here).
+4. **`server/` root** — facade to `server/mod.rs`, move `serve.rs`/`server_trait.rs`/`options.rs`; move the two giants' test blocks out verbatim into `state/tests.rs`/`with_state/tests.rs` (files still monolithic here).
 5. **`state/` split** per D4: `mod.rs` (structs, accessors, encoding), `documents.rs` (open/close/change/save, insert, recover, change_char_range, tree_sitter_edit, doc_parser), `workspace.rs` (roots/urls/refresh/remove/folders + path helpers).
 6. **`with_state/` split** per D4: `mod.rs` (macros, struct, dispatch table, notifications, handwires), `initialize.rs` (encoding negotiation, capabilities, workspace_folders).
 7. **Final**: full battery ×4 configs; rustdoc public-inventory diff (before/after must be empty); `grep` for stale internal paths (`crate::server_state`, `crate::server_with_state`, `crate::document_matcher`, `crate::workspace_walker`, `mod result` → 0); rewrite the file-map sections of `.claude/rules/structure.md` and `CLAUDE.md`.
@@ -59,7 +59,7 @@ src/
 
 - Battery green in four configurations; zero lint allows; no logic diffs anywhere (reviewer-checkable: every hunk is a move, rename, or path edit).
 - Public rustdoc inventory identical before/after.
-- No file over ~450 lines except the moved-as-is test files (`with_state/tests.rs` ~700); every `impl Request` in its own file.
+- No file this cycle restructures is over ~450 lines, except the moved-as-is test files (`with_state/tests.rs` ~700); every `impl Request` in its own file. The pre-existing `workspace/diagnostics.rs` (565) and `oneshot/workspace_diagnostics.rs` (478) monoliths exceed the limit but were never in this cycle's scope (no spec task touches them) — registered as a follow-up split.
 - `structure.md` + `CLAUDE.md` describe the new tree.
 
 ## Provenance
