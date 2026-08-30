@@ -1,28 +1,15 @@
-# arch-lint configuration
+# arch-lint declarative layer rules (scopes + deny-scope-dep).
 # Real documentation: https://github.com/ynishi/arch-lint
 #
-# Verified against the published 0.5.0 source; do not configure by README:
-#   - "strict = All rules" is false: 8 rules, and it sets allow_in_tests(false),
-#     flagging every ordinary test .expect().
-#   - [rules.*] honors only `enabled` and `severity`; behavior options such as
-#     allow_in_tests are inert through check!().
-#   - [analyzer] root is ignored through check!() (the runner passes the
-#     project root), and `exclude_files` / `respect_gitignore` are never read.
+# The rule set itself is wired programmatically in tests/architecture.rs:
+# through check!() the preset picks hardcoded defaults and every [rules.*]
+# behavior option (allow_patterns, allow_in_tests, thresholds) is parsed but
+# never consulted. Only the [[scopes]] / [[deny-scope-dep]] sections below
+# are loaded, by load_rules_from_toml in the test.
 #
 # Per-item suppressions in src/ use the comment form (arch-lint is a
 # dev-dependency, so its attribute form cannot compile inside the lib):
 #   // arch-lint: allow(rule-name) reason="why this is deliberate"
-
-preset = "recommended"
-fail_on = "error"
-
-[analyzer]
-exclude = ["**/target/**"]
-
-# Clippy owns unwrap/expect discipline (expect_used/unwrap_used = deny with
-# allow-*-in-tests and #[expect(..., reason)]); this rule is not test-aware.
-[rules.no-unwrap-expect]
-enabled = false
 
 # --- Layer rules mirroring .claude/rules/structure.md -------------------------
 # The dependency direction: text_utils is the bottom leaf; documents,
@@ -85,3 +72,4 @@ name = "server-above-domains"
 from = "server"
 to = ["oneshot"]
 message = "server plumbing must not depend on the clientless oneshot entry point."
+

@@ -6,6 +6,21 @@ commented-out check in `tests/architecture.rs`, `arch-lint.toml` with
 `preset = "strict"`, `.github/workflows/rust.yml`, `rust-toolchain.toml`
 pinning stable — currently rustc/clippy 1.98.0).
 
+> **Addendum 2026-08-31 — wiring superseded.** Steps 2–4 below recommended the
+> `check!()` macro with `preset = "recommended"`. Follow-up investigation
+> (prompted by the README's `[rules.*] allow_patterns` and programmatic-API
+> examples) confirmed empirically that the macro path applies preset defaults
+> only: behavior options in `[rules.*]` are parsed but never consulted (the
+> analyzer reads only `enabled` and `severity`), and the CLI constructs rules
+> with defaults too. The adopted wiring is therefore programmatic:
+> `tests/architecture.rs` builds the `Analyzer` itself (recommended set minus
+> `no-unwrap-expect`, minus `handler-complexity` — that rule only measures
+> functions named `handle_*`/`process_*`/`on_*`/`update*`, while clippy's
+> thresholds cover every function) and loads the declarative layer rules from
+> `arch-lint.toml` via `load_rules_from_toml`. `arch-lint.toml` now carries
+> only the `[[scopes]]`/`[[deny-scope-dep]]` sections; `preset`/`fail_on`/
+> `[analyzer]`/`[rules.*]` keys were removed as inert through any entry point.
+
 Question: which static-strictness tools belong in this crate's terminal + CI
 battery, and what happens to the incumbent `arch-lint` 0.5.0 (currently
 disabled pending config work, per its own doc comment and the owner's plan to
