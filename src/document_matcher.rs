@@ -20,27 +20,32 @@ use tree_sitter::Language;
 ///     .with_url_globs(["**/*.json", "*.jsonc"])
 ///     .with_lang_strings(["json", "jsonc"]);
 ///
-/// assert_eq!(matcher.name, "json");
-/// assert_eq!(matcher.url_globs, ["**/*.json", "*.jsonc"]);
+/// assert_eq!(matcher.name(), "json");
 /// ```
 #[derive(Debug, Default, Clone)]
 pub struct DocumentMatcher {
     /// The name of the document matcher.
-    ///
-    /// This may be used as a unique identifier for the matcher,
-    /// and can be retrieved on documents using
-    /// [`crate::server::Document::matched_name`].
-    pub name: String,
+    name: String,
     /// Optional globs to match documents based on their URLs.
-    pub url_globs: Vec<String>,
+    url_globs: Vec<String>,
     /// Strings to match documents based on their language identifiers.
-    pub lang_strings: Vec<String>,
+    lang_strings: Vec<String>,
     /// The tree-sitter language grammar to associate with the matched document.
     #[cfg(feature = "tree-sitter")]
-    pub lang_grammar: Option<Language>,
+    lang_grammar: Option<Language>,
 }
 
 impl DocumentMatcher {
+    /// Returns the matcher's name.
+    ///
+    /// The name is exposed on matched documents through
+    /// [`crate::server::Document::matched_name`]; it does not
+    /// need to be unique.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     /// Creates a new document matcher with the given name.
     ///
     /// The name is exposed on matched documents through
@@ -88,18 +93,25 @@ impl DocumentMatcher {
         self.lang_grammar = Some(lang_grammar);
         self
     }
+
+    pub(crate) fn lang_strings(&self) -> &[String] {
+        &self.lang_strings
+    }
+
+    #[cfg(feature = "tree-sitter")]
+    pub(crate) fn lang_grammar(&self) -> Option<Language> {
+        self.lang_grammar.clone()
+    }
 }
 
 /// Private struct created from individual [`DocumentMatcher`]s
 /// to easily match against documents and find the original matcher.
-#[allow(dead_code)]
 #[derive(Debug, Default, Clone)]
 pub(crate) struct DocumentMatchers {
     globsets: Arc<Vec<(GlobSet, Arc<DocumentMatcher>)>>,
     languages: Arc<HashMap<String, Arc<DocumentMatcher>>>,
 }
 
-#[allow(dead_code)]
 impl DocumentMatchers {
     pub(crate) fn new(it: impl IntoIterator<Item = DocumentMatcher>) -> Self {
         let mut globsets = Vec::new();
