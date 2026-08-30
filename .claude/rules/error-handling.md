@@ -12,14 +12,17 @@ according to the sections below.
 - Preserve `source()` chains (`err-source-chain`). Never stringify an error
   into a variant: a `String` field loses the cause chain and leaves callers
   nothing to walk or downcast.
-- The catch-all slot, when one is needed, uses thiserror's documented
-  "anything else" shape, which forwards both `Display` and `source()`:
+- The catch-all slot, when one is needed, keeps the boxed error as both the
+  `Display` message and the `source()` chain node. Do NOT use
+  `#[error(transparent)]` there: it forwards the `source()` *call* into the
+  inner error (which usually has no source of its own), silently breaking the
+  chain — verified empirically against thiserror 2.0.20:
 
 ```rust
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
     // ...typed variants...
-    #[error(transparent)]
+    #[error("{0}")]
     Other(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 ```
