@@ -116,7 +116,7 @@ impl Document {
     /// See [`DocumentMatcher`] for more information.
     #[must_use]
     pub fn matched_name(&self) -> Option<&str> {
-        self.matcher.as_ref().map(|matcher| matcher.name.as_str())
+        self.matcher.as_ref().map(|matcher| matcher.name())
     }
 }
 
