@@ -22,6 +22,6 @@
 /release.zip
 /**/extension.wasm
 
-# Test files
 
-/test.zap
+!.cargo/*
+.cargo/credentials.toml
