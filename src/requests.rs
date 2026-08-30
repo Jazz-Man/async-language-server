@@ -545,80 +545,85 @@ impl Request for CodeActionResolve {
     }
 }
 
-/// Converts a resolve request's item to UTF-8 against the sole tracked
-/// document.
+/// Converts a resolve request's item to UTF-8 against the given document
+/// snapshot.
 ///
 /// Resolve requests carry no document URL, so there is no request document:
-/// when exactly one document is tracked (the normal completion-then-resolve
-/// flow, where the client echoes the item it was delivered), its snapshot
-/// converts the incoming positions; otherwise the item passes through
-/// unchanged.
+/// the caller supplies the snapshot to convert against — in the usual
+/// completion-then-resolve flow the sole tracked document, captured once for
+/// the whole request. Without one, the item passes through unchanged.
 pub(crate) fn convert_incoming_completion_resolve(
     state: &ServerState,
+    document: Option<&Document>,
     item: &mut LspCompletionItem,
 ) {
     if state.get_position_encoding() == Encoding::UTF8 {
         return;
     }
-    let documents = state.documents();
-    let [document] = documents.as_slice() else {
+    let Some(document) = document else {
         return;
     };
     <CompletionResolve as Request>::modify_params(state, document, item);
 }
 
-/// Converts a resolve response's edits against the sole tracked document.
+/// Converts a resolve response's edits against the given document snapshot.
 ///
 /// Resolve requests carry no document URL, so there is no request document:
-/// when exactly one document is tracked (the normal completion-then-resolve
-/// flow), its snapshot converts the edits; otherwise the response passes
-/// through unchanged.
-pub(crate) fn convert_completion_resolve(state: &ServerState, response: &mut LspCompletionItem) {
+/// the caller supplies the snapshot to convert against — in the usual
+/// completion-then-resolve flow the sole tracked document, captured once for
+/// the whole request. Without one, the response passes through unchanged.
+pub(crate) fn convert_completion_resolve(
+    state: &ServerState,
+    document: Option<&Document>,
+    response: &mut LspCompletionItem,
+) {
     if state.get_position_encoding() == Encoding::UTF8 {
         return;
     }
-    let documents = state.documents();
-    let [document] = documents.as_slice() else {
+    let Some(document) = document else {
         return;
     };
     <CompletionResolve as Request>::modify_response(state, document, response);
 }
 
-/// Converts a resolve request's action to UTF-8 against the sole tracked
-/// document.
+/// Converts a resolve request's action to UTF-8 against the given document
+/// snapshot.
 ///
 /// Resolve requests carry no document URL, so there is no request document:
-/// when exactly one document is tracked (the normal code-action-then-resolve
-/// flow, where the client echoes the action it was delivered), its snapshot
-/// converts the incoming positions; otherwise the action passes through
-/// unchanged.
+/// the caller supplies the snapshot to convert against — in the usual
+/// code-action-then-resolve flow the sole tracked document, captured once
+/// for the whole request. Without one, the action passes through unchanged.
 pub(crate) fn convert_incoming_code_action_resolve(
     state: &ServerState,
+    document: Option<&Document>,
     action: &mut LspCodeAction,
 ) {
     if state.get_position_encoding() == Encoding::UTF8 {
         return;
     }
-    let documents = state.documents();
-    let [document] = documents.as_slice() else {
+    let Some(document) = document else {
         return;
     };
     <CodeActionResolve as Request>::modify_params(state, document, action);
 }
 
-/// Converts a resolve response's diagnostics and edits against the sole
-/// tracked document.
+/// Converts a resolve response's diagnostics and edits against the given
+/// document snapshot.
 ///
 /// Resolve requests carry no document URL, so there is no request document:
-/// when exactly one document is tracked (the normal code-action-then-resolve
-/// flow), its snapshot converts them; otherwise the response passes through
+/// the caller supplies the snapshot to convert against — in the usual
+/// code-action-then-resolve flow the sole tracked document, captured once
+/// for the whole request. Without one, the response passes through
 /// unchanged.
-pub(crate) fn convert_code_action_resolve(state: &ServerState, response: &mut LspCodeAction) {
+pub(crate) fn convert_code_action_resolve(
+    state: &ServerState,
+    document: Option<&Document>,
+    response: &mut LspCodeAction,
+) {
     if state.get_position_encoding() == Encoding::UTF8 {
         return;
     }
-    let documents = state.documents();
-    let [document] = documents.as_slice() else {
+    let Some(document) = document else {
         return;
     };
     <CodeActionResolve as Request>::modify_response(state, document, response);
@@ -941,7 +946,11 @@ mod tests {
         },
     };
 
-    use crate::{server::Server, server_state::ServerState, text_utils::Encoding};
+    use crate::{
+        server::{Server, ServerOptions},
+        server_state::ServerState,
+        text_utils::Encoding,
+    };
 
     use super::{CodeAction, Completion, Definition, DocumentDiagnostics, Rename, Request};
 
@@ -971,7 +980,10 @@ mod tests {
     }
 
     fn state_with_documents() -> (ServerState, Url, Url) {
-        let mut state = ServerState::new::<TestServer>(ClientSocket::new_closed());
+        let mut state = ServerState::with_options::<TestServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default(),
+        );
         state.set_position_encoding(Encoding::UTF16);
 
         let source = url("source.txt");
@@ -1126,7 +1138,10 @@ mod tests {
     #[test]
     fn resolve_edits_convert_against_the_sole_tracked_document() {
         // Exactly one tracked document ("🙂abc"), UTF-16 negotiated.
-        let mut state = ServerState::new::<TestServer>(ClientSocket::new_closed());
+        let mut state = ServerState::with_options::<TestServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default(),
+        );
         state.set_position_encoding(Encoding::UTF16);
         open_document(&mut state, url("only.txt"), "🙂abc");
 
@@ -1139,7 +1154,10 @@ mod tests {
             ..Default::default()
         };
 
-        super::convert_completion_resolve(&state, &mut item);
+        let document = state
+            .document(&url("only.txt"))
+            .expect("sole document is tracked");
+        super::convert_completion_resolve(&state, Some(&document), &mut item);
 
         let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
             panic!("expected edit");
@@ -1148,8 +1166,8 @@ mod tests {
     }
 
     #[test]
-    fn resolve_edits_pass_through_without_a_sole_document() {
-        // Two tracked documents: the sole-document rule does not apply.
+    fn resolve_edits_pass_through_without_a_document() {
+        // No document snapshot: the edits pass through unchanged.
         let (state, _, _) = state_with_documents();
 
         let mut item = CompletionItem {
@@ -1161,7 +1179,7 @@ mod tests {
             ..Default::default()
         };
 
-        super::convert_completion_resolve(&state, &mut item);
+        super::convert_completion_resolve(&state, None, &mut item);
 
         let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
             panic!("expected edit");
@@ -1175,7 +1193,10 @@ mod tests {
         // the UTF-16 position it was delivered: the incoming converter must
         // turn it into UTF-8 for the handler, and the outgoing converter must
         // return the original position — no double conversion.
-        let mut state = ServerState::new::<TestServer>(ClientSocket::new_closed());
+        let mut state = ServerState::with_options::<TestServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default(),
+        );
         state.set_position_encoding(Encoding::UTF16);
         open_document(&mut state, url("only.txt"), "🙂abc");
 
@@ -1188,8 +1209,11 @@ mod tests {
             ..Default::default()
         };
 
-        super::convert_incoming_completion_resolve(&state, &mut item);
-        super::convert_completion_resolve(&state, &mut item);
+        let sole = state
+            .document(&url("only.txt"))
+            .expect("sole document is tracked");
+        super::convert_incoming_completion_resolve(&state, Some(&sole), &mut item);
+        super::convert_completion_resolve(&state, Some(&sole), &mut item);
 
         let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
             panic!("expected edit");

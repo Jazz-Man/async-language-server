@@ -291,9 +291,17 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         let server = Arc::clone(&self.server);
         let state = self.state.clone();
         Box::pin(async move {
-            crate::requests::convert_incoming_completion_resolve(&state, &mut params);
+            let sole = {
+                let documents = state.documents();
+                (documents.len() == 1).then(|| documents[0].clone())
+            };
+            crate::requests::convert_incoming_completion_resolve(
+                &state,
+                sole.as_ref(),
+                &mut params,
+            );
             let mut result = server.completion_resolve(state.clone(), params).await?;
-            crate::requests::convert_completion_resolve(&state, &mut result);
+            crate::requests::convert_completion_resolve(&state, sole.as_ref(), &mut result);
             Ok(result)
         })
     }
@@ -305,9 +313,17 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         let server = Arc::clone(&self.server);
         let state = self.state.clone();
         Box::pin(async move {
-            crate::requests::convert_incoming_code_action_resolve(&state, &mut params);
+            let sole = {
+                let documents = state.documents();
+                (documents.len() == 1).then(|| documents[0].clone())
+            };
+            crate::requests::convert_incoming_code_action_resolve(
+                &state,
+                sole.as_ref(),
+                &mut params,
+            );
             let mut result = server.code_action_resolve(state.clone(), params).await?;
-            crate::requests::convert_code_action_resolve(&state, &mut result);
+            crate::requests::convert_code_action_resolve(&state, sole.as_ref(), &mut result);
             Ok(result)
         })
     }
@@ -343,15 +359,16 @@ mod tests {
     use async_lsp::{
         ClientSocket, ErrorCode, LanguageServer,
         lsp_types::{
-            ClientCapabilities, Diagnostic, DiagnosticOptions, DiagnosticServerCapabilities,
-            DidChangeConfigurationParams, DidChangeWorkspaceFoldersParams,
-            DidOpenTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
-            DocumentDiagnosticReportKind, DocumentDiagnosticReportResult,
+            ClientCapabilities, CompletionItem, CompletionTextEdit, Diagnostic, DiagnosticOptions,
+            DiagnosticServerCapabilities, DidChangeConfigurationParams,
+            DidChangeWorkspaceFoldersParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
+            DocumentDiagnosticReport, DocumentDiagnosticReportKind, DocumentDiagnosticReportResult,
             FullDocumentDiagnosticReport, GeneralClientCapabilities, InitializeParams, OneOf,
             PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
-            RelatedFullDocumentDiagnosticReport, ServerCapabilities, TextDocumentItem, Url,
-            WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
-            WorkspaceDocumentDiagnosticReport, WorkspaceFolder, WorkspaceFoldersChangeEvent,
+            RelatedFullDocumentDiagnosticReport, ServerCapabilities, TextDocumentItem, TextEdit,
+            Url, WorkDoneProgressParams, WorkspaceDiagnosticParams,
+            WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport, WorkspaceFolder,
+            WorkspaceFoldersChangeEvent,
         },
     };
 
@@ -380,6 +397,14 @@ mod tests {
         ) -> impl std::future::Future<Output = ServerResult<DocumentDiagnosticReportResult>> + Send
         {
             std::future::ready(test_document_diagnostics(&state, params))
+        }
+
+        fn completion_resolve(
+            &self,
+            _state: ServerState,
+            item: CompletionItem,
+        ) -> impl std::future::Future<Output = ServerResult<CompletionItem>> + Send {
+            std::future::ready(Ok(item))
         }
     }
 
@@ -885,6 +910,58 @@ mod tests {
             panic!("expected full workspace diagnostic report");
         };
         assert!(report.items.is_empty());
+
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
+
+    #[test]
+    fn resolve_converts_with_sole_document_and_passes_through_with_two() {
+        let root = temp_workspace("resolve-pick");
+        let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
+        let mut params = initialize_params(&root);
+        params.capabilities.general = Some(GeneralClientCapabilities {
+            position_encodings: Some(vec![PositionEncodingKind::UTF16]),
+            ..Default::default()
+        });
+        futures::executor::block_on(server.initialize(params)).expect("server can initialize");
+
+        let first =
+            Url::from_file_path(root.join("a.test")).expect("path can be converted to a URL");
+        let _ = server.did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(first, "test".into(), 1, "🙂abc".into()),
+        });
+
+        let echo = CompletionItem {
+            label: "x".into(),
+            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                Range::new(Position::new(0, 2), Position::new(0, 2)),
+                "y".into(),
+            ))),
+            ..Default::default()
+        };
+
+        // Sole document: the echo handler receives UTF-8 (0,4) and the wire
+        // shows UTF-16 (0,2) — identity for the client. Missing either
+        // converter breaks this arm (one-way conversion shifts the column).
+        let resolved = futures::executor::block_on(server.completion_item_resolve(echo.clone()))
+            .expect("resolve succeeds");
+        let Some(CompletionTextEdit::Edit(edit)) = resolved.text_edit else {
+            panic!("expected edit");
+        };
+        assert_eq!(edit.range.start, Position::new(0, 2));
+
+        // Second document: no sole document, both converters pass through.
+        let second =
+            Url::from_file_path(root.join("b.test")).expect("path can be converted to a URL");
+        let _ = server.did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(second, "test".into(), 1, "🙂def".into()),
+        });
+        let resolved = futures::executor::block_on(server.completion_item_resolve(echo))
+            .expect("resolve succeeds");
+        let Some(CompletionTextEdit::Edit(edit)) = resolved.text_edit else {
+            panic!("expected edit");
+        };
+        assert_eq!(edit.range.start, Position::new(0, 2));
 
         fs::remove_dir_all(root).expect("temp workspace can be removed");
     }

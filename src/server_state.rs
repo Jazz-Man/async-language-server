@@ -11,6 +11,9 @@ use dashmap::DashMap;
 use ropey::Rope;
 
 #[cfg(feature = "tree-sitter")]
+use async_lsp::lsp_types::TextDocumentContentChangeEvent;
+
+#[cfg(feature = "tree-sitter")]
 use tree_sitter::{InputEdit, Parser, Point};
 
 use crate::{
@@ -89,11 +92,6 @@ impl ServerState {
 // Private implementation
 
 impl ServerState {
-    #[cfg(test)]
-    pub(crate) fn new<T: Server>(client: ClientSocket) -> Self {
-        Self::with_options::<T>(client, &ServerOptions::default())
-    }
-
     pub(crate) fn with_options<T: Server>(client: ClientSocket, options: &ServerOptions) -> Self {
         let documents = Arc::new(DashMap::new());
         let workspace_roots = Arc::new(DashMap::new());
@@ -396,51 +394,16 @@ impl ServerState {
             // 3. Perform incremental edit on the syntax tree as well, if enabled
             //    Note that we need to do this before updating the document contents
             #[cfg(feature = "tree-sitter")]
-            if let Some(tree) = doc.tree_sitter_tree.as_mut() {
-                // Compute some byte offsets based on the yet-to-be-changed rope
-                let start_byte = doc.text.char_to_byte(start_char_absolute);
-                let old_end_byte = doc.text.char_to_byte(end_char_absolute);
-                let new_end_byte = start_byte + change.text.len();
-
-                // Convert the start and old end positions to the correct encoding
-                let start_position =
-                    position_to_encoding(&doc.text, range.start, encoding, Encoding::UTF8);
-                let old_end_position =
-                    position_to_encoding(&doc.text, range.end, encoding, Encoding::UTF8);
-
-                // Compute the new end point based on the contents of the edit
-                let (new_end_row, new_end_col_bytes) = change.text.chars().fold(
-                    (
-                        start_position.line as usize,
-                        start_position.character as usize,
-                    ),
-                    |(row, col_bytes), ch| {
-                        if ch == '\n' {
-                            (row + 1, 0)
-                        } else {
-                            (row, col_bytes + ch.len_utf8())
-                        }
-                    },
-                );
-
-                // Finally, apply the edit to incrementally update the syntax tree
-                tree.edit(&InputEdit {
-                    start_byte,
-                    old_end_byte,
-                    new_end_byte,
-                    start_position: Point {
-                        row: start_position.line as usize,
-                        column: start_position.character as usize,
-                    },
-                    old_end_position: Point {
-                        row: old_end_position.line as usize,
-                        column: old_end_position.character as usize,
-                    },
-                    new_end_position: Point {
-                        row: new_end_row,
-                        column: new_end_col_bytes,
-                    },
-                });
+            if let Some(tree) = doc.tree_sitter_tree.as_mut()
+                && let Some(edit) = tree_sitter_edit(
+                    &doc.text,
+                    &change,
+                    start_char_absolute,
+                    end_char_absolute,
+                    *encoding,
+                )
+            {
+                tree.edit(&edit);
                 tree_sitter_incrementally_edited = true;
             }
 
@@ -608,6 +571,65 @@ fn change_char_range(doc: &Document, range: Range, encoding: Encoding) -> Option
     Some((start_char_absolute, end_char_absolute))
 }
 
+/// Builds the tree-sitter incremental edit for one content change,
+/// returning `None` when the changed range cannot be resolved.
+///
+/// Reads the yet-to-be-changed rope, so it must be called before the
+/// document contents are updated.
+#[cfg(feature = "tree-sitter")]
+fn tree_sitter_edit(
+    text: &Rope,
+    change: &TextDocumentContentChangeEvent,
+    start_char_absolute: usize,
+    end_char_absolute: usize,
+    encoding: Encoding,
+) -> Option<InputEdit> {
+    let range = change.range?;
+
+    // Compute some byte offsets based on the yet-to-be-changed rope
+    let start_byte = text.char_to_byte(start_char_absolute);
+    let old_end_byte = text.char_to_byte(end_char_absolute);
+    let new_end_byte = start_byte + change.text.len();
+
+    // Convert the start and old end positions to the correct encoding
+    let start_position = position_to_encoding(text, range.start, encoding, Encoding::UTF8);
+    let old_end_position = position_to_encoding(text, range.end, encoding, Encoding::UTF8);
+
+    // Compute the new end point based on the contents of the edit
+    let (new_end_row, new_end_col_bytes) = change.text.chars().fold(
+        (
+            start_position.line as usize,
+            start_position.character as usize,
+        ),
+        |(row, col_bytes), ch| {
+            if ch == '\n' {
+                (row + 1, 0)
+            } else {
+                (row, col_bytes + ch.len_utf8())
+            }
+        },
+    );
+
+    // Finally, build the edit for incrementally updating the syntax tree
+    Some(InputEdit {
+        start_byte,
+        old_end_byte,
+        new_end_byte,
+        start_position: Point {
+            row: start_position.line as usize,
+            column: start_position.character as usize,
+        },
+        old_end_position: Point {
+            row: old_end_position.line as usize,
+            column: old_end_position.character as usize,
+        },
+        new_end_position: Point {
+            row: new_end_row,
+            column: new_end_col_bytes,
+        },
+    })
+}
+
 fn url_is_in_roots(url: &Url, roots: &[PathBuf]) -> bool {
     url.to_file_path()
         .is_ok_and(|path| roots.iter().any(|root| path.starts_with(root)))
@@ -682,7 +704,10 @@ mod tests {
 
     #[test]
     fn full_content_change_replaces_document_text() {
-        let mut state = ServerState::new::<TestServer>(ClientSocket::new_closed());
+        let mut state = ServerState::with_options::<TestServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default(),
+        );
         let uri = url("full-change.txt");
         open_document(&mut state, uri.clone(), "old");
 
@@ -705,7 +730,10 @@ mod tests {
         let manifest = root.join("a.test");
         fs::write(&manifest, "disk").expect("test file can be written");
 
-        let state = ServerState::new::<TestServer>(ClientSocket::new_closed());
+        let state = ServerState::with_options::<TestServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default(),
+        );
         state.set_workspace_folders([workspace_folder(&root)]);
         let urls = state
             .refresh_workspace_documents()
@@ -726,7 +754,10 @@ mod tests {
         let manifest = fs::canonicalize(manifest).expect("test file can be canonicalized");
         let uri = Url::from_file_path(&manifest).expect("path can be converted to a URL");
 
-        let mut state = ServerState::new::<TestServer>(ClientSocket::new_closed());
+        let mut state = ServerState::with_options::<TestServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default(),
+        );
         state.set_workspace_folders([workspace_folder(&root)]);
         open_document(&mut state, uri.clone(), "open");
 
@@ -749,7 +780,10 @@ mod tests {
         let manifest = fs::canonicalize(manifest).expect("test file can be canonicalized");
         let uri = Url::from_file_path(&manifest).expect("path can be converted to a URL");
 
-        let mut state = ServerState::new::<TestServer>(ClientSocket::new_closed());
+        let mut state = ServerState::with_options::<TestServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default(),
+        );
         state.set_workspace_folders([workspace_folder(&root)]);
         open_document(&mut state, uri.clone(), "open");
 
@@ -795,7 +829,10 @@ mod tests {
         let manifest = fs::canonicalize(manifest).expect("test file can be canonicalized");
         let uri = Url::from_file_path(manifest).expect("path can be converted to a URL");
 
-        let mut state = ServerState::new::<TestServer>(ClientSocket::new_closed());
+        let mut state = ServerState::with_options::<TestServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default(),
+        );
         open_document(&mut state, uri.clone(), "open");
 
         let _ = state.handle_document_close(DidCloseTextDocumentParams {
@@ -814,7 +851,10 @@ mod tests {
             let path = root.join("missing.test");
             Url::from_file_path(path).expect("path can be converted to a URL")
         };
-        let mut state = ServerState::new::<TestServer>(ClientSocket::new_closed());
+        let mut state = ServerState::with_options::<TestServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default(),
+        );
         open_document(&mut state, uri.clone(), "original");
 
         let _ = state.handle_document_change(DidChangeTextDocumentParams {
@@ -857,7 +897,10 @@ mod tests {
             let path = root.join("missing.json");
             Url::from_file_path(path).expect("path can be converted to a URL")
         };
-        let mut state = ServerState::new::<JsonServer>(ClientSocket::new_closed());
+        let mut state = ServerState::with_options::<JsonServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default(),
+        );
         let _ = state.handle_document_open(DidOpenTextDocumentParams {
             text_document: TextDocumentItem::new(
                 uri.clone(),
