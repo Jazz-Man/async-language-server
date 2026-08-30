@@ -398,7 +398,7 @@ where
         .map(|id| (id.uri, id.value))
         .collect();
     let urls = state
-        .refresh_workspace_documents::<T>()
+        .refresh_workspace_documents()
         .map_err(ResponseError::from)?;
     let mut items = Vec::new();
 
