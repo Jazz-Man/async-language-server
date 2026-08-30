@@ -3,10 +3,10 @@ use std::{ops::ControlFlow, sync::Arc};
 use async_lsp::{
     ClientSocket, ErrorCode, LanguageServer, ResponseError, Result,
     lsp_types::{
-        DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWorkspaceFoldersParams,
-        DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-        InitializeParams, InitializeResult, InitializedParams, SaveOptions,
-        TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+        CodeAction, CompletionItem, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+        DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+        DidSaveTextDocumentParams, InitializeParams, InitializeResult, InitializedParams,
+        SaveOptions, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
         TextDocumentSyncSaveOptions, Url, WorkspaceDiagnosticParams,
         WorkspaceDiagnosticReportResult, WorkspaceFolder,
     },
@@ -98,27 +98,7 @@ macro_rules! implement_methods {
 }
 
 fn workspace_folders(params: &InitializeParams) -> Vec<WorkspaceFolder> {
-    if let Some(folders) = params.workspace_folders.clone() {
-        return folders;
-    }
-
-    #[allow(deprecated)]
-    params
-        .root_uri
-        .clone()
-        .map(|uri| {
-            let name = uri
-                .to_file_path()
-                .ok()
-                .and_then(|path| {
-                    path.file_name()
-                        .map(|name| name.to_string_lossy().to_string())
-                })
-                .unwrap_or_else(|| "workspace".to_string());
-            WorkspaceFolder { uri, name }
-        })
-        .into_iter()
-        .collect()
+    params.workspace_folders.clone().unwrap_or_default()
 }
 
 /// The low-level language server implementation that automatically
@@ -135,7 +115,7 @@ impl<T: Server> LanguageServerWithState<T> {
     pub(crate) fn new(client: ClientSocket, server: T) -> Self {
         let options = server.server_options();
         let server = Arc::new(server);
-        let state = ServerState::with_options::<T>(client, options);
+        let state = ServerState::with_options::<T>(client, &options);
         Self { server, state }
     }
 }
@@ -274,24 +254,23 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
     fn did_open(&mut self, params: DidOpenTextDocumentParams) -> ControlFlow<Result<()>> {
         #[cfg(feature = "tracing")]
         debug!("did_open: {}", params.text_document.uri);
-        self.state.handle_document_open::<T>(params)
+        self.state.handle_document_open(params)
     }
 
-    #[allow(unused_variables)]
     fn did_close(&mut self, params: DidCloseTextDocumentParams) -> ControlFlow<Result<()>> {
         #[cfg(feature = "tracing")]
         debug!("did_close: {}", params.text_document.uri);
-        self.state.handle_document_close::<T>(params)
+        self.state.handle_document_close(params)
     }
 
     fn did_change(&mut self, params: DidChangeTextDocumentParams) -> ControlFlow<Result<()>> {
-        self.state.handle_document_change::<T>(params)
+        self.state.handle_document_change(params)
     }
 
     fn did_save(&mut self, params: DidSaveTextDocumentParams) -> ControlFlow<Result<()>> {
         #[cfg(feature = "tracing")]
         debug!("did_save: {}", params.text_document.uri);
-        self.state.handle_document_save::<T>(params)
+        self.state.handle_document_save(params)
     }
 
     fn workspace_diagnostic(
@@ -305,14 +284,40 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         ))
     }
 
+    fn completion_item_resolve(
+        &mut self,
+        mut params: CompletionItem,
+    ) -> BoxFuture<'static, Result<CompletionItem, Self::Error>> {
+        let server = Arc::clone(&self.server);
+        let state = self.state.clone();
+        Box::pin(async move {
+            crate::requests::convert_incoming_completion_resolve(&state, &mut params);
+            let mut result = server.completion_resolve(state.clone(), params).await?;
+            crate::requests::convert_completion_resolve(&state, &mut result);
+            Ok(result)
+        })
+    }
+
+    fn code_action_resolve(
+        &mut self,
+        mut params: CodeAction,
+    ) -> BoxFuture<'static, Result<CodeAction, Self::Error>> {
+        let server = Arc::clone(&self.server);
+        let state = self.state.clone();
+        Box::pin(async move {
+            crate::requests::convert_incoming_code_action_resolve(&state, &mut params);
+            let mut result = server.code_action_resolve(state.clone(), params).await?;
+            crate::requests::convert_code_action_resolve(&state, &mut result);
+            Ok(result)
+        })
+    }
+
     // async-lsp method name => our method name @ request type definition
 
     implement_methods!(
         hover                   => hover                 @ crate::requests::Hover,
         completion              => completion            @ crate::requests::Completion,
-        completion_item_resolve => completion_resolve    @ crate::requests::CompletionResolve,
         code_action             => code_action           @ crate::requests::CodeAction,
-        code_action_resolve     => code_action_resolve   @ crate::requests::CodeActionResolve,
         document_link           => link                  @ crate::requests::DocumentLink,
         document_link_resolve   => link_resolve          @ crate::requests::DocumentLinkResolve,
         declaration             => declaration           @ crate::requests::Declaration,
@@ -548,6 +553,24 @@ mod tests {
                 PositionEncodingKind::new("utf-7"),
                 PositionEncodingKind::UTF16,
             ]),
+            ..Default::default()
+        });
+
+        let result =
+            futures::executor::block_on(server.initialize(params)).expect("server can initialize");
+
+        assert_eq!(
+            result.capabilities.position_encoding,
+            Some(PositionEncodingKind::UTF16)
+        );
+
+        // A client that offers only unknown encodings falls back to the
+        // protocol default, `Encoding::default()` (UTF-16).
+        let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
+
+        let mut params = initialize_params(&root);
+        params.capabilities.general = Some(GeneralClientCapabilities {
+            position_encodings: Some(vec![PositionEncodingKind::new("utf-7")]),
             ..Default::default()
         });
 
@@ -840,6 +863,28 @@ mod tests {
         };
         let messages: Vec<_> = report.items.iter().map(workspace_report_message).collect();
         assert_eq!(messages, ["source", "direct"]);
+
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
+
+    #[test]
+    fn initialize_without_workspace_folders_reports_no_items() {
+        let root = temp_workspace("no-folders");
+        fs::write(root.join("a.test"), "disk").expect("test file can be written");
+
+        let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
+        let mut params = initialize_params(&root);
+        params.workspace_folders = None; // client sends neither folders nor rootUri
+        futures::executor::block_on(server.initialize(params)).expect("server can initialize");
+
+        let report =
+            futures::executor::block_on(server.workspace_diagnostic(workspace_diagnostic_params()))
+                .expect("workspace diagnostics can be fetched");
+
+        let WorkspaceDiagnosticReportResult::Report(report) = report else {
+            panic!("expected full workspace diagnostic report");
+        };
+        assert!(report.items.is_empty());
 
         fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
