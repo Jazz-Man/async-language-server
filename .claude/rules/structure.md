@@ -2,18 +2,20 @@
 
 Two layers wrap `async-lsp`:
 
-1. **User layer** — the `Server` trait (`src/server_trait.rs`).
+1. **User layer** — the `Server` trait (`src/server/server_trait.rs`).
    Implementors override async methods (`hover`, `completion`, `definition`,
    `document_diagnostics`, ...). Every method is optional; unimplemented ones
    return `METHOD_NOT_FOUND` through `method_not_implemented`. The
    `*_resolve` methods are the exception: they default to resolving the item
    unchanged.
-2. **Plumbing** — `LanguageServerWithState` (`src/server_with_state.rs`),
-   which implements async-lsp's `LanguageServer`: `initialize` (position
-   encoding negotiation, capability merging, workspace folders) and all
-   document notifications, then forwards requests to the `Server` trait.
+2. **Plumbing** — `LanguageServerWithState`
+   (`src/server/with_state/mod.rs`, the `initialize` flow in
+   `src/server/with_state/initialize.rs`), which implements async-lsp's
+   `LanguageServer`: `initialize` (position encoding negotiation, capability
+   merging, workspace folders) and all document notifications, then forwards
+   requests to the `Server` trait.
 
-`serve()` (`src/serve.rs`) wires the implementor into async-lsp's `MainLoop`
+`serve()` (`src/server/serve.rs`) wires the implementor into async-lsp's `MainLoop`
 behind a tower `ServiceBuilder` stack — `LifecycleLayer`, `TracingLayer`
 (`tracing` feature), `ConcurrencyLayer(8)`, `CatchUnwindLayer`,
 `ClientProcessMonitorLayer` — over a `Transport` (`Stdio`, or `Socket(port)`).
@@ -22,24 +24,26 @@ behind a tower `ServiceBuilder` stack — `LifecycleLayer`, `TracingLayer`
 
 `Server` trait methods always receive and produce **UTF-8** positions, no
 matter which encoding was negotiated with the client (preference order in
-`POSITION_ENCODING_PREFERRED_ORDER` in `src/server_with_state.rs`:
-UTF-8 > UTF-32 > UTF-16). All translation lives in `src/requests.rs`;
+`POSITION_ENCODING_PREFERRED_ORDER` in `src/server/with_state/mod.rs`:
+UTF-8 > UTF-32 > UTF-16). All translation lives in `src/requests/`;
 handlers never convert encodings themselves.
 
 ## Adding an LSP method touches three places
 
-1. The trait method in `src/server_trait.rs`, defaulting to
+1. The trait method in `src/server/server_trait.rs`, defaulting to
    `method_not_implemented`, with a `///` doc naming the capability it
    requires.
-2. A `Request` impl in `src/requests.rs`.
-3. One line in the `implement_methods!` table in `src/server_with_state.rs`
+2. A `Request` impl in a dedicated file under `src/requests/`, re-exported
+   from `src/requests/mod.rs`.
+3. One line in the `implement_methods!` table in `src/server/with_state/mod.rs`
    (`async_lsp_method => server_trait_method @ RequestType`).
 
 Export any new public types through the `server` module in `src/lib.rs`.
 
-## The `Request` pattern (`src/requests.rs`)
+## The `Request` pattern (`src/requests/`)
 
-Each LSP request has a `Request` impl with three hooks:
+The `Request` trait lives in `src/requests/mod.rs`; each LSP request has
+its own file with a `Request` impl providing three hooks:
 
 - `extract_url` — pulls the document URL out of the params so the wrapper can
   snapshot its version.
@@ -47,11 +51,12 @@ Each LSP request has a `Request` impl with three hooks:
 - `modify_response` — UTF-8 → client encoding, after.
 
 Implement these with the existing `modify_incoming_*` / `modify_outgoing_*`
-helpers (positions, ranges, locations, diagnostics, text edits) rather than
-calling `position_to_encoding` directly — that is reuse of existing
-machinery, not new abstraction. Conversely, do not build new abstraction
-layers for one-off conversions: if no helper fits, add one next to the
-others in `src/requests.rs`. Conversions stay centralized there. Convert
+helpers in `src/requests/conversion.rs` (positions, ranges, locations,
+diagnostics, text edits) rather than calling `position_to_encoding`
+directly — that is reuse of existing machinery, not new abstraction.
+Conversely, do not build new abstraction layers for one-off conversions:
+if no helper fits, add one next to the others in
+`src/requests/conversion.rs`. Conversions stay centralized there. Convert
 positions in responses against the document the position refers to, falling
 back to the request's own document when that URL isn't tracked.
 
@@ -62,11 +67,11 @@ Do not duplicate that logic in handlers.
 
 ## State and documents
 
-`ServerState` (`src/server_state.rs`) is a cheaply-clonable
+`ServerState` (`src/server/state/mod.rs`) is a cheaply-clonable
 interior-mutable handle passed to every handler: a `DashMap` of documents,
 workspace roots, the negotiated encoding, and matchers. `Document`
-(`src/document.rs`) is a snapshot clone wrapping a `ropey::Rope`, plus an
-optional `Language`/`Tree` under the `tree-sitter` feature.
+(`src/documents/document.rs`) is a snapshot clone wrapping a `ropey::Rope`,
+plus an optional `Language`/`Tree` under the `tree-sitter` feature.
 
 Documents carry an origin: `Open` (from the editor) or `Workspace` (loaded
 from disk). Open documents win over disk state; closing an open document
@@ -79,15 +84,15 @@ synchronous per the LSP spec and async-lsp, hence the `std::fs` reads there.
 
 ## Matching and workspace scanning
 
-`DocumentMatcher` (`src/document_matcher.rs`) associates documents with a
+`DocumentMatcher` (`src/documents/matcher.rs`) associates documents with a
 named matcher via URL globs and/or language-id strings, optionally carrying
 a tree-sitter grammar — one language per document, not per server.
-`WorkspaceWalker` (`src/workspace_walker.rs`) scans roots with the `ignore`
+`WorkspaceWalker` (`src/workspace/walker.rs`) scans roots with the `ignore`
 crate: `.gitignore` respected by default, hidden files skipped.
 
 ## Diagnostics surfaces
 
-- `workspace_diagnostics.rs` implements `workspace/diagnostic`: walks roots,
+- `src/workspace/diagnostics.rs` implements `workspace/diagnostic`: walks roots,
   loads matching files as `Workspace` documents, runs per-document
   diagnostics through the same `Server` method, and merges related-document
   reports. Exposure is set via `ServerOptions::with_workspace_diagnostics`:
@@ -111,4 +116,4 @@ the wrapper converts them to LSP error responses.
 ---
 _Every change respects the layer split and the UTF-8 invariant: new LSP
 surface goes through the three-place pattern, encoding stays centralized in
-`src/requests.rs`._
+`src/requests/`._
