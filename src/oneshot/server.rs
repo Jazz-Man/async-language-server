@@ -15,9 +15,8 @@ use async_lsp::{
 
 use crate::{
     error::{ServerError, ServerResult},
-    server_trait::Server,
-    server_with_state::LanguageServerWithState,
-    workspace_walker::path_to_url,
+    server::{LanguageServerWithState, Server},
+    workspace::path_to_url,
 };
 
 pub(super) struct OneshotServer<S: Server> {

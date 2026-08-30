@@ -24,9 +24,9 @@ use async_lsp::{
 
 use crate::{
     requests::Request,
-    server_options::{ServerOptions, WorkspaceDiagnostics, WorkspaceDiagnosticsSetting},
-    server_state::ServerState,
-    server_trait::Server,
+    server::{
+        Server, ServerOptions, ServerState, WorkspaceDiagnostics, WorkspaceDiagnosticsSetting,
+    },
 };
 
 #[derive(Debug, Clone)]

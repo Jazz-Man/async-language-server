@@ -10,7 +10,8 @@ use tower::ServiceBuilder;
 use async_lsp::tracing::TracingLayer;
 
 use crate::{
-    error::ServerResult, server_trait::Server, server_with_state::LanguageServerWithState,
+    error::ServerResult,
+    server::{LanguageServerWithState, Server},
     transport::Transport,
 };
 

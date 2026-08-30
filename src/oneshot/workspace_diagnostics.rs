@@ -6,10 +6,10 @@ use async_lsp::lsp_types::{
 };
 
 use crate::{
-    document_matcher::DocumentMatchers,
+    documents::DocumentMatchers,
     error::ServerResult,
-    server_trait::Server,
-    workspace_walker::{WorkspaceWalkConfig, WorkspaceWalker, path_to_url},
+    server::Server,
+    workspace::{WorkspaceWalkConfig, WorkspaceWalker, path_to_url},
 };
 
 use super::server::{OneshotDocument, OneshotServer};

@@ -12,10 +12,9 @@ use async_lsp::{
 };
 
 use crate::{
-    document_matcher::DocumentMatcher,
+    documents::DocumentMatcher,
     error::{ServerError, ServerResult},
-    server_options::ServerOptions,
-    server_state::ServerState,
+    server::{ServerOptions, ServerState},
 };
 
 /// The main entrypoint to LSP functionality for a server.
