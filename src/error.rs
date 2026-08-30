@@ -1,5 +1,3 @@
-#![allow(clippy::needless_pass_by_value)]
-
 use std::path::PathBuf;
 
 use async_lsp::ResponseError;
@@ -66,11 +64,8 @@ pub enum ServerError {
 impl ServerError {
     /// Creates a JSON-RPC error with the given code and message.
     #[must_use]
-    pub fn rpc(code: ServerErrorCode, message: impl ToString) -> Self {
-        ServerError::Rpc {
-            code,
-            message: message.to_string(),
-        }
+    pub fn rpc(code: ServerErrorCode, message: String) -> Self {
+        ServerError::Rpc { code, message }
     }
 }
 
@@ -120,7 +115,8 @@ mod tests {
 
     #[test]
     fn rpc_errors_map_to_their_own_code() {
-        let response = ResponseError::from(ServerError::rpc(ErrorCode::METHOD_NOT_FOUND, "nope"));
+        let response =
+            ResponseError::from(ServerError::rpc(ErrorCode::METHOD_NOT_FOUND, "nope".into()));
 
         assert_eq!(response.code, ErrorCode::METHOD_NOT_FOUND);
         assert_eq!(response.message, "nope");
