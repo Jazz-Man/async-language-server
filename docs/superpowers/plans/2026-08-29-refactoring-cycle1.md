@@ -374,15 +374,20 @@ Expected: builds; new error tests pass; all existing tests pass. (`ServerError::
 ```rust
 #[cfg(test)]
 mod tests {
-    use std::{fs, os::unix::fs::PermissionsExt, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
-    use super::WorkspaceWalker;
+    use super::{WorkspaceWalkConfig, WorkspaceWalker};
 
     // One unreadable entry must not abort the scan; this test is unix-only
     // because the failure is injected with filesystem permissions.
     #[test]
     #[cfg(unix)]
     fn files_skips_unreadable_entries() {
+        use std::os::unix::fs::PermissionsExt;
+
         let millis = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system time is after epoch")
@@ -590,11 +595,13 @@ Expected: PASS — no panic, negotiated UTF-16.
                 version: 2,
             },
             content_changes: vec![TextDocumentContentChangeEvent {
-                // Out-of-bounds range makes the incremental application fail;
-                // the file does not exist on disk, so the re-read fails too.
+                // An out-of-bounds LINE makes the incremental application
+                // fail (columns are clamped during encoding conversion, so
+                // out-of-bounds columns do not); the file does not exist on
+                // disk, so the re-read fails too.
                 range: Some(Range::new(
-                    Position::new(0, 100),
-                    Position::new(0, 200),
+                    Position::new(50, 0),
+                    Position::new(50, 1),
                 )),
                 range_length: None,
                 text: "x".into(),
