@@ -307,7 +307,7 @@ fn mismatched_text_length_returns_text_range_mismatch() {
 
 #[test]
 fn shrink_requires_a_single_line_range() {
-    let multiline = r(0, p(0, 0), 3, p(1, 0)); // spans "a\nb"
+    let multiline = r(0, p(0, 0), 2, p(1, 0)); // spans "a\nb"
     assert_eq!(
         multiline.shrink(1, 1).unwrap_err(),
         RangeError::NotSingleLine

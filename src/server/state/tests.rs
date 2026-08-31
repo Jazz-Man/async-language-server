@@ -357,6 +357,10 @@ fn document_save_removes_the_document_when_no_text_and_no_file() {
     let _ = state.handle_document_open(DidOpenTextDocumentParams {
         text_document: TextDocumentItem::new(uri.clone(), "test".into(), 1, "before".into()),
     });
+    assert!(
+        state.document(&uri).is_some(),
+        "document is tracked before save"
+    );
 
     let _ = state.handle_document_save(DidSaveTextDocumentParams {
         text_document: TextDocumentIdentifier::new(uri.clone()),

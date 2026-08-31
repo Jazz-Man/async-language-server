@@ -263,7 +263,7 @@ mod tests {
         assert_eq!(
             DocumentMatcher::new("bare").lang_grammar(),
             None,
-            "the getter is pub(crate); default is no grammar"
+            "a bare matcher carries no grammar"
         );
     }
 }
