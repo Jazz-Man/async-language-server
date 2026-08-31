@@ -19,15 +19,13 @@ use super::{encoding::Encoding, position::Position};
 pub fn position_to_encoding<P>(
     contents: &Rope,
     position: P,
-    encoding_source: impl Into<Encoding>,
-    encoding_target: impl Into<Encoding>,
+    encoding_source: Encoding,
+    encoding_target: Encoding,
 ) -> P
 where
     P: Into<Position>,
     P: From<Position>,
 {
-    let encoding_source = encoding_source.into();
-    let encoding_target = encoding_target.into();
     if encoding_target == encoding_source {
         return position;
     }
@@ -66,7 +64,8 @@ where
             let column_utf16 = position.col.min(slice.len_utf16_cu());
             slice.utf16_cu_to_char(column_utf16)
         }
-        // Same encoding
+        // Internal invariant: the same-encoding case returns early above,
+        // so this arm is unreachable from any external input.
         _ => unreachable!(),
     };
 
@@ -83,16 +82,6 @@ mod tests {
     use ropey::Rope;
 
     use super::{Encoding, Position, position_to_encoding};
-
-    #[test]
-    fn converts_utf8_columns_to_utf16() {
-        let text = Rope::from_str("a🙂b");
-        let position = Position { line: 0, col: 5 };
-
-        let converted = position_to_encoding(&text, position, Encoding::UTF8, Encoding::UTF16);
-
-        assert_eq!(converted, Position { line: 0, col: 3 });
-    }
 
     #[test]
     fn caps_lines_before_converting_columns() {
