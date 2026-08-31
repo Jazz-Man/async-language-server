@@ -7,7 +7,7 @@ use crate::server::{Document, ServerState};
 
 use super::{
     Request,
-    conversion::{modify_incoming_position, modify_outgoing_range},
+    conversion::{Direction, convert_position, convert_range},
 };
 
 pub struct RenamePrepare;
@@ -21,7 +21,7 @@ impl Request for RenamePrepare {
     }
 
     fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        modify_incoming_position(state, document, &mut params.position);
+        convert_position(state, document, &mut params.position, Direction::Incoming);
     }
 
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
@@ -29,7 +29,7 @@ impl Request for RenamePrepare {
             match response {
                 LspPrepareRenameResponse::Range(range)
                 | LspPrepareRenameResponse::RangeWithPlaceholder { range, .. } => {
-                    modify_outgoing_range(state, document, range);
+                    convert_range(state, document, range, Direction::Outgoing);
                 }
                 LspPrepareRenameResponse::DefaultBehavior { .. } => {}
             }

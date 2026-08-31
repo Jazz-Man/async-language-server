@@ -7,10 +7,7 @@ use crate::{
 
 use super::{
     Request,
-    conversion::{
-        modify_incoming_completion_text_edit, modify_incoming_text_edit,
-        modify_outgoing_completion_text_edit, modify_outgoing_text_edit,
-    },
+    conversion::{Direction, convert_completion_text_edit, convert_text_edit},
 };
 
 pub struct CompletionResolve;
@@ -23,24 +20,24 @@ impl Request for CompletionResolve {
 
     fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
         if let Some(edit) = params.text_edit.as_mut() {
-            modify_incoming_completion_text_edit(state, document, edit);
+            convert_completion_text_edit(state, document, edit, Direction::Incoming);
         }
 
         if let Some(additional_edits) = params.additional_text_edits.as_mut() {
             for edit in additional_edits.iter_mut() {
-                modify_incoming_text_edit(state, document, edit);
+                convert_text_edit(state, document, edit, Direction::Incoming);
             }
         }
     }
 
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
         if let Some(edit) = response.text_edit.as_mut() {
-            modify_outgoing_completion_text_edit(state, document, edit);
+            convert_completion_text_edit(state, document, edit, Direction::Outgoing);
         }
 
         if let Some(additional_edits) = response.additional_text_edits.as_mut() {
             for edit in additional_edits.iter_mut() {
-                modify_outgoing_text_edit(state, document, edit);
+                convert_text_edit(state, document, edit, Direction::Outgoing);
             }
         }
     }

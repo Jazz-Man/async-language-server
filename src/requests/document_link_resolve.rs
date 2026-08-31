@@ -4,7 +4,7 @@ use crate::server::{Document, ServerState};
 
 use super::{
     Request,
-    conversion::{modify_incoming_range, modify_outgoing_range},
+    conversion::{Direction, convert_range},
 };
 
 pub struct DocumentLinkResolve;
@@ -18,10 +18,10 @@ impl Request for DocumentLinkResolve {
     }
 
     fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        modify_incoming_range(state, document, &mut params.range);
+        convert_range(state, document, &mut params.range, Direction::Incoming);
     }
 
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        modify_outgoing_range(state, document, &mut response.range);
+        convert_range(state, document, &mut response.range, Direction::Outgoing);
     }
 }

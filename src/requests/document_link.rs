@@ -4,7 +4,10 @@ use async_lsp::lsp_types::{
 
 use crate::server::{Document, ServerState};
 
-use super::{Request, conversion::modify_outgoing_range};
+use super::{
+    Request,
+    conversion::{Direction, convert_range},
+};
 
 pub struct DocumentLink;
 
@@ -19,7 +22,7 @@ impl Request for DocumentLink {
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
         if let Some(links) = response.as_mut() {
             for link in links.iter_mut() {
-                modify_outgoing_range(state, document, &mut link.range);
+                convert_range(state, document, &mut link.range, Direction::Outgoing);
             }
         }
     }

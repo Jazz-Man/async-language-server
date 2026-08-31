@@ -7,9 +7,7 @@ use crate::server::{Document, ServerState};
 
 use super::{
     Request,
-    conversion::{
-        modify_incoming_position, modify_outgoing_location, modify_outgoing_location_link,
-    },
+    conversion::{Direction, convert_location, convert_position, modify_outgoing_location_link},
 };
 
 pub struct Definition;
@@ -29,10 +27,11 @@ impl Request for Definition {
     }
 
     fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        modify_incoming_position(
+        convert_position(
             state,
             document,
             &mut params.text_document_position_params.position,
+            Direction::Incoming,
         );
     }
 
@@ -40,11 +39,11 @@ impl Request for Definition {
         if let Some(response) = response.as_mut() {
             match response {
                 LspGotoDefinitionResponse::Scalar(loc) => {
-                    modify_outgoing_location(state, document, loc);
+                    convert_location(state, document, loc, Direction::Outgoing);
                 }
                 LspGotoDefinitionResponse::Array(locations) => {
                     for loc in locations.iter_mut() {
-                        modify_outgoing_location(state, document, loc);
+                        convert_location(state, document, loc, Direction::Outgoing);
                     }
                 }
                 LspGotoDefinitionResponse::Link(links) => {

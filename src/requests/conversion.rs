@@ -1,3 +1,12 @@
+//! Centralized position-encoding conversion for the `Request` hooks.
+//!
+//! Two verb families live here: `convert_*` helpers are
+//! direction-parameterized (`Direction::Incoming` = client encoding to
+//! UTF-8, before the handler; `Direction::Outgoing` = UTF-8 to the client
+//! encoding, after), while the remaining `modify_*` helpers are
+//! fixed-direction shapes whose incoming and outgoing forms differ in more
+//! than the encoding pair.
+
 use async_lsp::lsp_types::{
     CompletionTextEdit as LspCompletionTextEdit, Diagnostic as LspDiagnostic,
     DocumentDiagnosticReportKind, Location as LspLocation, LocationLink as LspLocationLink, OneOf,
@@ -10,132 +19,102 @@ use crate::{
     text_utils::{Encoding, position_to_encoding},
 };
 
-pub(crate) fn modify_incoming_position(
+/// Direction of an encoding conversion between the client's negotiated
+/// position encoding and the crate-internal UTF-8.
+///
+/// [`Direction::Incoming`] converts values from the client encoding to UTF-8
+/// (request params, before the handler); [`Direction::Outgoing`] converts them
+/// back (responses, after the handler).
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Direction {
+    /// Client encoding → UTF-8.
+    Incoming,
+    /// UTF-8 → client encoding.
+    Outgoing,
+}
+
+pub(crate) fn convert_position(
     state: &ServerState,
     document: &Document,
     position: &mut LspPosition,
+    direction: Direction,
 ) {
-    *position = position_to_encoding(
-        &document.text,
-        *position,
-        state.get_position_encoding(),
-        Encoding::UTF8,
-    );
+    let (source, target) = match direction {
+        Direction::Incoming => (state.get_position_encoding(), Encoding::UTF8),
+        Direction::Outgoing => (Encoding::UTF8, state.get_position_encoding()),
+    };
+    *position = position_to_encoding(&document.text, *position, source, target);
 }
 
-pub(crate) fn modify_incoming_position_at_url(
+pub(crate) fn convert_position_at_url(
     state: &ServerState,
     fallback: &Document,
     url: &Url,
     position: &mut LspPosition,
+    direction: Direction,
 ) {
     if url == fallback.url() {
-        modify_incoming_position(state, fallback, position);
+        convert_position(state, fallback, position, direction);
     } else if let Some(document) = state.document(url) {
-        modify_incoming_position(state, &document, position);
+        convert_position(state, &document, position, direction);
     } else {
-        modify_incoming_position(state, fallback, position);
+        convert_position(state, fallback, position, direction);
     }
 }
 
-pub(crate) fn modify_incoming_range(
+pub(crate) fn convert_range(
     state: &ServerState,
     document: &Document,
     range: &mut LspRange,
+    direction: Direction,
 ) {
-    modify_incoming_position(state, document, &mut range.start);
-    modify_incoming_position(state, document, &mut range.end);
+    convert_position(state, document, &mut range.start, direction);
+    convert_position(state, document, &mut range.end, direction);
 }
 
-pub(crate) fn modify_incoming_range_at_url(
+pub(crate) fn convert_range_at_url(
     state: &ServerState,
     fallback: &Document,
     url: &Url,
     range: &mut LspRange,
+    direction: Direction,
 ) {
-    modify_incoming_position_at_url(state, fallback, url, &mut range.start);
-    modify_incoming_position_at_url(state, fallback, url, &mut range.end);
+    convert_position_at_url(state, fallback, url, &mut range.start, direction);
+    convert_position_at_url(state, fallback, url, &mut range.end, direction);
 }
 
-pub(crate) fn modify_incoming_location(
+pub(crate) fn convert_location(
     state: &ServerState,
     document: &Document,
     loc: &mut LspLocation,
+    direction: Direction,
 ) {
     let uri = loc.uri.clone();
-    modify_incoming_range_at_url(state, document, &uri, &mut loc.range);
+    convert_range_at_url(state, document, &uri, &mut loc.range, direction);
 }
 
-pub(crate) fn modify_outgoing_position(
+pub(crate) fn convert_text_edit(
     state: &ServerState,
     document: &Document,
-    position: &mut LspPosition,
+    edit: &mut LspTextEdit,
+    direction: Direction,
 ) {
-    *position = position_to_encoding(
-        &document.text,
-        *position,
-        Encoding::UTF8,
-        state.get_position_encoding(),
-    );
+    convert_range(state, document, &mut edit.range, direction);
 }
 
-pub(crate) fn modify_outgoing_position_at_url(
+pub(crate) fn convert_completion_text_edit(
     state: &ServerState,
-    fallback: &Document,
-    url: &Url,
-    position: &mut LspPosition,
+    document: &Document,
+    edit: &mut LspCompletionTextEdit,
+    direction: Direction,
 ) {
-    if url == fallback.url() {
-        modify_outgoing_position(state, fallback, position);
-    } else if let Some(document) = state.document(url) {
-        modify_outgoing_position(state, &document, position);
-    } else {
-        modify_outgoing_position(state, fallback, position);
+    match edit {
+        LspCompletionTextEdit::Edit(edit) => convert_text_edit(state, document, edit, direction),
+        LspCompletionTextEdit::InsertAndReplace(edit) => {
+            convert_range(state, document, &mut edit.insert, direction);
+            convert_range(state, document, &mut edit.replace, direction);
+        }
     }
-}
-
-pub(crate) fn modify_outgoing_range(
-    state: &ServerState,
-    document: &Document,
-    range: &mut LspRange,
-) {
-    modify_outgoing_position(state, document, &mut range.start);
-    modify_outgoing_position(state, document, &mut range.end);
-}
-
-pub(crate) fn modify_outgoing_range_at_url(
-    state: &ServerState,
-    fallback: &Document,
-    url: &Url,
-    range: &mut LspRange,
-) {
-    modify_outgoing_position_at_url(state, fallback, url, &mut range.start);
-    modify_outgoing_position_at_url(state, fallback, url, &mut range.end);
-}
-
-pub(crate) fn modify_outgoing_location(
-    state: &ServerState,
-    document: &Document,
-    loc: &mut LspLocation,
-) {
-    let uri = loc.uri.clone();
-    modify_outgoing_range_at_url(state, document, &uri, &mut loc.range);
-}
-
-pub(crate) fn modify_outgoing_text_edit(
-    state: &ServerState,
-    document: &Document,
-    edit: &mut LspTextEdit,
-) {
-    modify_outgoing_range(state, document, &mut edit.range);
-}
-
-pub(crate) fn modify_incoming_text_edit(
-    state: &ServerState,
-    document: &Document,
-    edit: &mut LspTextEdit,
-) {
-    modify_incoming_range(state, document, &mut edit.range);
 }
 
 pub(crate) fn modify_incoming_diagnostic(
@@ -143,10 +122,10 @@ pub(crate) fn modify_incoming_diagnostic(
     document: &Document,
     diag: &mut LspDiagnostic,
 ) {
-    modify_incoming_range(state, document, &mut diag.range);
+    convert_range(state, document, &mut diag.range, Direction::Incoming);
     if let Some(related) = diag.related_information.as_mut() {
         for info in related {
-            modify_incoming_location(state, document, &mut info.location);
+            convert_location(state, document, &mut info.location, Direction::Incoming);
         }
     }
 }
@@ -166,10 +145,10 @@ pub(crate) fn modify_outgoing_diagnostic_at_url(
     url: &Url,
     diag: &mut LspDiagnostic,
 ) {
-    modify_outgoing_range_at_url(state, fallback, url, &mut diag.range);
+    convert_range_at_url(state, fallback, url, &mut diag.range, Direction::Outgoing);
     if let Some(related) = diag.related_information.as_mut() {
         for info in related {
-            modify_outgoing_location(state, fallback, &mut info.location);
+            convert_location(state, fallback, &mut info.location, Direction::Outgoing);
         }
     }
 }
@@ -187,63 +166,43 @@ pub(crate) fn modify_outgoing_diagnostic_report_kind_at_url(
     }
 }
 
-pub(crate) fn modify_outgoing_completion_text_edit(
-    state: &ServerState,
-    document: &Document,
-    edit: &mut LspCompletionTextEdit,
-) {
-    match edit {
-        LspCompletionTextEdit::Edit(edit) => modify_outgoing_text_edit(state, document, edit),
-        LspCompletionTextEdit::InsertAndReplace(edit) => {
-            modify_outgoing_range(state, document, &mut edit.insert);
-            modify_outgoing_range(state, document, &mut edit.replace);
-        }
-    }
-}
-
-pub(crate) fn modify_incoming_completion_text_edit(
-    state: &ServerState,
-    document: &Document,
-    edit: &mut LspCompletionTextEdit,
-) {
-    match edit {
-        LspCompletionTextEdit::Edit(edit) => modify_incoming_text_edit(state, document, edit),
-        LspCompletionTextEdit::InsertAndReplace(edit) => {
-            modify_incoming_range(state, document, &mut edit.insert);
-            modify_incoming_range(state, document, &mut edit.replace);
-        }
-    }
-}
-
 pub(crate) fn modify_outgoing_location_link(
     state: &ServerState,
     document: &Document,
     link: &mut LspLocationLink,
 ) {
     if let Some(origin_range) = link.origin_selection_range.as_mut() {
-        modify_outgoing_range(state, document, origin_range);
+        convert_range(state, document, origin_range, Direction::Outgoing);
     }
 
-    modify_outgoing_range_at_url(state, document, &link.target_uri, &mut link.target_range);
-    modify_outgoing_range_at_url(
+    convert_range_at_url(
+        state,
+        document,
+        &link.target_uri,
+        &mut link.target_range,
+        Direction::Outgoing,
+    );
+    convert_range_at_url(
         state,
         document,
         &link.target_uri,
         &mut link.target_selection_range,
+        Direction::Outgoing,
     );
 }
 
-pub(crate) fn modify_outgoing_workspace_edit(
+pub(crate) fn convert_workspace_edit(
     state: &ServerState,
     document: &Document,
     edit: &mut LspWorkspaceEdit,
+    direction: Direction,
 ) {
     use async_lsp::lsp_types::{DocumentChangeOperation, DocumentChanges};
 
     if let Some(changes) = edit.changes.as_mut() {
         for (uri, edits) in changes {
             for text_edit in edits.iter_mut() {
-                modify_outgoing_range_at_url(state, document, uri, &mut text_edit.range);
+                convert_range_at_url(state, document, uri, &mut text_edit.range, direction);
             }
         }
     }
@@ -256,14 +215,15 @@ pub(crate) fn modify_outgoing_workspace_edit(
                     for text_edit in &mut versioned_edit.edits {
                         match text_edit {
                             OneOf::Left(l) => {
-                                modify_outgoing_range_at_url(state, document, uri, &mut l.range);
+                                convert_range_at_url(state, document, uri, &mut l.range, direction);
                             }
                             OneOf::Right(r) => {
-                                modify_outgoing_range_at_url(
+                                convert_range_at_url(
                                     state,
                                     document,
                                     uri,
                                     &mut r.text_edit.range,
+                                    direction,
                                 );
                             }
                         }
@@ -278,92 +238,21 @@ pub(crate) fn modify_outgoing_workspace_edit(
                             for text_edit in &mut edit.edits {
                                 match text_edit {
                                     OneOf::Left(l) => {
-                                        modify_outgoing_range_at_url(
+                                        convert_range_at_url(
                                             state,
                                             document,
                                             uri,
                                             &mut l.range,
+                                            direction,
                                         );
                                     }
                                     OneOf::Right(r) => {
-                                        modify_outgoing_range_at_url(
+                                        convert_range_at_url(
                                             state,
                                             document,
                                             uri,
                                             &mut r.text_edit.range,
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        DocumentChangeOperation::Op(_) => {
-                            // File operations don't have positions to modify
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub(crate) fn modify_incoming_workspace_edit(
-    state: &ServerState,
-    document: &Document,
-    edit: &mut LspWorkspaceEdit,
-) {
-    use async_lsp::lsp_types::{DocumentChangeOperation, DocumentChanges};
-
-    if let Some(changes) = edit.changes.as_mut() {
-        for (uri, edits) in changes {
-            for text_edit in edits.iter_mut() {
-                modify_incoming_range_at_url(state, document, uri, &mut text_edit.range);
-            }
-        }
-    }
-
-    if let Some(document_changes) = edit.document_changes.as_mut() {
-        match document_changes {
-            DocumentChanges::Edits(edits) => {
-                for versioned_edit in edits.iter_mut() {
-                    let uri = &versioned_edit.text_document.uri;
-                    for text_edit in &mut versioned_edit.edits {
-                        match text_edit {
-                            OneOf::Left(l) => {
-                                modify_incoming_range_at_url(state, document, uri, &mut l.range);
-                            }
-                            OneOf::Right(r) => {
-                                modify_incoming_range_at_url(
-                                    state,
-                                    document,
-                                    uri,
-                                    &mut r.text_edit.range,
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-            DocumentChanges::Operations(ops) => {
-                for op in ops.iter_mut() {
-                    match op {
-                        DocumentChangeOperation::Edit(edit) => {
-                            let uri = &edit.text_document.uri;
-                            for text_edit in &mut edit.edits {
-                                match text_edit {
-                                    OneOf::Left(l) => {
-                                        modify_incoming_range_at_url(
-                                            state,
-                                            document,
-                                            uri,
-                                            &mut l.range,
-                                        );
-                                    }
-                                    OneOf::Right(r) => {
-                                        modify_incoming_range_at_url(
-                                            state,
-                                            document,
-                                            uri,
-                                            &mut r.text_edit.range,
+                                            direction,
                                         );
                                     }
                                 }

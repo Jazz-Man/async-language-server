@@ -4,7 +4,7 @@ use crate::server::{Document, ServerState};
 
 use super::{
     Request,
-    conversion::{modify_incoming_position, modify_outgoing_location},
+    conversion::{Direction, convert_location, convert_position},
 };
 
 pub struct References;
@@ -18,13 +18,18 @@ impl Request for References {
     }
 
     fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        modify_incoming_position(state, document, &mut params.text_document_position.position);
+        convert_position(
+            state,
+            document,
+            &mut params.text_document_position.position,
+            Direction::Incoming,
+        );
     }
 
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
         if let Some(locations) = response.as_mut() {
             for loc in locations.iter_mut() {
-                modify_outgoing_location(state, document, loc);
+                convert_location(state, document, loc, Direction::Outgoing);
             }
         }
     }

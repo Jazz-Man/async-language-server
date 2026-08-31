@@ -8,8 +8,7 @@ use crate::{
 use super::{
     Request,
     conversion::{
-        modify_incoming_diagnostic, modify_incoming_workspace_edit, modify_outgoing_diagnostic,
-        modify_outgoing_workspace_edit,
+        Direction, convert_workspace_edit, modify_incoming_diagnostic, modify_outgoing_diagnostic,
     },
 };
 
@@ -28,7 +27,7 @@ impl Request for CodeActionResolve {
             }
         }
         if let Some(edit) = params.edit.as_mut() {
-            modify_incoming_workspace_edit(state, document, edit);
+            convert_workspace_edit(state, document, edit, Direction::Incoming);
         }
     }
 
@@ -39,7 +38,7 @@ impl Request for CodeActionResolve {
             }
         }
         if let Some(edit) = response.edit.as_mut() {
-            modify_outgoing_workspace_edit(state, document, edit);
+            convert_workspace_edit(state, document, edit, Direction::Outgoing);
         }
     }
 }

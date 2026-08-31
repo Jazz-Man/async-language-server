@@ -7,8 +7,8 @@ use crate::server::{Document, ServerState};
 use super::{
     Request,
     conversion::{
-        modify_incoming_diagnostic, modify_incoming_range, modify_outgoing_diagnostic,
-        modify_outgoing_workspace_edit,
+        Direction, convert_range, convert_workspace_edit, modify_incoming_diagnostic,
+        modify_outgoing_diagnostic,
     },
 };
 
@@ -23,7 +23,7 @@ impl Request for CodeAction {
     }
 
     fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        modify_incoming_range(state, document, &mut params.range);
+        convert_range(state, document, &mut params.range, Direction::Incoming);
         for diag in &mut params.context.diagnostics {
             modify_incoming_diagnostic(state, document, diag);
         }
@@ -39,7 +39,7 @@ impl Request for CodeAction {
                         }
                     }
                     if let Some(edit) = action.edit.as_mut() {
-                        modify_outgoing_workspace_edit(state, document, edit);
+                        convert_workspace_edit(state, document, edit, Direction::Outgoing);
                     }
                 }
             }

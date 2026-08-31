@@ -4,7 +4,7 @@ use crate::server::{Document, ServerState};
 
 use super::{
     Request,
-    conversion::{modify_incoming_position, modify_outgoing_range},
+    conversion::{Direction, convert_position, convert_range},
 };
 
 pub struct Hover;
@@ -24,10 +24,11 @@ impl Request for Hover {
     }
 
     fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        modify_incoming_position(
+        convert_position(
             state,
             document,
             &mut params.text_document_position_params.position,
+            Direction::Incoming,
         );
     }
 
@@ -35,7 +36,7 @@ impl Request for Hover {
         if let Some(hover) = response.as_mut()
             && let Some(range) = hover.range.as_mut()
         {
-            modify_outgoing_range(state, document, range);
+            convert_range(state, document, range, Direction::Outgoing);
         }
     }
 }

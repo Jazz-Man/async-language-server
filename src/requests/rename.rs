@@ -6,7 +6,7 @@ use crate::server::{Document, ServerState};
 
 use super::{
     Request,
-    conversion::{modify_incoming_position, modify_outgoing_workspace_edit},
+    conversion::{Direction, convert_position, convert_workspace_edit},
 };
 
 pub struct Rename;
@@ -20,12 +20,17 @@ impl Request for Rename {
     }
 
     fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        modify_incoming_position(state, document, &mut params.text_document_position.position);
+        convert_position(
+            state,
+            document,
+            &mut params.text_document_position.position,
+            Direction::Incoming,
+        );
     }
 
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
         if let Some(response) = response.as_mut() {
-            modify_outgoing_workspace_edit(state, document, response);
+            convert_workspace_edit(state, document, response, Direction::Outgoing);
         }
     }
 }

@@ -6,9 +6,7 @@ use crate::server::{Document, ServerState};
 
 use super::{
     Request,
-    conversion::{
-        modify_incoming_position, modify_outgoing_completion_text_edit, modify_outgoing_text_edit,
-    },
+    conversion::{Direction, convert_completion_text_edit, convert_position, convert_text_edit},
 };
 
 pub struct Completion;
@@ -22,7 +20,12 @@ impl Request for Completion {
     }
 
     fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        modify_incoming_position(state, document, &mut params.text_document_position.position);
+        convert_position(
+            state,
+            document,
+            &mut params.text_document_position.position,
+            Direction::Incoming,
+        );
     }
 
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
@@ -33,11 +36,11 @@ impl Request for Completion {
             };
             for item in items {
                 if let Some(edit) = item.text_edit.as_mut() {
-                    modify_outgoing_completion_text_edit(state, document, edit);
+                    convert_completion_text_edit(state, document, edit, Direction::Outgoing);
                 }
                 if let Some(edits) = item.additional_text_edits.as_mut() {
                     for edit in edits {
-                        modify_outgoing_text_edit(state, document, edit);
+                        convert_text_edit(state, document, edit, Direction::Outgoing);
                     }
                 }
             }

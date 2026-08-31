@@ -4,7 +4,10 @@ use async_lsp::lsp_types::{
 
 use crate::server::{Document, ServerState};
 
-use super::{Request, conversion::modify_outgoing_text_edit};
+use super::{
+    Request,
+    conversion::{Direction, convert_text_edit},
+};
 
 pub struct DocumentFormat;
 
@@ -19,7 +22,7 @@ impl Request for DocumentFormat {
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
         if let Some(edits) = response.as_mut() {
             for edit in edits.iter_mut() {
-                modify_outgoing_text_edit(state, document, edit);
+                convert_text_edit(state, document, edit, Direction::Outgoing);
             }
         }
     }
