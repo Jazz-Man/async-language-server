@@ -184,4 +184,40 @@ mod tests {
         assert_eq!(response.code, ErrorCode::INTERNAL_ERROR);
         assert_eq!(response.message, "boom");
     }
+
+    #[test]
+    fn lsp_errors_map_to_internal_error() {
+        let response = ResponseError::from(ServerError::Lsp(async_lsp::Error::Eof));
+
+        assert_eq!(response.code, ErrorCode::INTERNAL_ERROR);
+    }
+
+    #[test]
+    fn invalid_file_path_maps_to_internal_error() {
+        let response = ResponseError::from(ServerError::InvalidFilePath {
+            path: std::path::PathBuf::from("/bad"),
+        });
+
+        assert_eq!(response.code, ErrorCode::INTERNAL_ERROR);
+        assert_eq!(response.message, "invalid file path '/bad'");
+    }
+
+    #[test]
+    fn tcp_connect_maps_to_internal_error() {
+        let response = ResponseError::from(ServerError::TcpConnect {
+            port: 9999,
+            error: std::io::Error::other("connection refused"),
+        });
+
+        assert_eq!(response.code, ErrorCode::INTERNAL_ERROR);
+        assert_eq!(response.message, "failed to connect to port 9999");
+    }
+
+    #[test]
+    fn io_errors_map_to_internal_error() {
+        let response = ResponseError::from(ServerError::Io(std::io::Error::other("disk gone")));
+
+        assert_eq!(response.code, ErrorCode::INTERNAL_ERROR);
+        assert_eq!(response.message, "disk gone");
+    }
 }
