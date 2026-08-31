@@ -2452,6 +2452,23 @@ Suggested message: `test: split_off boundaries and every RangeError variant trig
 
 ---
 
+### Task 20e: Crate-wide shared test-support module (owner directive)
+
+**Files:**
+- Create: `src/testing.rs`
+- Modify: `src/lib.rs`, all test modules importing moved helpers, `src/text_utils/mod.rs` (delete testing), `src/requests/mod.rs` (delete testing)
+- Delete: `src/text_utils/testing.rs`, `src/requests/testing.rs`
+
+**Interfaces:**
+- Produces: `crate::testing::{p, r, same_line, url, TestServer, open_document, state_with_documents, temp_workspace, workspace_folder, diagnostic, json_matchers}` — all `#[cfg(test)] pub(crate)` (module-gated at lib.rs).
+- Naming: the 2-arg `r(start: Position, end: Position) -> Range` is canonical; the requests 3-arg sugar becomes `same_line(line: u32, start: u32, end: u32) -> Range` (Rust has no overloading; majority call sites keep their shape — lsp tests unchanged, requests tests get a mechanical rename).
+- `examples/` untouched (cfg(test) modules are invisible to examples — their parallel JsonServer stays didactic).
+- Scopeless like `src/error.rs` (outside every arch-lint `[[scopes]]` glob) — noted with a comment; harness imports flow downward into `server`/`text_utils`.
+
+**Steps:** create the module with doc comment; move every helper from `text_utils::testing` + `requests::testing` + the triplicated locals (`temp_workspace` in oneshot/state/with_state tests, `workspace_folder`, `diagnostic`, the matcher-vec helper); reconcile any per-site drift (parameterize, don't fork); rewire all imports; delete the two old modules; mechanical `r(` → `same_line(` rename in the six request test files; full battery in three configs, counts unchanged.
+
+---
+
 ### Task 21: Testing steering document
 
 **Files:**
