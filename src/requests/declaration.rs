@@ -10,7 +10,7 @@ use crate::server::{Document, ServerState};
 
 use super::{
     Request,
-    conversion::{Direction, convert_location, convert_position, modify_outgoing_location_link},
+    conversion::{Direction, convert_position, modify_outgoing_goto_response},
 };
 
 pub struct Declaration;
@@ -39,22 +39,6 @@ impl Request for Declaration {
     }
 
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        if let Some(response) = response.as_mut() {
-            match response {
-                LspGotoDeclarationResponse::Scalar(loc) => {
-                    convert_location(state, document, loc, Direction::Outgoing);
-                }
-                LspGotoDeclarationResponse::Array(locations) => {
-                    for loc in locations.iter_mut() {
-                        convert_location(state, document, loc, Direction::Outgoing);
-                    }
-                }
-                LspGotoDeclarationResponse::Link(links) => {
-                    for link in links.iter_mut() {
-                        modify_outgoing_location_link(state, document, link);
-                    }
-                }
-            }
-        }
+        modify_outgoing_goto_response(state, document, response);
     }
 }

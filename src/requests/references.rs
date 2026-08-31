@@ -4,7 +4,7 @@ use crate::server::{Document, ServerState};
 
 use super::{
     Request,
-    conversion::{Direction, convert_location, convert_position},
+    conversion::{Direction, convert_location, convert_optional_vec, convert_position},
 };
 
 pub struct References;
@@ -27,10 +27,12 @@ impl Request for References {
     }
 
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        if let Some(locations) = response.as_mut() {
-            for loc in locations.iter_mut() {
-                convert_location(state, document, loc, Direction::Outgoing);
-            }
-        }
+        convert_optional_vec(
+            state,
+            document,
+            response,
+            Direction::Outgoing,
+            convert_location,
+        );
     }
 }

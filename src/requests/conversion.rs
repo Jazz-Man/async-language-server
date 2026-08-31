@@ -9,9 +9,9 @@
 
 use async_lsp::lsp_types::{
     CompletionTextEdit as LspCompletionTextEdit, Diagnostic as LspDiagnostic,
-    DocumentDiagnosticReportKind, Location as LspLocation, LocationLink as LspLocationLink, OneOf,
-    Position as LspPosition, Range as LspRange, TextEdit as LspTextEdit, Url,
-    WorkspaceEdit as LspWorkspaceEdit,
+    DocumentDiagnosticReportKind, GotoDefinitionResponse as LspGotoDefinitionResponse,
+    Location as LspLocation, LocationLink as LspLocationLink, OneOf, Position as LspPosition,
+    Range as LspRange, TextEdit as LspTextEdit, Url, WorkspaceEdit as LspWorkspaceEdit,
 };
 
 use crate::{
@@ -117,6 +117,22 @@ pub(crate) fn convert_completion_text_edit(
     }
 }
 
+/// Converts each item of an optional response vector with `convert_item`,
+/// threading `direction` to every item; a `None` response is left as-is.
+pub(crate) fn convert_optional_vec<T>(
+    state: &ServerState,
+    document: &Document,
+    items: &mut Option<Vec<T>>,
+    direction: Direction,
+    convert_item: fn(&ServerState, &Document, &mut T, Direction),
+) {
+    if let Some(items) = items {
+        for item in items {
+            convert_item(state, document, item, direction);
+        }
+    }
+}
+
 pub(crate) fn modify_incoming_diagnostic(
     state: &ServerState,
     document: &Document,
@@ -189,6 +205,33 @@ pub(crate) fn modify_outgoing_location_link(
         &mut link.target_selection_range,
         Direction::Outgoing,
     );
+}
+
+/// Converts a goto definition/declaration response (both share the
+/// [`LspGotoDefinitionResponse`] type; `GotoDeclarationResponse` is an alias)
+/// from UTF-8 to the client encoding.
+pub(crate) fn modify_outgoing_goto_response(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<LspGotoDefinitionResponse>,
+) {
+    if let Some(response) = response {
+        match response {
+            LspGotoDefinitionResponse::Scalar(loc) => {
+                convert_location(state, document, loc, Direction::Outgoing);
+            }
+            LspGotoDefinitionResponse::Array(locations) => {
+                for loc in locations.iter_mut() {
+                    convert_location(state, document, loc, Direction::Outgoing);
+                }
+            }
+            LspGotoDefinitionResponse::Link(links) => {
+                for link in links.iter_mut() {
+                    modify_outgoing_location_link(state, document, link);
+                }
+            }
+        }
+    }
 }
 
 pub(crate) fn convert_workspace_edit(
