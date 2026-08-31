@@ -11,9 +11,10 @@
 //! 2 UTF-16 units, so byte offset 4 == UTF-16 offset 2 — that identity is
 //! what the request conversion tests assert.
 //!
-//! The byte- and tree-sitter `line_range()` helpers are deliberately not here: they
-//! share a name with the LSP [`line_range`] but differ in types, so their test
-//! modules keep local definitions.
+//! The byte- and tree-sitter `r()` helpers are deliberately not here: each
+//! flavor names its local range builder `r`, with types specific to that
+//! flavor — they are not (and need not be) the shared LSP fixtures
+//! (`line_position`, `line_range`, `same_line`).
 
 use std::{
     fs,
