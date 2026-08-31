@@ -15,6 +15,9 @@ mod server_trait;
 mod state;
 mod with_state;
 
+#[cfg(test)]
+mod tests;
+
 pub use self::options::{
     ConfigurationKey, ServerOptions, WorkspaceDiagnostics, WorkspaceDiagnosticsSetting,
 };
@@ -23,7 +26,7 @@ pub use self::server_trait::Server;
 pub use self::state::ServerState;
 pub use crate::documents::DocumentMatcher;
 pub use crate::documents::{Document, DocumentReader};
-pub use crate::error::{ServerError, ServerErrorCode, ServerResult};
+pub use crate::error::{RangeError, ServerError, ServerErrorCode, ServerResult};
 pub use crate::transport::Transport;
 
 #[cfg(feature = "tree-sitter")]

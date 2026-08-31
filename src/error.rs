@@ -10,6 +10,60 @@ pub use async_lsp::ErrorCode as ServerErrorCode;
 /// Convenience `Result` alias for operations that can fail with a [`ServerError`].
 pub type ServerResult<T> = Result<T, ServerError>;
 
+/// Failures of [`RangeExt`](crate::text_utils::RangeExt) operations.
+///
+/// A leaf-utility error without protocol semantics: it never crosses the
+/// wire itself and is mapped by the caller at their own boundary
+/// (absorbable into [`ServerError::Other`] by boxing it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[non_exhaustive]
+pub enum RangeError {
+    /// The position lies beyond the end of the range.
+    #[error("position lies beyond the end of the range")]
+    PositionOutOfRange,
+    /// The subrange start lies after its end.
+    #[error("subrange start lies after its end")]
+    StartAfterEnd,
+    /// `shrink` was called on a range that spans multiple lines.
+    #[error("shrink requires a single-line range")]
+    NotSingleLine,
+    /// The delimiter is not a single-byte UTF-8 character.
+    #[error("delimiter {delimiter:?} is not a single-byte UTF-8 character")]
+    DelimiterNotSingleByte {
+        /// The offending delimiter.
+        delimiter: char,
+    },
+    /// The text is not the exact text of the range.
+    #[error("text length {text_len} does not match range length {range_len}")]
+    TextRangeMismatch {
+        /// Length of the text in bytes.
+        text_len: usize,
+        /// Length of the range.
+        range_len: usize,
+    },
+}
+
+/// Failures of [`Document::query`](crate::server::Document::query).
+///
+/// A leaf-utility error without protocol semantics, like [`RangeError`]:
+/// it never crosses the wire itself and is mapped by the caller at their
+/// own boundary.
+#[cfg(feature = "tree-sitter")]
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum QueryError {
+    /// The document has no tree-sitter language or parsed tree attached.
+    #[error("document has no tree-sitter language or parsed tree")]
+    NoTree,
+    /// The query string failed to compile.
+    #[error("invalid tree-sitter query")]
+    InvalidQuery {
+        /// The underlying compilation error.
+        #[source]
+        error: tree_sitter::QueryError,
+    },
+}
+
 /// An error that can occur while running a language server.
 ///
 /// # Examples
