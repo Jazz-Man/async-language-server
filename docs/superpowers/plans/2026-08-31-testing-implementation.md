@@ -122,7 +122,7 @@ Move each test below VERBATIM from `src/requests/tests.rs` (only the `use` impor
 | `workspace_edits_are_converted_using_their_own_document` (79-96) | `rename.rs` | `use std::collections::HashMap;` `use async_lsp::lsp_types::{TextEdit, WorkspaceEdit};` `use crate::requests::testing::{r, state_with_documents};` `use super::{Rename, Request};` |
 | `rename_edits_fall_back_to_request_document_when_target_is_unknown` (182-200) | `rename.rs` | same as above plus `url` |
 | `completion_additional_text_edits_are_converted` (98-117) | `completion.rs` | `use async_lsp::lsp_types::{CompletionItem, CompletionResponse, TextEdit};` `use crate::requests::testing::{r, state_with_documents};` `use super::{Completion, Request};` |
-| `code_action_context_diagnostics_are_converted` (119-142) | `code_action.rs` | `use async_lsp::lsp_types::{CodeActionContext, CodeActionParams, Diagnostic, PartialResultParams, TextDocumentIdentifier, WorkDoneProgressParams};` `use crate::requests::testing::{r, state_with_documents, url};` `use super::{CodeAction, Request};` |
+| `code_action_context_diagnostics_are_converted` (119-142) | `code_action.rs` | `use async_lsp::lsp_types::{CodeActionContext, CodeActionParams, Diagnostic, PartialResultParams, TextDocumentIdentifier, WorkDoneProgressParams};` `use crate::requests::testing::{r, state_with_documents};` `use super::{CodeAction, Request};` |
 | `document_diagnostic_related_documents_are_converted_using_their_own_document` (144-180) | `document_diagnostics.rs` | `use std::collections::HashMap;` `use async_lsp::lsp_types::{Diagnostic, DocumentDiagnosticReport, DocumentDiagnosticReportKind, DocumentDiagnosticReportResult, FullDocumentDiagnosticReport, RelatedFullDocumentDiagnosticReport};` `use crate::requests::testing::{r, state_with_documents};` `use super::{DocumentDiagnostics, Request};` |
 | `resolve_edits_convert_against_the_sole_tracked_document` (202-230) | `completion_resolve.rs` | see block below |
 | `resolve_edits_pass_through_without_a_document` (232-252) | `completion_resolve.rs` | see block below |
@@ -216,7 +216,7 @@ Suggested message: `test: drop nine unit tests byte-duplicated by doctests`
 ///
 /// A leaf-utility error without protocol semantics: it never crosses the
 /// wire itself and is mapped by the caller at their own boundary
-/// (absorbable into [`ServerError::Other`] through `?`).
+/// (absorbable into [`ServerError::Other`] by boxing it).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[non_exhaustive]
 pub enum RangeError {
@@ -458,8 +458,8 @@ impl super::RangeExt for ByteRange {
     }
 
     fn sub_delimited(self, text: &str, delim: char) -> Result<(Option<Self>, Option<Self>), RangeError> {
-        check_delimiter(delim)?;
         check_text_length(text.len(), self.end - self.start)?;
+        check_delimiter(delim)?;
 
         if let Some(offset) = text.find(delim) {
             Ok((
@@ -493,6 +493,8 @@ impl super::RangeExt for ByteRange {
         if text.is_empty() {
             return Ok((None, None, None));
         }
+
+        check_text_length(text.len(), self.end - self.start)?;
 
         let Some(delim0_offset) = text.find(delim0) else {
             return Ok((Some(self), None, None));
