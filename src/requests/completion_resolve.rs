@@ -86,3 +86,104 @@ pub(crate) fn convert_completion_resolve(
     };
     <CompletionResolve as Request>::modify_response(state, document, response);
 }
+
+#[cfg(test)]
+mod tests {
+    use async_lsp::ClientSocket;
+    use async_lsp::lsp_types::{
+        CompletionItem, CompletionTextEdit as LspCompletionTextEdit, TextEdit,
+    };
+
+    use crate::requests::testing::TestServer;
+    use crate::requests::testing::{open_document, r, state_with_documents, url};
+    use crate::server::{ServerOptions, ServerState};
+    use crate::text_utils::Encoding;
+
+    use super::{convert_completion_resolve, convert_incoming_completion_resolve};
+
+    #[test]
+    fn resolve_edits_convert_against_the_sole_tracked_document() {
+        // Exactly one tracked document ("🙂abc"), UTF-16 negotiated.
+        let mut state = ServerState::with_options::<TestServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default(),
+        );
+        state.set_position_encoding(Encoding::UTF16);
+        open_document(&mut state, url("only.txt"), "🙂abc");
+
+        let mut item = CompletionItem {
+            label: "item".into(),
+            text_edit: Some(LspCompletionTextEdit::Edit(TextEdit::new(
+                r(0, 4, 4),
+                "x".into(),
+            ))),
+            ..Default::default()
+        };
+
+        let document = state
+            .document(&url("only.txt"))
+            .expect("sole document is tracked");
+        convert_completion_resolve(&state, Some(&document), &mut item);
+
+        let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
+            panic!("expected edit");
+        };
+        assert_eq!(edit.range, r(0, 2, 2));
+    }
+
+    #[test]
+    fn resolve_edits_pass_through_without_a_document() {
+        // No document snapshot: the edits pass through unchanged.
+        let (state, _, _) = state_with_documents();
+
+        let mut item = CompletionItem {
+            label: "item".into(),
+            text_edit: Some(LspCompletionTextEdit::Edit(TextEdit::new(
+                r(0, 4, 4),
+                "x".into(),
+            ))),
+            ..Default::default()
+        };
+
+        convert_completion_resolve(&state, None, &mut item);
+
+        let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
+            panic!("expected edit");
+        };
+        assert_eq!(edit.range, r(0, 4, 4));
+    }
+
+    #[test]
+    fn resolve_echo_round_trip_is_identity() {
+        // Sole doc "🙂abc", UTF-16 negotiated. The client echoes the edit at
+        // the UTF-16 position it was delivered: the incoming converter must
+        // turn it into UTF-8 for the handler, and the outgoing converter must
+        // return the original position — no double conversion.
+        let mut state = ServerState::with_options::<TestServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default(),
+        );
+        state.set_position_encoding(Encoding::UTF16);
+        open_document(&mut state, url("only.txt"), "🙂abc");
+
+        let mut item = CompletionItem {
+            label: "item".into(),
+            text_edit: Some(LspCompletionTextEdit::Edit(TextEdit::new(
+                r(0, 2, 2),
+                "x".into(),
+            ))),
+            ..Default::default()
+        };
+
+        let sole = state
+            .document(&url("only.txt"))
+            .expect("sole document is tracked");
+        convert_incoming_completion_resolve(&state, Some(&sole), &mut item);
+        convert_completion_resolve(&state, Some(&sole), &mut item);
+
+        let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
+            panic!("expected edit");
+        };
+        assert_eq!(edit.range, r(0, 2, 2));
+    }
+}

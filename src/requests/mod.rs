@@ -20,7 +20,7 @@ mod rename;
 mod rename_prepare;
 
 #[cfg(test)]
-mod tests;
+mod testing;
 
 pub(crate) use code_action::CodeAction;
 pub(crate) use code_action_resolve::{

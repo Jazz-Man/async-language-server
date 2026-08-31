@@ -46,3 +46,40 @@ impl Request for CodeAction {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use async_lsp::lsp_types::{
+        CodeActionContext, CodeActionParams, Diagnostic, PartialResultParams,
+        TextDocumentIdentifier, WorkDoneProgressParams,
+    };
+
+    use crate::requests::testing::{r, state_with_documents};
+
+    use super::{CodeAction, Request};
+
+    #[test]
+    fn code_action_context_diagnostics_are_converted() {
+        let (state, _, target) = state_with_documents();
+        let document = state.document(&target).unwrap();
+        let mut params = CodeActionParams {
+            text_document: TextDocumentIdentifier::new(target),
+            range: r(0, 0, 2),
+            context: CodeActionContext {
+                diagnostics: vec![Diagnostic {
+                    range: r(0, 2, 2),
+                    message: "diagnostic".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        };
+
+        <CodeAction as Request>::modify_params(&state, &document, &mut params);
+
+        assert_eq!(params.range, r(0, 0, 4));
+        assert_eq!(params.context.diagnostics[0].range, r(0, 4, 4));
+    }
+}

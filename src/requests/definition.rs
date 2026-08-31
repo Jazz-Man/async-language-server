@@ -56,3 +56,29 @@ impl Request for Definition {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use async_lsp::lsp_types::{GotoDefinitionResponse, Location};
+
+    use crate::requests::testing::{r, state_with_documents};
+
+    use super::{Definition, Request};
+
+    #[test]
+    fn definition_locations_are_converted_using_their_own_document() {
+        let (state, source, target) = state_with_documents();
+        let document = state.document(&source).unwrap();
+        let mut response = Some(GotoDefinitionResponse::Scalar(Location::new(
+            target,
+            r(0, 4, 4),
+        )));
+
+        <Definition as Request>::modify_response(&state, &document, &mut response);
+
+        let Some(GotoDefinitionResponse::Scalar(loc)) = response else {
+            panic!("expected scalar location");
+        };
+        assert_eq!(loc.range, r(0, 2, 2));
+    }
+}
