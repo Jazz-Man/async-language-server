@@ -92,4 +92,54 @@ mod tests {
 
         assert_eq!(converted, Position { line: 1, col: 2 });
     }
+
+    #[test]
+    fn converts_utf8_columns_to_utf32() {
+        let text = Rope::from_str("a🙂b");
+        let position = Position { line: 0, col: 5 };
+
+        let converted = position_to_encoding(&text, position, Encoding::UTF8, Encoding::UTF32);
+
+        assert_eq!(converted, Position { line: 0, col: 2 });
+    }
+
+    #[test]
+    fn converts_utf32_columns_to_utf8() {
+        let text = Rope::from_str("a🙂b");
+        let position = Position { line: 0, col: 2 };
+
+        let converted = position_to_encoding(&text, position, Encoding::UTF32, Encoding::UTF8);
+
+        assert_eq!(converted, Position { line: 0, col: 5 });
+    }
+
+    #[test]
+    fn converts_utf16_columns_to_utf32() {
+        let text = Rope::from_str("a🙂b");
+        let position = Position { line: 0, col: 3 };
+
+        let converted = position_to_encoding(&text, position, Encoding::UTF16, Encoding::UTF32);
+
+        assert_eq!(converted, Position { line: 0, col: 2 });
+    }
+
+    #[test]
+    fn converts_utf32_columns_to_utf16() {
+        let text = Rope::from_str("a🙂b");
+        let position = Position { line: 0, col: 2 };
+
+        let converted = position_to_encoding(&text, position, Encoding::UTF32, Encoding::UTF16);
+
+        assert_eq!(converted, Position { line: 0, col: 3 });
+    }
+
+    #[test]
+    fn caps_lines_before_converting_utf32_columns() {
+        let text = Rope::from_str("first\n🙂");
+        let position = Position { line: 99, col: 4 };
+
+        let converted = position_to_encoding(&text, position, Encoding::UTF8, Encoding::UTF32);
+
+        assert_eq!(converted, Position { line: 1, col: 1 });
+    }
 }

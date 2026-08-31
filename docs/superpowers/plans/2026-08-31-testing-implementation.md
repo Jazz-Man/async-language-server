@@ -1917,7 +1917,10 @@ Suggested message: `test: W3 black-box TCP tier — connect-failure mapping and 
     #[test]
     fn caps_lines_before_converting_utf32_columns() {
         let text = Rope::from_str("first\n🙂");
-        let position = Position { line: 99, col: 1 };
+        // Col 4 is the boundary AFTER the 4-byte emoji (col 1 would be
+        // mid-codepoint and ropey clamps it to 0 — the expected value must
+        // use a whole-character boundary, mirroring the UTF-16 sibling).
+        let position = Position { line: 99, col: 4 };
 
         let converted = position_to_encoding(&text, position, Encoding::UTF8, Encoding::UTF32);
 

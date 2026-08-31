@@ -257,6 +257,56 @@ fn initialize_ignores_unknown_client_encodings() {
 }
 
 #[test]
+fn initialize_prefers_utf8_when_the_client_offers_it() {
+    let root = temp_workspace("prefer-utf8");
+    let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
+
+    let mut params = initialize_params(&root);
+    params.capabilities.general = Some(GeneralClientCapabilities {
+        position_encodings: Some(vec![
+            PositionEncodingKind::UTF16,
+            PositionEncodingKind::UTF8,
+        ]),
+        ..Default::default()
+    });
+
+    let result =
+        futures::executor::block_on(server.initialize(params)).expect("server can initialize");
+
+    assert_eq!(
+        result.capabilities.position_encoding,
+        Some(PositionEncodingKind::UTF8)
+    );
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+#[test]
+fn initialize_prefers_utf32_over_utf16() {
+    let root = temp_workspace("prefer-utf32");
+    let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
+
+    let mut params = initialize_params(&root);
+    params.capabilities.general = Some(GeneralClientCapabilities {
+        position_encodings: Some(vec![
+            PositionEncodingKind::UTF16,
+            PositionEncodingKind::UTF32,
+        ]),
+        ..Default::default()
+    });
+
+    let result =
+        futures::executor::block_on(server.initialize(params)).expect("server can initialize");
+
+    assert_eq!(
+        result.capabilities.position_encoding,
+        Some(PositionEncodingKind::UTF32)
+    );
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+#[test]
 fn configurable_workspace_diagnostics_can_be_toggled() {
     let root = temp_workspace("configurable-diagnostics");
     let file = root.join("a.test");
