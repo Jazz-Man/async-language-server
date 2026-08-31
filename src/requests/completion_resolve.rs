@@ -94,9 +94,8 @@ mod tests {
         CompletionItem, CompletionTextEdit as LspCompletionTextEdit, TextEdit,
     };
 
-    use crate::requests::testing::TestServer;
-    use crate::requests::testing::{open_document, r, state_with_documents, url};
     use crate::server::{ServerOptions, ServerState};
+    use crate::testing::{TestServer, open_document, same_line, state_with_documents, url};
     use crate::text_utils::Encoding;
 
     use super::{convert_completion_resolve, convert_incoming_completion_resolve};
@@ -114,7 +113,7 @@ mod tests {
         let mut item = CompletionItem {
             label: "item".into(),
             text_edit: Some(LspCompletionTextEdit::Edit(TextEdit::new(
-                r(0, 4, 4),
+                same_line(0, 4, 4),
                 "x".into(),
             ))),
             ..Default::default()
@@ -128,7 +127,7 @@ mod tests {
         let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
             panic!("expected edit");
         };
-        assert_eq!(edit.range, r(0, 2, 2));
+        assert_eq!(edit.range, same_line(0, 2, 2));
     }
 
     #[test]
@@ -139,7 +138,7 @@ mod tests {
         let mut item = CompletionItem {
             label: "item".into(),
             text_edit: Some(LspCompletionTextEdit::Edit(TextEdit::new(
-                r(0, 4, 4),
+                same_line(0, 4, 4),
                 "x".into(),
             ))),
             ..Default::default()
@@ -150,7 +149,7 @@ mod tests {
         let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
             panic!("expected edit");
         };
-        assert_eq!(edit.range, r(0, 4, 4));
+        assert_eq!(edit.range, same_line(0, 4, 4));
     }
 
     #[test]
@@ -169,7 +168,7 @@ mod tests {
         let mut item = CompletionItem {
             label: "item".into(),
             text_edit: Some(LspCompletionTextEdit::Edit(TextEdit::new(
-                r(0, 2, 2),
+                same_line(0, 2, 2),
                 "x".into(),
             ))),
             ..Default::default()
@@ -184,6 +183,6 @@ mod tests {
         let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
             panic!("expected edit");
         };
-        assert_eq!(edit.range, r(0, 2, 2));
+        assert_eq!(edit.range, same_line(0, 2, 2));
     }
 }

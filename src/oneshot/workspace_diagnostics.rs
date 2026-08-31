@@ -294,18 +294,15 @@ fn diagnostics_from_report_kind(report: &DocumentDiagnosticReportKind) -> &[Diag
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs,
-        path::PathBuf,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::fs;
 
     use async_lsp::lsp_types::{
-        Diagnostic, DocumentDiagnosticParams, FullDocumentDiagnosticReport, Position, Range,
+        Diagnostic, DocumentDiagnosticParams, FullDocumentDiagnosticReport,
         RelatedFullDocumentDiagnosticReport,
     };
 
     use crate::server::{DocumentMatcher, Server, ServerResult, ServerState};
+    use crate::testing::{diagnostic, temp_workspace};
 
     use super::{WorkspaceDiagnosticConfig, workspace_diagnostics};
 
@@ -336,7 +333,7 @@ mod tests {
 
     #[test]
     fn workspace_diagnostics_discovers_matching_documents() {
-        let root = temp_workspace("discovers");
+        let root = temp_workspace("oneshot", "discovers");
         fs::write(root.join("a.test"), "").expect("test file can be written");
         fs::write(root.join("b.txt"), "").expect("ignored file can be written");
         fs::create_dir_all(root.join("nested")).expect("nested dir can be created");
@@ -367,7 +364,7 @@ mod tests {
 
     #[test]
     fn workspace_diagnostics_respects_gitignore_by_default() {
-        let root = temp_workspace("gitignore");
+        let root = temp_workspace("oneshot", "gitignore");
         fs::create_dir_all(root.join(".git")).expect("git dir can be created");
         fs::write(root.join(".gitignore"), "ignored/\n").expect("gitignore can be written");
         fs::write(root.join("a.test"), "").expect("test file can be written");
@@ -388,7 +385,7 @@ mod tests {
 
     #[test]
     fn workspace_diagnostics_can_disable_ignore_files() {
-        let root = temp_workspace("ignore-disabled");
+        let root = temp_workspace("oneshot", "ignore-disabled");
         fs::create_dir_all(root.join(".git")).expect("git dir can be created");
         fs::write(root.join(".gitignore"), "ignored/\n").expect("gitignore can be written");
         fs::write(root.join("a.test"), "").expect("test file can be written");
@@ -414,7 +411,7 @@ mod tests {
 
     #[test]
     fn workspace_diagnostics_opens_documents_before_requests() {
-        let root = temp_workspace("opened");
+        let root = temp_workspace("oneshot", "opened");
         fs::write(root.join("a.test"), "").expect("test file can be written");
         fs::write(root.join("b.test"), "").expect("test file can be written");
 
@@ -432,34 +429,6 @@ mod tests {
         }
 
         fs::remove_dir_all(root).expect("temp workspace can be removed");
-    }
-
-    fn temp_workspace(name: &str) -> PathBuf {
-        let millis = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time is after epoch")
-            .as_millis();
-        let root =
-            std::env::temp_dir().join(format!("async-language-server-oneshot-{name}-{millis}"));
-        fs::create_dir_all(&root).expect("temp workspace can be created");
-        root
-    }
-
-    fn diagnostic(message: impl Into<String>) -> Diagnostic {
-        Diagnostic {
-            range: Range {
-                start: Position {
-                    line: 0,
-                    character: 0,
-                },
-                end: Position {
-                    line: 0,
-                    character: 0,
-                },
-            },
-            message: message.into(),
-            ..Default::default()
-        }
     }
 
     fn full_report(items: Vec<Diagnostic>) -> async_lsp::lsp_types::DocumentDiagnosticReportResult {

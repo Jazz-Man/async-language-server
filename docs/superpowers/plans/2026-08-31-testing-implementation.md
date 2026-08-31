@@ -2540,9 +2540,13 @@ mapping, concurrency bound, termination, wire encoding.
 
 ## Harness inventory
 
-- `crate::requests::testing` — baseline server/state/fixtures for
-  per-request conversion tests. The `"🙂abc"` document and UTF-16 encoding
-  are load-bearing (byte 4 == UTF-16 2).
+- `crate::testing` — the single `#[cfg(test)]` home for shared test helpers:
+  `line_position` / `line_range` / `same_line` (LSP fixtures; the byte and
+  tree-sitter `r()` twins stay local per test file — different types, a
+  naming convention), `url`, `TestServer`, `open_document`,
+  `state_with_documents` (the `"🙂abc"` document and UTF-16 encoding are
+  load-bearing: byte 4 == UTF-16 2), `temp_workspace(prefix, name)`,
+  `workspace_folder`, `diagnostic`, `json_matchers` (tree-sitter-gated).
 - `src/server/tests.rs` — `spawn_wire_server`, `RawClient`,
   `EchoServer`/`GatedServer`/`PanickingServer`, `bounded`.
 - `tests/lsp_wire.rs` — its own minimal framing client (integration tests

@@ -36,7 +36,7 @@ mod tests {
 
     use async_lsp::lsp_types::{TextEdit, WorkspaceEdit};
 
-    use crate::requests::testing::{r, state_with_documents, url};
+    use crate::testing::{same_line, state_with_documents, url};
 
     use super::{Rename, Request};
 
@@ -47,7 +47,7 @@ mod tests {
         let mut response = Some(WorkspaceEdit {
             changes: Some(HashMap::from([(
                 target,
-                vec![TextEdit::new(r(0, 4, 4), "x".into())],
+                vec![TextEdit::new(same_line(0, 4, 4), "x".into())],
             )])),
             ..Default::default()
         });
@@ -56,7 +56,7 @@ mod tests {
 
         let edit = response.unwrap();
         let edit = edit.changes.unwrap().into_values().next().unwrap();
-        assert_eq!(edit[0].range, r(0, 2, 2));
+        assert_eq!(edit[0].range, same_line(0, 2, 2));
     }
 
     #[test]
@@ -67,7 +67,7 @@ mod tests {
         let mut response = Some(WorkspaceEdit {
             changes: Some(HashMap::from([(
                 missing,
-                vec![TextEdit::new(r(0, 4, 4), "x".into())],
+                vec![TextEdit::new(same_line(0, 4, 4), "x".into())],
             )])),
             ..Default::default()
         });
@@ -76,6 +76,6 @@ mod tests {
 
         let edit = response.unwrap();
         let edit = edit.changes.unwrap().into_values().next().unwrap();
-        assert_eq!(edit[0].range, r(0, 2, 2));
+        assert_eq!(edit[0].range, same_line(0, 2, 2));
     }
 }

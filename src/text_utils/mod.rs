@@ -10,11 +10,6 @@ mod encoding;
 mod position;
 mod range_ext;
 
-// `pub(crate)`, not private: the shared fixtures are imported by test
-// modules outside the `text_utils` subtree (`requests`, `server`).
-#[cfg(test)]
-pub(crate) mod testing;
-
 pub use self::conversions::position_to_encoding;
 pub use self::encoding::Encoding;
 pub use self::position::Position;

@@ -54,7 +54,7 @@ mod tests {
         TextDocumentIdentifier, WorkDoneProgressParams,
     };
 
-    use crate::requests::testing::{r, state_with_documents};
+    use crate::testing::{same_line, state_with_documents};
 
     use super::{CodeAction, Request};
 
@@ -64,10 +64,10 @@ mod tests {
         let document = state.document(&target).unwrap();
         let mut params = CodeActionParams {
             text_document: TextDocumentIdentifier::new(target),
-            range: r(0, 0, 2),
+            range: same_line(0, 0, 2),
             context: CodeActionContext {
                 diagnostics: vec![Diagnostic {
-                    range: r(0, 2, 2),
+                    range: same_line(0, 2, 2),
                     message: "diagnostic".into(),
                     ..Default::default()
                 }],
@@ -79,7 +79,7 @@ mod tests {
 
         <CodeAction as Request>::modify_params(&state, &document, &mut params);
 
-        assert_eq!(params.range, r(0, 0, 4));
-        assert_eq!(params.context.diagnostics[0].range, r(0, 4, 4));
+        assert_eq!(params.range, same_line(0, 0, 4));
+        assert_eq!(params.context.diagnostics[0].range, same_line(0, 4, 4));
     }
 }

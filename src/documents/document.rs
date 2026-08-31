@@ -312,16 +312,13 @@ mod tests {
 
         use crate::error::QueryError;
         use crate::server::{DocumentMatcher, Server, ServerOptions, ServerState};
+        use crate::testing::json_matchers;
 
         struct JsonServer;
 
         impl Server for JsonServer {
             fn server_document_matchers() -> Vec<DocumentMatcher> {
-                vec![
-                    DocumentMatcher::new("json")
-                        .with_lang_strings(["json"])
-                        .with_lang_grammar(tree_sitter_json::LANGUAGE.into()),
-                ]
+                json_matchers()
             }
         }
 

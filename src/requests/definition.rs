@@ -61,7 +61,7 @@ impl Request for Definition {
 mod tests {
     use async_lsp::lsp_types::{GotoDefinitionResponse, Location};
 
-    use crate::requests::testing::{r, state_with_documents};
+    use crate::testing::{same_line, state_with_documents};
 
     use super::{Definition, Request};
 
@@ -71,7 +71,7 @@ mod tests {
         let document = state.document(&source).unwrap();
         let mut response = Some(GotoDefinitionResponse::Scalar(Location::new(
             target,
-            r(0, 4, 4),
+            same_line(0, 4, 4),
         )));
 
         <Definition as Request>::modify_response(&state, &document, &mut response);
@@ -79,6 +79,6 @@ mod tests {
         let Some(GotoDefinitionResponse::Scalar(loc)) = response else {
             panic!("expected scalar location");
         };
-        assert_eq!(loc.range, r(0, 2, 2));
+        assert_eq!(loc.range, same_line(0, 2, 2));
     }
 }

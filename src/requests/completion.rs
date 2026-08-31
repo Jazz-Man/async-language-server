@@ -49,7 +49,7 @@ impl Request for Completion {
 mod tests {
     use async_lsp::lsp_types::{CompletionItem, CompletionResponse, TextEdit};
 
-    use crate::requests::testing::{r, state_with_documents};
+    use crate::testing::{same_line, state_with_documents};
 
     use super::{Completion, Request};
 
@@ -59,7 +59,7 @@ mod tests {
         let document = state.document(&target).unwrap();
         let mut response = Some(CompletionResponse::Array(vec![CompletionItem {
             label: "item".into(),
-            additional_text_edits: Some(vec![TextEdit::new(r(0, 4, 4), "x".into())]),
+            additional_text_edits: Some(vec![TextEdit::new(same_line(0, 4, 4), "x".into())]),
             ..Default::default()
         }]));
 
@@ -70,7 +70,7 @@ mod tests {
         };
         assert_eq!(
             items[0].additional_text_edits.as_ref().unwrap()[0].range,
-            r(0, 2, 2),
+            same_line(0, 2, 2),
         );
     }
 }

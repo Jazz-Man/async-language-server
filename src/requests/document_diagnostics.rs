@@ -59,7 +59,7 @@ mod tests {
         RelatedFullDocumentDiagnosticReport,
     };
 
-    use crate::requests::testing::{r, state_with_documents};
+    use crate::testing::{same_line, state_with_documents};
 
     use super::{DocumentDiagnostics, Request};
 
@@ -74,7 +74,7 @@ mod tests {
                     DocumentDiagnosticReportKind::Full(FullDocumentDiagnosticReport {
                         result_id: None,
                         items: vec![Diagnostic {
-                            range: r(0, 4, 4),
+                            range: same_line(0, 4, 4),
                             message: "diagnostic".into(),
                             ..Default::default()
                         }],
@@ -99,6 +99,6 @@ mod tests {
         else {
             panic!("expected full related diagnostic report");
         };
-        assert_eq!(report.items[0].range, r(0, 2, 2));
+        assert_eq!(report.items[0].range, same_line(0, 2, 2));
     }
 }

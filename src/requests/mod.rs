@@ -19,9 +19,6 @@ mod references;
 mod rename;
 mod rename_prepare;
 
-#[cfg(test)]
-mod testing;
-
 pub(crate) use code_action::CodeAction;
 pub(crate) use code_action_resolve::{
     convert_code_action_resolve, convert_incoming_code_action_resolve,

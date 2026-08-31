@@ -1,14 +1,9 @@
-use std::{
-    collections::HashMap,
-    fs,
-    path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{collections::HashMap, fs, path::PathBuf};
 
 use async_lsp::{
     ClientSocket, ErrorCode, LanguageServer,
     lsp_types::{
-        ClientCapabilities, CompletionItem, CompletionTextEdit, Diagnostic, DiagnosticOptions,
+        ClientCapabilities, CompletionItem, CompletionTextEdit, DiagnosticOptions,
         DiagnosticServerCapabilities, DidChangeConfigurationParams,
         DidChangeWorkspaceFoldersParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
         DocumentDiagnosticReport, DocumentDiagnosticReportKind, DocumentDiagnosticReportResult,
@@ -16,7 +11,7 @@ use async_lsp::{
         PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
         RelatedFullDocumentDiagnosticReport, ServerCapabilities, TextDocumentItem, TextEdit, Url,
         WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
-        WorkspaceDocumentDiagnosticReport, WorkspaceFolder, WorkspaceFoldersChangeEvent,
+        WorkspaceDocumentDiagnosticReport, WorkspaceFoldersChangeEvent,
     },
 };
 
@@ -24,6 +19,7 @@ use crate::server::{
     DocumentMatcher, LanguageServerWithState, Server, ServerOptions, ServerResult, ServerState,
     WorkspaceDiagnostics,
 };
+use crate::testing::{diagnostic, temp_workspace, workspace_folder};
 
 struct TestServer;
 
@@ -164,7 +160,7 @@ fn test_document_diagnostics(
 
 #[test]
 fn initialize_enables_workspace_diagnostics() {
-    let root = temp_workspace("capabilities");
+    let root = temp_workspace("workspace", "capabilities");
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
 
     let result = futures::executor::block_on(server.initialize(initialize_params(&root)))
@@ -191,7 +187,7 @@ fn initialize_enables_workspace_diagnostics() {
 
 #[test]
 fn initialize_respects_disabled_workspace_diagnostics() {
-    let root = temp_workspace("disabled-capabilities");
+    let root = temp_workspace("workspace", "disabled-capabilities");
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), DisabledServer);
 
     let result = futures::executor::block_on(server.initialize(initialize_params(&root)))
@@ -215,7 +211,7 @@ fn initialize_respects_disabled_workspace_diagnostics() {
 
 #[test]
 fn initialize_ignores_unknown_client_encodings() {
-    let root = temp_workspace("unknown-encoding");
+    let root = temp_workspace("workspace", "unknown-encoding");
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
 
     let mut params = initialize_params(&root);
@@ -258,7 +254,7 @@ fn initialize_ignores_unknown_client_encodings() {
 
 #[test]
 fn initialize_prefers_utf8_when_the_client_offers_it() {
-    let root = temp_workspace("prefer-utf8");
+    let root = temp_workspace("workspace", "prefer-utf8");
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
 
     let mut params = initialize_params(&root);
@@ -283,7 +279,7 @@ fn initialize_prefers_utf8_when_the_client_offers_it() {
 
 #[test]
 fn initialize_prefers_utf32_over_utf16() {
-    let root = temp_workspace("prefer-utf32");
+    let root = temp_workspace("workspace", "prefer-utf32");
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
 
     let mut params = initialize_params(&root);
@@ -308,7 +304,7 @@ fn initialize_prefers_utf32_over_utf16() {
 
 #[test]
 fn configurable_workspace_diagnostics_can_be_toggled() {
-    let root = temp_workspace("configurable-diagnostics");
+    let root = temp_workspace("workspace", "configurable-diagnostics");
     let file = root.join("a.test");
     fs::write(&file, "disk").expect("test file can be written");
     let file = fs::canonicalize(file).expect("test file can be canonicalized");
@@ -395,7 +391,7 @@ fn configurable_workspace_diagnostics_can_be_toggled() {
 
 #[test]
 fn configurable_workspace_diagnostics_read_initialization_options() {
-    let root = temp_workspace("configurable-diagnostics-init");
+    let root = temp_workspace("workspace", "configurable-diagnostics-init");
     fs::write(root.join("a.test"), "disk").expect("test file can be written");
 
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), ConfigurableServer);
@@ -428,7 +424,7 @@ fn configurable_workspace_diagnostics_read_initialization_options() {
 
 #[test]
 fn workspace_diagnostics_report_unopened_documents_without_versions() {
-    let root = temp_workspace("workspace-diagnostics");
+    let root = temp_workspace("workspace", "workspace-diagnostics");
     let file = root.join("a.test");
     fs::write(&file, "disk").expect("test file can be written");
 
@@ -457,7 +453,7 @@ fn workspace_diagnostics_report_unopened_documents_without_versions() {
 
 #[test]
 fn workspace_diagnostics_use_open_document_versions() {
-    let root = temp_workspace("open-workspace-diagnostics");
+    let root = temp_workspace("workspace", "open-workspace-diagnostics");
     let file = root.join("a.test");
     fs::write(&file, "disk").expect("test file can be written");
     let file = fs::canonicalize(file).expect("test file can be canonicalized");
@@ -491,7 +487,7 @@ fn workspace_diagnostics_use_open_document_versions() {
 
 #[test]
 fn workspace_diagnostics_forward_previous_result_ids() {
-    let root = temp_workspace("previous-result-id");
+    let root = temp_workspace("workspace", "previous-result-id");
     let file = root.join("a.test");
     fs::write(&file, "disk").expect("test file can be written");
     let file = fs::canonicalize(file).expect("test file can be canonicalized");
@@ -529,8 +525,8 @@ fn workspace_diagnostics_forward_previous_result_ids() {
 
 #[test]
 fn workspace_folder_changes_are_used_by_workspace_diagnostics() {
-    let first = temp_workspace("workspace-folder-change-first");
-    let second = temp_workspace("workspace-folder-change-second");
+    let first = temp_workspace("workspace", "workspace-folder-change-first");
+    let second = temp_workspace("workspace", "workspace-folder-change-second");
     fs::write(first.join("a.test"), "first").expect("test file can be written");
     fs::write(second.join("b.test"), "second").expect("test file can be written");
 
@@ -565,7 +561,7 @@ fn workspace_folder_changes_are_used_by_workspace_diagnostics() {
 
 #[test]
 fn workspace_diagnostics_prefer_direct_reports_over_related_reports() {
-    let root = temp_workspace("related-reports");
+    let root = temp_workspace("workspace", "related-reports");
     fs::write(root.join("a.test"), "source").expect("test file can be written");
     fs::write(root.join("b.test"), "direct").expect("test file can be written");
 
@@ -588,7 +584,7 @@ fn workspace_diagnostics_prefer_direct_reports_over_related_reports() {
 
 #[test]
 fn initialize_without_workspace_folders_reports_no_items() {
-    let root = temp_workspace("no-folders");
+    let root = temp_workspace("workspace", "no-folders");
     fs::write(root.join("a.test"), "disk").expect("test file can be written");
 
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
@@ -610,7 +606,7 @@ fn initialize_without_workspace_folders_reports_no_items() {
 
 #[test]
 fn resolve_converts_with_sole_document_and_passes_through_with_two() {
-    let root = temp_workspace("resolve-pick");
+    let root = temp_workspace("workspace", "resolve-pick");
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
     let mut params = initialize_params(&root);
     params.capabilities.general = Some(GeneralClientCapabilities {
@@ -658,31 +654,12 @@ fn resolve_converts_with_sole_document_and_passes_through_with_two() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-fn temp_workspace(name: &str) -> PathBuf {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time is after epoch")
-        .as_millis();
-    let root =
-        std::env::temp_dir().join(format!("async-language-server-workspace-{name}-{millis}"));
-    fs::create_dir_all(&root).expect("temp workspace can be created");
-    root
-}
-
 fn initialize_params(root: &PathBuf) -> InitializeParams {
     InitializeParams {
         process_id: Some(std::process::id()),
         capabilities: ClientCapabilities::default(),
         workspace_folders: Some(vec![workspace_folder(root)]),
         ..Default::default()
-    }
-}
-
-fn workspace_folder(path: &PathBuf) -> WorkspaceFolder {
-    let uri = Url::from_file_path(path).expect("path can be converted to a URL");
-    WorkspaceFolder {
-        uri,
-        name: "test".into(),
     }
 }
 
@@ -708,22 +685,5 @@ fn workspace_report_message(report: &WorkspaceDocumentDiagnosticReport) -> &str 
                 .as_str()
         }
         WorkspaceDocumentDiagnosticReport::Unchanged(_) => panic!("expected full report"),
-    }
-}
-
-fn diagnostic(message: impl Into<String>) -> Diagnostic {
-    Diagnostic {
-        range: Range {
-            start: Position {
-                line: 0,
-                character: 0,
-            },
-            end: Position {
-                line: 0,
-                character: 0,
-            },
-        },
-        message: message.into(),
-        ..Default::default()
     }
 }

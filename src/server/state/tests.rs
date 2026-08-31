@@ -1,8 +1,4 @@
-use std::{
-    fs,
-    path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::fs;
 
 use async_lsp::{
     ClientSocket,
@@ -10,12 +6,11 @@ use async_lsp::{
         DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
         DidSaveTextDocumentParams, Position, Range, TextDocumentContentChangeEvent,
         TextDocumentIdentifier, TextDocumentItem, Url, VersionedTextDocumentIdentifier,
-        WorkspaceFolder,
     },
 };
 
 use crate::server::{DocumentMatcher, Server, ServerOptions, WorkspaceDiagnostics};
-use crate::text_utils::testing::url;
+use crate::testing::{open_document, temp_workspace, url, workspace_folder};
 
 use super::ServerState;
 
@@ -28,30 +23,6 @@ impl Server for TestServer {
                 .with_url_globs(["**/*.test", "*.test"])
                 .with_lang_strings(["test"]),
         ]
-    }
-}
-
-fn open_document(state: &mut ServerState, uri: Url, text: impl Into<String>) {
-    let _ = state.handle_document_open(DidOpenTextDocumentParams {
-        text_document: TextDocumentItem::new(uri, "test".into(), 1, text.into()),
-    });
-}
-
-fn temp_workspace(name: &str) -> PathBuf {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time is after epoch")
-        .as_millis();
-    let root = std::env::temp_dir().join(format!("async-language-server-state-{name}-{millis}"));
-    fs::create_dir_all(&root).expect("temp workspace can be created");
-    root
-}
-
-fn workspace_folder(path: &PathBuf) -> WorkspaceFolder {
-    let uri = Url::from_file_path(path).expect("path can be converted to a URL");
-    WorkspaceFolder {
-        uri,
-        name: "test".into(),
     }
 }
 
@@ -79,7 +50,7 @@ fn full_content_change_replaces_document_text() {
 
 #[test]
 fn workspace_documents_have_no_lsp_version() {
-    let root = temp_workspace("workspace-version");
+    let root = temp_workspace("state", "workspace-version");
     let manifest = root.join("a.test");
     fs::write(&manifest, "disk").expect("test file can be written");
 
@@ -101,7 +72,7 @@ fn workspace_documents_have_no_lsp_version() {
 
 #[test]
 fn workspace_refresh_preserves_open_documents() {
-    let root = temp_workspace("open-document");
+    let root = temp_workspace("state", "open-document");
     let manifest = root.join("a.test");
     fs::write(&manifest, "disk").expect("test file can be written");
     let manifest = fs::canonicalize(manifest).expect("test file can be canonicalized");
@@ -127,7 +98,7 @@ fn workspace_refresh_preserves_open_documents() {
 
 #[test]
 fn closing_workspace_documents_keeps_disk_snapshot() {
-    let root = temp_workspace("close-workspace-document");
+    let root = temp_workspace("state", "close-workspace-document");
     let manifest = root.join("a.test");
     fs::write(&manifest, "disk").expect("test file can be written");
     let manifest = fs::canonicalize(manifest).expect("test file can be canonicalized");
@@ -152,7 +123,7 @@ fn closing_workspace_documents_keeps_disk_snapshot() {
 
 #[test]
 fn closing_workspace_documents_removes_them_when_workspace_diagnostics_are_disabled() {
-    let root = temp_workspace("close-disabled-workspace-document");
+    let root = temp_workspace("state", "close-disabled-workspace-document");
     let manifest = root.join("a.test");
     fs::write(&manifest, "disk").expect("test file can be written");
     let manifest = fs::canonicalize(manifest).expect("test file can be canonicalized");
@@ -176,7 +147,7 @@ fn closing_workspace_documents_removes_them_when_workspace_diagnostics_are_disab
 
 #[test]
 fn closing_non_workspace_documents_removes_them() {
-    let root = temp_workspace("close-non-workspace-document");
+    let root = temp_workspace("state", "close-non-workspace-document");
     let manifest = root.join("a.test");
     fs::write(&manifest, "disk").expect("test file can be written");
     let manifest = fs::canonicalize(manifest).expect("test file can be canonicalized");
@@ -199,7 +170,7 @@ fn closing_non_workspace_documents_removes_them() {
 
 #[test]
 fn failed_incremental_change_keeps_document_when_reread_fails() {
-    let root = temp_workspace("keep-last-known");
+    let root = temp_workspace("state", "keep-last-known");
     let uri = {
         let path = root.join("missing.test");
         Url::from_file_path(path).expect("path can be converted to a URL")
@@ -237,15 +208,11 @@ fn failed_incremental_change_reparses_kept_text_tree() {
 
     impl Server for JsonServer {
         fn server_document_matchers() -> Vec<DocumentMatcher> {
-            vec![
-                DocumentMatcher::new("json")
-                    .with_url_globs(["**/*.json"])
-                    .with_lang_grammar(tree_sitter_json::LANGUAGE.into()),
-            ]
+            crate::testing::json_matchers()
         }
     }
 
-    let root = temp_workspace("keep-last-known-tree");
+    let root = temp_workspace("state", "keep-last-known-tree");
     let uri = {
         let path = root.join("missing.json");
         Url::from_file_path(path).expect("path can be converted to a URL")
@@ -294,7 +261,7 @@ fn failed_incremental_change_reparses_kept_text_tree() {
 
 #[test]
 fn document_save_replaces_text_from_params() {
-    let root = temp_workspace("save-from-params");
+    let root = temp_workspace("state", "save-from-params");
     let uri = {
         let path = root.join("saved.txt");
         Url::from_file_path(path).expect("path converts to a URL")
@@ -320,7 +287,7 @@ fn document_save_replaces_text_from_params() {
 
 #[test]
 fn document_save_falls_back_to_disk_when_params_have_no_text() {
-    let root = temp_workspace("save-from-disk");
+    let root = temp_workspace("state", "save-from-disk");
     let path = root.join("on-disk.txt");
     fs::write(&path, "from disk").expect("file can be written");
     let uri = Url::from_file_path(&path).expect("path converts to a URL");
@@ -345,7 +312,7 @@ fn document_save_falls_back_to_disk_when_params_have_no_text() {
 
 #[test]
 fn document_save_removes_the_document_when_no_text_and_no_file() {
-    let root = temp_workspace("save-removes");
+    let root = temp_workspace("state", "save-removes");
     let uri = {
         let path = root.join("missing.txt");
         Url::from_file_path(path).expect("path converts to a URL")
