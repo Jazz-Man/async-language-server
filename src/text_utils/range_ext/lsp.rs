@@ -1,9 +1,13 @@
 use async_lsp::lsp_types::{Position as LspPosition, Range as LspRange};
 
+use crate::error::RangeError;
+
+use super::check_delimiter;
+
 impl super::RangeExt for LspRange {
     type Position = LspPosition;
 
-    fn split_at(self, _text: &str, at: Self::Position) -> (Self, Self) {
+    fn split_at(self, _text: &str, at: Self::Position) -> Result<(Self, Self), RangeError> {
         let at_absolute = LspPosition {
             line: self.start.line + at.line,
             character: if at.line == 0 {
@@ -13,7 +17,9 @@ impl super::RangeExt for LspRange {
             },
         };
 
-        assert!(at_absolute >= self.start && at_absolute <= self.end);
+        if !(at_absolute >= self.start && at_absolute <= self.end) {
+            return Err(RangeError::PositionOutOfRange);
+        }
 
         let left = LspRange {
             start: self.start,
@@ -24,14 +30,13 @@ impl super::RangeExt for LspRange {
             end: self.end,
         };
 
-        (left, right)
+        Ok((left, right))
     }
 
-    fn shrink(self, amount_left: usize, amount_right: usize) -> Self {
-        assert_eq!(
-            self.start.line, self.end.line,
-            "shrink only supports single-line ranges"
-        );
+    fn shrink(self, amount_left: usize, amount_right: usize) -> Result<Self, RangeError> {
+        if self.start.line != self.end.line {
+            return Err(RangeError::NotSingleLine);
+        }
 
         let start_char = self
             .start
@@ -44,7 +49,7 @@ impl super::RangeExt for LspRange {
             .saturating_sub(u32::try_from(amount_right).unwrap_or(u32::MAX))
             .max(self.start.character);
 
-        LspRange {
+        Ok(LspRange {
             start: LspPosition {
                 line: self.start.line,
                 character: start_char,
@@ -53,11 +58,18 @@ impl super::RangeExt for LspRange {
                 line: self.end.line,
                 character: end_char,
             },
-        }
+        })
     }
 
-    fn sub(self, _text: &str, from: Self::Position, to: Self::Position) -> Self {
-        assert!(from <= to);
+    fn sub(
+        self,
+        _text: &str,
+        from: Self::Position,
+        to: Self::Position,
+    ) -> Result<Self, RangeError> {
+        if from > to {
+            return Err(RangeError::StartAfterEnd);
+        }
 
         let from_absolute = LspPosition {
             line: self.start.line + from.line,
@@ -78,24 +90,28 @@ impl super::RangeExt for LspRange {
         };
 
         // sanity check
-        assert!(from_absolute >= self.start && from_absolute <= self.end);
-        assert!(to_absolute >= self.start && to_absolute <= self.end);
+        if !(from_absolute >= self.start && from_absolute <= self.end) {
+            return Err(RangeError::PositionOutOfRange);
+        }
+        if !(to_absolute >= self.start && to_absolute <= self.end) {
+            return Err(RangeError::PositionOutOfRange);
+        }
 
-        LspRange {
+        Ok(LspRange {
             start: from_absolute,
             end: to_absolute,
-        }
+        })
     }
 
-    fn sub_delimited(self, text: &str, delim: char) -> (Option<Self>, Option<Self>) {
-        assert_eq!(
-            delim.len_utf8(),
-            1,
-            "delim must be a single-byte UTF8 character"
-        );
+    fn sub_delimited(
+        self,
+        text: &str,
+        delim: char,
+    ) -> Result<(Option<Self>, Option<Self>), RangeError> {
+        check_delimiter(delim)?;
 
         if text.is_empty() {
-            return (None, None);
+            return Ok((None, None));
         }
 
         if let Some(offset) = text.find(delim) {
@@ -122,7 +138,7 @@ impl super::RangeExt for LspRange {
             let left = if offset == 0 {
                 None // delimiter is the first character
             } else {
-                Some(self.split_off_left(text, delim_pos))
+                Some(self.split_off_left(text, delim_pos)?)
             };
 
             let right = if offset + 1 >= text.len() {
@@ -139,12 +155,12 @@ impl super::RangeExt for LspRange {
                         character: character + 1,
                     }
                 };
-                Some(self.split_off_right(text, after_delim_pos))
+                Some(self.split_off_right(text, after_delim_pos)?)
             };
 
-            (left, right)
+            Ok((left, right))
         } else {
-            (Some(self), None)
+            Ok((Some(self), None))
         }
     }
 
@@ -153,39 +169,25 @@ impl super::RangeExt for LspRange {
         text: &str,
         delim0: char,
         delim1: char,
-    ) -> (Option<Self>, Option<Self>, Option<Self>) {
-        assert_eq!(
-            delim0.len_utf8(),
-            1,
-            "delim0 must be a single-byte UTF8 character"
-        );
-        assert_eq!(
-            delim1.len_utf8(),
-            1,
-            "delim1 must be a single-byte UTF8 character"
-        );
+    ) -> Result<(Option<Self>, Option<Self>, Option<Self>), RangeError> {
+        check_delimiter(delim0)?;
+        check_delimiter(delim1)?;
 
         if text.is_empty() {
-            return (None, None, None);
+            return Ok((None, None, None));
         }
 
-        let (first, remainder) = self.sub_delimited(text, delim0);
+        let Some(delim0_offset) = text.find(delim0) else {
+            return Ok((Some(self), None, None));
+        };
 
-        if let Some(remainder) = remainder {
-            // Extract the text corresponding to the remainder range
-            #[expect(
-                clippy::expect_used,
-                reason = "invariant: delim0 was confirmed present by the preceding search"
-            )]
-            let delim0_offset = text.find(delim0).expect("delim0 was found");
-            let remainder_start = delim0_offset + 1;
-            let remainder_text = &text[remainder_start..];
+        let (first, remainder) = self.sub_delimited(text, delim0)?;
+        let Some(remainder) = remainder else {
+            return Ok((first, None, None));
+        };
 
-            // Split the remainder on the second delimiter
-            let (second, third) = remainder.sub_delimited(remainder_text, delim1);
-            (first, second, third)
-        } else {
-            (first, None, None)
-        }
+        let remainder_text = &text[delim0_offset + 1..];
+        let (second, third) = remainder.sub_delimited(remainder_text, delim1)?;
+        Ok((first, second, third))
     }
 }

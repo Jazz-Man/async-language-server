@@ -1,58 +1,68 @@
+use crate::error::RangeError;
+
+use super::{check_delimiter, check_text_length};
+
 type ByteRange = std::ops::Range<usize>;
 type BytePosition = usize;
 
 impl super::RangeExt for ByteRange {
     type Position = BytePosition;
 
-    fn split_at(self, _text: &str, at: Self::Position) -> (Self, Self) {
-        assert!(at <= self.end - self.start);
-        let left = self.start..(self.start + at);
-        let right = (self.start + at)..self.end;
-        (left, right)
+    fn split_at(self, _text: &str, at: Self::Position) -> Result<(Self, Self), RangeError> {
+        if at > self.end - self.start {
+            return Err(RangeError::PositionOutOfRange);
+        }
+        Ok((self.start..(self.start + at), (self.start + at)..self.end))
     }
 
-    fn shrink(self, amount_left: usize, amount_right: usize) -> Self {
+    fn shrink(self, amount_left: usize, amount_right: usize) -> Result<Self, RangeError> {
+        // Byte ranges have no line concept, so shrinking cannot fail.
         let new_start = self.start.saturating_add(amount_left).min(self.end);
         let new_end = self.end.saturating_sub(amount_right).max(self.start);
-        new_start..new_end
+        Ok(new_start..new_end)
     }
 
-    fn sub(self, _text: &str, from: Self::Position, to: Self::Position) -> Self {
-        assert!(from <= self.end - self.start);
-        assert!(to <= self.end - self.start);
-        assert!(from <= to);
-        (self.start + from)..(self.start + to)
+    fn sub(
+        self,
+        _text: &str,
+        from: Self::Position,
+        to: Self::Position,
+    ) -> Result<Self, RangeError> {
+        let len = self.end - self.start;
+        if from > len || to > len {
+            return Err(RangeError::PositionOutOfRange);
+        }
+        if from > to {
+            return Err(RangeError::StartAfterEnd);
+        }
+        Ok((self.start + from)..(self.start + to))
     }
 
-    fn sub_delimited(self, text: &str, delim: char) -> (Option<Self>, Option<Self>) {
-        assert_eq!(
-            text.len(),
-            self.end - self.start,
-            "text and range must be the same length"
-        );
-        assert_eq!(
-            delim.len_utf8(),
-            1,
-            "delim must be a single-byte UTF8 character"
-        );
+    fn sub_delimited(
+        self,
+        text: &str,
+        delim: char,
+    ) -> Result<(Option<Self>, Option<Self>), RangeError> {
+        check_text_length(text.len(), self.end - self.start)?;
+        check_delimiter(delim)?;
 
         if let Some(offset) = text.find(delim) {
-            (
+            Ok((
                 if offset == 0 {
                     None // delimiter is the first character
                 } else {
-                    Some(self.clone().split_off_left(text, offset))
+                    Some(self.clone().split_off_left(text, offset)?)
                 },
                 if offset + 1 >= text.len() {
                     None // delimiter is the last character
                 } else {
-                    Some(self.clone().split_off_right(text, offset + 1))
+                    Some(self.clone().split_off_right(text, offset + 1)?)
                 },
-            )
+            ))
         } else if !text.is_empty() {
-            (Some(self.clone()), None)
+            Ok((Some(self), None))
         } else {
-            (None, None)
+            Ok((None, None))
         }
     }
 
@@ -61,41 +71,28 @@ impl super::RangeExt for ByteRange {
         text: &str,
         delim0: char,
         delim1: char,
-    ) -> (Option<Self>, Option<Self>, Option<Self>) {
-        assert_eq!(
-            delim0.len_utf8(),
-            1,
-            "delim0 must be a single-byte UTF8 character"
-        );
-        assert_eq!(
-            delim1.len_utf8(),
-            1,
-            "delim1 must be a single-byte UTF8 character"
-        );
+    ) -> Result<(Option<Self>, Option<Self>, Option<Self>), RangeError> {
+        check_delimiter(delim0)?;
+        check_delimiter(delim1)?;
 
         if text.is_empty() {
-            return (None, None, None);
+            return Ok((None, None, None));
         }
 
-        assert_eq!(
-            text.len(),
-            self.end - self.start,
-            "text and range must be the same length"
-        );
+        check_text_length(text.len(), self.end - self.start)?;
 
-        let (first, remainder) = self.clone().sub_delimited(text, delim0);
+        let Some(delim0_offset) = text.find(delim0) else {
+            return Ok((Some(self), None, None));
+        };
 
-        if let Some(remainder) = remainder {
-            // Extract the text corresponding to the remainder range
-            let remainder_start = remainder.start - self.start;
-            let remainder_end = remainder.end - self.start;
-            let remainder_text = &text[remainder_start..remainder_end];
+        let (first, remainder) = self.clone().sub_delimited(text, delim0)?;
+        let Some(remainder) = remainder else {
+            return Ok((first, None, None));
+        };
 
-            // Split the remainder on the second delimiter
-            let (second, third) = remainder.sub_delimited(remainder_text, delim1);
-            (first, second, third)
-        } else {
-            (first, None, None)
-        }
+        let remainder_text = &text[delim0_offset + 1..];
+
+        let (second, third) = remainder.sub_delimited(remainder_text, delim1)?;
+        Ok((first, second, third))
     }
 }

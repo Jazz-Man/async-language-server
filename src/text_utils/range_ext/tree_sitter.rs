@@ -1,14 +1,14 @@
 use tree_sitter::{Point as TsPosition, Range as TsRange};
 
+use crate::error::RangeError;
+
+use super::{check_delimiter, check_text_length};
+
 impl super::RangeExt for TsRange {
     type Position = TsPosition;
 
-    fn split_at(self, text: &str, at: Self::Position) -> (Self, Self) {
-        assert_eq!(
-            text.len(),
-            self.end_byte - self.start_byte,
-            "text and range must be the same length"
-        );
+    fn split_at(self, text: &str, at: Self::Position) -> Result<(Self, Self), RangeError> {
+        check_text_length(text.len(), self.end_byte - self.start_byte)?;
 
         let at_absolute = TsPosition {
             row: self.start_point.row + at.row,
@@ -57,14 +57,13 @@ impl super::RangeExt for TsRange {
             end_point: self.end_point,
         };
 
-        (left, right)
+        Ok((left, right))
     }
 
-    fn shrink(self, amount_left: usize, amount_right: usize) -> Self {
-        assert_eq!(
-            self.start_point.row, self.end_point.row,
-            "shrink only supports single-line ranges"
-        );
+    fn shrink(self, amount_left: usize, amount_right: usize) -> Result<Self, RangeError> {
+        if self.start_point.row != self.end_point.row {
+            return Err(RangeError::NotSingleLine);
+        }
 
         let start_col = self
             .start_point
@@ -85,7 +84,7 @@ impl super::RangeExt for TsRange {
             .saturating_sub(amount_right)
             .max(self.start_byte);
 
-        TsRange {
+        Ok(TsRange {
             start_byte,
             end_byte,
             start_point: TsPosition {
@@ -96,17 +95,15 @@ impl super::RangeExt for TsRange {
                 row: self.end_point.row,
                 column: end_col,
             },
-        }
+        })
     }
 
-    fn sub(self, text: &str, from: Self::Position, to: Self::Position) -> Self {
-        assert!(from <= to);
+    fn sub(self, text: &str, from: Self::Position, to: Self::Position) -> Result<Self, RangeError> {
+        if from > to {
+            return Err(RangeError::StartAfterEnd);
+        }
 
-        assert_eq!(
-            text.len(),
-            self.end_byte - self.start_byte,
-            "text and range must be the same length"
-        );
+        check_text_length(text.len(), self.end_byte - self.start_byte)?;
 
         let from_absolute = TsPosition {
             row: self.start_point.row + from.row,
@@ -162,25 +159,21 @@ impl super::RangeExt for TsRange {
             to_byte = self.end_byte;
         }
 
-        TsRange {
+        Ok(TsRange {
             start_byte: from_byte,
             end_byte: to_byte,
             start_point: from_absolute,
             end_point: to_absolute,
-        }
+        })
     }
 
-    fn sub_delimited(self, text: &str, delim: char) -> (Option<Self>, Option<Self>) {
-        assert_eq!(
-            text.len(),
-            self.end_byte - self.start_byte,
-            "text and range must be the same length"
-        );
-        assert_eq!(
-            delim.len_utf8(),
-            1,
-            "delim must be a single-byte UTF8 character"
-        );
+    fn sub_delimited(
+        self,
+        text: &str,
+        delim: char,
+    ) -> Result<(Option<Self>, Option<Self>), RangeError> {
+        check_text_length(text.len(), self.end_byte - self.start_byte)?;
+        check_delimiter(delim)?;
 
         if let Some(offset) = text.find(delim) {
             // Find point position of delimiter
@@ -243,11 +236,11 @@ impl super::RangeExt for TsRange {
                 })
             };
 
-            (left, right)
+            Ok((left, right))
         } else if !text.is_empty() {
-            (Some(self), None)
+            Ok((Some(self), None))
         } else {
-            (None, None)
+            Ok((None, None))
         }
     }
 
@@ -256,38 +249,26 @@ impl super::RangeExt for TsRange {
         text: &str,
         delim0: char,
         delim1: char,
-    ) -> (Option<Self>, Option<Self>, Option<Self>) {
-        assert_eq!(
-            delim0.len_utf8(),
-            1,
-            "delim0 must be a single-byte UTF8 character"
-        );
-        assert_eq!(
-            delim1.len_utf8(),
-            1,
-            "delim1 must be a single-byte UTF8 character"
-        );
+    ) -> Result<(Option<Self>, Option<Self>, Option<Self>), RangeError> {
+        check_delimiter(delim0)?;
+        check_delimiter(delim1)?;
 
         if text.is_empty() {
-            return (None, None, None);
+            return Ok((None, None, None));
         }
 
-        assert_eq!(
-            text.len(),
-            self.end_byte - self.start_byte,
-            "text and range must be the same length"
-        );
+        check_text_length(text.len(), self.end_byte - self.start_byte)?;
 
-        let (first, remainder) = self.sub_delimited(text, delim0);
+        let (first, remainder) = self.sub_delimited(text, delim0)?;
 
         if let Some(remainder) = remainder {
             let remainder_start = remainder.start_byte - self.start_byte;
             let remainder_text = &text[remainder_start..];
 
-            let (second, third) = remainder.sub_delimited(remainder_text, delim1);
-            (first, second, third)
+            let (second, third) = remainder.sub_delimited(remainder_text, delim1)?;
+            Ok((first, second, third))
         } else {
-            (first, None, None)
+            Ok((first, None, None))
         }
     }
 }
