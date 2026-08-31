@@ -465,7 +465,7 @@ async fn incremental_did_change_applies_over_the_wire() {
 
 #[derive(Clone)]
 struct GatedServer {
-    entered: mpsc::UnboundedSender<u64>,
+    entered: mpsc::UnboundedSender<()>,
     release: watch::Receiver<bool>,
 }
 
@@ -478,7 +478,7 @@ impl Server for GatedServer {
         let entered = self.entered.clone();
         let mut release = self.release.clone();
         async move {
-            let _ = entered.send(1);
+            let _ = entered.send(());
             while !*release.borrow_and_update() {
                 release
                     .changed()
@@ -645,7 +645,7 @@ async fn at_most_eight_requests_run_concurrently() {
     for _ in 0..8 {
         timeout(WIRE_TIMEOUT, entered_rx.recv())
             .await
-            .expect("eight handlers enter")
+            .expect("handler entered")
             .expect("signal received");
     }
     // Absence-check: nothing enters while all eight permits are held.

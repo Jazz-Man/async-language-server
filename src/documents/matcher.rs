@@ -179,24 +179,11 @@ impl DocumentMatchers {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::fs;
 
     use async_lsp::lsp_types::Url;
 
     use super::{DocumentMatcher, DocumentMatchers};
-
-    fn temp_dir(name: &str) -> std::path::PathBuf {
-        let millis = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time is after epoch")
-            .as_millis();
-        let root = std::env::temp_dir().join(format!("als-matcher-{name}-{millis}"));
-        fs::create_dir_all(&root).expect("temp dir can be created");
-        root
-    }
 
     #[test]
     fn find_matches_language_strings_case_insensitively() {
@@ -211,7 +198,7 @@ mod tests {
 
     #[test]
     fn find_matches_url_globs_against_real_paths() {
-        let root = temp_dir("url-glob");
+        let root = crate::testing::temp_workspace("matcher", "url-glob");
         let uri = Url::from_file_path(root.join("data.json")).unwrap();
         let matchers =
             DocumentMatchers::new([DocumentMatcher::new("json").with_url_globs(["**/*.json"])]);
@@ -226,7 +213,7 @@ mod tests {
 
     #[test]
     fn language_strings_win_over_url_globs() {
-        let root = temp_dir("precedence");
+        let root = crate::testing::temp_workspace("matcher", "precedence");
         let uri = Url::from_file_path(root.join("data.json")).unwrap();
         let matchers = DocumentMatchers::new([
             DocumentMatcher::new("by-lang").with_lang_strings(["json"]),
@@ -241,7 +228,7 @@ mod tests {
 
     #[test]
     fn invalid_globs_are_skipped_not_matched() {
-        let root = temp_dir("invalid-glob");
+        let root = crate::testing::temp_workspace("matcher", "invalid-glob");
         let uri = Url::from_file_path(root.join("data.json")).unwrap();
         // "[" is not a valid glob: the matcher contributes nothing, and the
         // document simply stays unmatched — the return half of the warn path.

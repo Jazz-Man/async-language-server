@@ -300,10 +300,7 @@ mod tests {
     #[cfg(feature = "tree-sitter")]
     #[test]
     fn query_errors_on_invalid_query_and_grammarless_documents() {
-        use std::{
-            fs,
-            time::{SystemTime, UNIX_EPOCH},
-        };
+        use std::fs;
 
         use async_lsp::{
             ClientSocket,
@@ -322,12 +319,7 @@ mod tests {
             }
         }
 
-        let millis = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time is after epoch")
-            .as_millis();
-        let root = std::env::temp_dir().join(format!("als-query-{millis}"));
-        fs::create_dir_all(&root).expect("temp workspace can be created");
+        let root = crate::testing::temp_workspace("documents", "query");
         let uri = Url::from_file_path(root.join("doc.json")).expect("path converts to a URL");
 
         let mut state = ServerState::with_options::<JsonServer>(

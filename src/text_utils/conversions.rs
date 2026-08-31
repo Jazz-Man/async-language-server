@@ -142,4 +142,14 @@ mod tests {
 
         assert_eq!(converted, Position { line: 1, col: 1 });
     }
+
+    #[test]
+    fn converts_utf16_columns_to_utf8() {
+        let text = Rope::from_str("a🙂b");
+        let position = Position { line: 0, col: 3 };
+
+        let converted = position_to_encoding(&text, position, Encoding::UTF16, Encoding::UTF8);
+
+        assert_eq!(converted, Position { line: 0, col: 5 });
+    }
 }
