@@ -1052,7 +1052,7 @@ where
 
 #[tokio::test]
 async fn initialize_negotiates_position_encoding_end_to_end() {
-    let (mut client, server) = spawn_wire_server(EchoServer).await;
+    let (mut client, server) = spawn_wire_server(EchoServer);
 
     // The client prefers utf-16, but also offers utf-8: the server's
     // preference order must pick utf-8 through the real JSON round trip.
@@ -1112,7 +1112,7 @@ fn did_open(uri: &str, text: &str) -> Value {
 
 #[tokio::test]
 async fn utf16_positions_round_trip_through_real_serialization() {
-    let (mut client, server) = spawn_wire_server(EchoServer).await;
+    let (mut client, server) = spawn_wire_server(EchoServer);
     client.initialize_client(&["utf-16"]).await;
 
     // "a🙂b": the smiley is 1 UTF-16 unit pair (cols 1-2), so 'b' sits at
@@ -1142,7 +1142,7 @@ async fn utf16_positions_round_trip_through_real_serialization() {
 
 #[tokio::test]
 async fn requests_before_initialize_are_rejected() {
-    let (mut client, server) = spawn_wire_server(EchoServer).await;
+    let (mut client, server) = spawn_wire_server(EchoServer);
 
     let response = client
         .request(
@@ -1163,7 +1163,7 @@ async fn requests_before_initialize_are_rejected() {
 
 #[tokio::test]
 async fn double_initialize_is_rejected() {
-    let (mut client, server) = spawn_wire_server(EchoServer).await;
+    let (mut client, server) = spawn_wire_server(EchoServer);
     client.initialize_client(&["utf-16"]).await;
 
     let response = client
@@ -1182,7 +1182,7 @@ async fn double_initialize_is_rejected() {
 
 #[tokio::test]
 async fn requests_after_shutdown_are_rejected() {
-    let (mut client, server) = spawn_wire_server(EchoServer).await;
+    let (mut client, server) = spawn_wire_server(EchoServer);
     client.initialize_client(&["utf-16"]).await;
     let shutdown = client.request(2, "shutdown", json!(null)).await;
     assert!(shutdown.get("result").is_some());
@@ -1206,7 +1206,7 @@ async fn requests_after_shutdown_are_rejected() {
 
 #[tokio::test]
 async fn unwired_methods_return_method_not_found() {
-    let (mut client, server) = spawn_wire_server(EchoServer).await;
+    let (mut client, server) = spawn_wire_server(EchoServer);
     client.initialize_client(&["utf-16"]).await;
 
     // One parametrized test over the future surface: methods the crate
@@ -1231,7 +1231,7 @@ async fn unwired_methods_return_method_not_found() {
 
 #[tokio::test]
 async fn incremental_did_change_applies_over_the_wire() {
-    let (mut client, server) = spawn_wire_server(EchoServer).await;
+    let (mut client, server) = spawn_wire_server(EchoServer);
     client.initialize_client(&["utf-16"]).await;
 
     client
@@ -1271,6 +1271,8 @@ async fn incremental_did_change_applies_over_the_wire() {
 ```
 
 Note: `send_request` returns a future borrowing `self`; call and await it immediately (`client.request(...)` already does both). If `notify`/`request` signatures fight the borrow checker, adjust the harness internals, not the tests.
+
+**Landed nuance (Task 10 review outcome):** the parametrized `-32601` test sends MINIMALLY VALID params per method — async-lsp's `Router::from_language_server` registers every omni method and deserializes params BEFORE dispatch, so empty `{}` answers `-32602` (InvalidParams) and never reaches our `METHOD_NOT_FOUND` default. Expected codes unchanged; recorded for the Task 21 steering doc.
 
 - [ ] **Step 2: Verify**
 
@@ -1360,7 +1362,7 @@ async fn stale_document_answers_content_modified_then_succeeds_on_retry() {
         entered: entered_tx,
         release: release_rx,
     };
-    let (mut client, server) = spawn_wire_server(server_impl).await;
+    let (mut client, server) = spawn_wire_server(server_impl);
     client.initialize_client(&["utf-16"]).await;
     client
         .notify("textDocument/didOpen", did_open("file:///tmp/wire.txt", "a🙂b"))
@@ -1399,7 +1401,7 @@ async fn stale_document_answers_content_modified_then_succeeds_on_retry() {
 
 #[tokio::test]
 async fn panicking_handler_returns_structured_error() {
-    let (mut client, server) = spawn_wire_server(PanickingServer).await;
+    let (mut client, server) = spawn_wire_server(PanickingServer);
     client.initialize_client(&["utf-16"]).await;
 
     let response = client
@@ -1424,7 +1426,7 @@ async fn at_most_eight_requests_run_concurrently() {
         entered: entered_tx,
         release: release_rx,
     };
-    let (mut client, server) = spawn_wire_server(server_impl).await;
+    let (mut client, server) = spawn_wire_server(server_impl);
     client.initialize_client(&["utf-16"]).await;
 
     for id in 10..19 {
@@ -1502,7 +1504,7 @@ impl Server for ConfigurableServer {
 ```rust
 #[tokio::test]
 async fn shutdown_exit_terminates_the_server_loop_cleanly() {
-    let (mut client, server) = spawn_wire_server(EchoServer).await;
+    let (mut client, server) = spawn_wire_server(EchoServer);
     client.initialize_client(&["utf-16"]).await;
 
     let shutdown = client.request(2, "shutdown", json!(null)).await;
@@ -1536,7 +1538,7 @@ async fn workspace_configuration_request_is_served_mid_request() {
         root
     };
 
-    let (mut client, server) = spawn_wire_server(ConfigurableServer).await;
+    let (mut client, server) = spawn_wire_server(ConfigurableServer);
 
     // initialize with configuration capability + a workspace folder
     let response = client
@@ -1618,7 +1620,7 @@ async fn cancel_request_answers_request_cancelled() {
         entered: entered_tx,
         release: release_rx,
     };
-    let (mut client, server) = spawn_wire_server(server_impl).await;
+    let (mut client, server) = spawn_wire_server(server_impl);
     client.initialize_client(&["utf-16"]).await;
 
     client
@@ -1641,7 +1643,7 @@ async fn cancel_request_answers_request_cancelled() {
 
 #[tokio::test]
 async fn malformed_header_closes_the_connection() {
-    let (mut client, server) = spawn_wire_server(EchoServer).await;
+    let (mut client, server) = spawn_wire_server(EchoServer);
 
     client
         .stream
@@ -2466,6 +2468,18 @@ The method already follows the three-place pattern (trait method, `Request`
 impl, `implement_methods!` line). Add: one W0 conversion test next to its
 `Request` impl (via `requests::testing`), and rely on the parametrized
 unknown-method W2 test for dispatch — growth adds no wire tests.
+
+Wire-note: unwired methods answer `-32601` only when their params
+deserialize — invalid params fail earlier with `-32602` (the router
+validates before dispatch); the parametrized test sends minimally valid
+params per method.
+
+Known ceiling of the echo round-trip tests (#2, #6): an echo server that
+returns the position it received cannot distinguish "conversion works"
+from "conversion was deleted" (both are fixpoints on the sent column).
+They do fail under either single-direction regression; if a stronger pin
+is ever needed, an asserting server that fails unless the handler sees
+the UTF-8 byte column breaks the symmetry.
 ```
 
 Adjust the wording of the audit-outcome line if Task 7 approved further typing candidates.
