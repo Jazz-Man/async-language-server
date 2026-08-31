@@ -8,8 +8,9 @@ use async_lsp::{
     ClientSocket,
     lsp_types::{
         DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-        Position, Range, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-        Url, VersionedTextDocumentIdentifier, WorkspaceFolder,
+        DidSaveTextDocumentParams, Position, Range, TextDocumentContentChangeEvent,
+        TextDocumentIdentifier, TextDocumentItem, Url, VersionedTextDocumentIdentifier,
+        WorkspaceFolder,
     },
 };
 
@@ -290,6 +291,85 @@ fn failed_incremental_change_reparses_kept_text_tree() {
         .query("(number) @n")
         .expect("query runs against the kept tree");
     assert!(numbers.is_empty(), "stale tree captures: {numbers:?}");
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+#[test]
+fn document_save_replaces_text_from_params() {
+    let root = temp_workspace("save-from-params");
+    let uri = {
+        let path = root.join("saved.txt");
+        Url::from_file_path(path).expect("path converts to a URL")
+    };
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    let _ = state.handle_document_open(DidOpenTextDocumentParams {
+        text_document: TextDocumentItem::new(uri.clone(), "test".into(), 1, "before".into()),
+    });
+
+    let _ = state.handle_document_save(DidSaveTextDocumentParams {
+        text_document: TextDocumentIdentifier::new(uri.clone()),
+        text: Some("after".into()),
+    });
+
+    let document = state.document(&uri).expect("document stays tracked");
+    assert_eq!(document.text_contents(), "after");
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+#[test]
+fn document_save_falls_back_to_disk_when_params_have_no_text() {
+    let root = temp_workspace("save-from-disk");
+    let path = root.join("on-disk.txt");
+    fs::write(&path, "from disk").expect("file can be written");
+    let uri = Url::from_file_path(&path).expect("path converts to a URL");
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    let _ = state.handle_document_open(DidOpenTextDocumentParams {
+        text_document: TextDocumentItem::new(uri.clone(), "test".into(), 1, "before".into()),
+    });
+
+    let _ = state.handle_document_save(DidSaveTextDocumentParams {
+        text_document: TextDocumentIdentifier::new(uri.clone()),
+        text: None,
+    });
+
+    let document = state.document(&uri).expect("document stays tracked");
+    assert_eq!(document.text_contents(), "from disk");
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+#[test]
+fn document_save_removes_the_document_when_no_text_and_no_file() {
+    let root = temp_workspace("save-removes");
+    let uri = {
+        let path = root.join("missing.txt");
+        Url::from_file_path(path).expect("path converts to a URL")
+    };
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    let _ = state.handle_document_open(DidOpenTextDocumentParams {
+        text_document: TextDocumentItem::new(uri.clone(), "test".into(), 1, "before".into()),
+    });
+
+    let _ = state.handle_document_save(DidSaveTextDocumentParams {
+        text_document: TextDocumentIdentifier::new(uri.clone()),
+        text: None,
+    });
+
+    assert!(
+        state.document(&uri).is_none(),
+        "document is removed on failure"
+    );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
