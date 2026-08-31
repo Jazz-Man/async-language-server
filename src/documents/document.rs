@@ -13,6 +13,7 @@ use crate::server::DocumentMatcher;
 
 #[cfg(feature = "tree-sitter")]
 use crate::{
+    error::QueryError,
     tree_sitter::{Language, Node, Query, QueryCursor, StreamingIterator, Tree},
     tree_sitter_utils::{lsp_position_to_ts_point, ts_range_to_lsp_range},
 };
@@ -168,24 +169,20 @@ impl Document {
 
     /// Creates and runs a query for the given query string.
     ///
-    /// Returns `None` when the document has no tree-sitter language or
-    /// parsed tree assigned, or when the query string fails to compile
-    /// (logged under the `tracing` feature).
-    #[must_use]
-    pub fn query(&self, query: impl AsRef<str>) -> Option<Vec<DocumentQueryCapture>> {
-        let lang = self.tree_sitter_lang.as_ref()?;
-        let tree = self.tree_sitter_tree.as_ref()?;
+    /// # Errors
+    ///
+    /// Returns [`QueryError::NoTree`] when the document has no tree-sitter
+    /// language or parsed tree attached, and [`QueryError::InvalidQuery`]
+    /// when the query string fails to compile.
+    pub fn query(
+        &self,
+        query: impl AsRef<str>,
+    ) -> std::result::Result<Vec<DocumentQueryCapture>, QueryError> {
+        let lang = self.tree_sitter_lang.as_ref().ok_or(QueryError::NoTree)?;
+        let tree = self.tree_sitter_tree.as_ref().ok_or(QueryError::NoTree)?;
 
-        let query = match Query::new(lang, query.as_ref()) {
-            Ok(query) => query,
-            Err(error) => {
-                #[cfg(feature = "tracing")]
-                tracing::warn!("invalid tree-sitter query '{}': {error}", query.as_ref());
-                #[cfg(not(feature = "tracing"))]
-                drop(error);
-                return None;
-            }
-        };
+        let query =
+            Query::new(lang, query.as_ref()).map_err(|error| QueryError::InvalidQuery { error })?;
         let query_names = query.capture_names();
 
         let doc_text = self.text.to_string();
@@ -205,7 +202,7 @@ impl Document {
                 }
             }
         }
-        Some(items)
+        Ok(items)
     }
 }
 

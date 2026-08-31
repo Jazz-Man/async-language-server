@@ -14,7 +14,7 @@ use async_language_server::lsp_types::{
     TextDocumentSyncKind,
 };
 use async_language_server::server::{
-    DocumentMatcher, Server, ServerResult, ServerState, Transport, serve,
+    DocumentMatcher, Server, ServerError, ServerResult, ServerState, Transport, serve,
 };
 
 #[derive(Clone)]
@@ -57,8 +57,16 @@ impl Server for JsonServer {
         let mut items = Vec::new();
         if document.has_syntax_tree() {
             // The tree is parsed and incrementally updated by the crate;
-            // query it for parser ERROR nodes.
-            for capture in document.query("(ERROR) @error").into_iter().flatten() {
+            // query it for parser ERROR nodes. A leaf error like
+            // `QueryError` never crosses the wire by itself: box it into
+            // the crate's typed server error at this boundary.
+            let captures = match document.query("(ERROR) @error") {
+                Ok(captures) => captures,
+                Err(error) => {
+                    return std::future::ready(Err(ServerError::Other(Box::new(error))));
+                }
+            };
+            for capture in captures {
                 items.push(Diagnostic {
                     range: capture.range,
                     message: "syntax error".to_owned(),

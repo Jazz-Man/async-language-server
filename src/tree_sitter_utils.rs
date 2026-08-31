@@ -8,6 +8,8 @@ use std::collections::VecDeque;
 use async_lsp::lsp_types::{Position as LspPosition, Range as LspRange};
 use tree_sitter::{Node, Point as TsPoint, Range as TsRange};
 
+pub use crate::error::QueryError;
+
 use crate::text_utils::Position;
 
 /// Converts a tree sitter `Point` to an LSP `Position`.

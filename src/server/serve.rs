@@ -56,7 +56,21 @@ where
     S: Send + Sync + 'static,
 {
     let (reader, writer) = transport.into_read_write().await?;
+    run_over_streams(server, reader, writer).await
+}
 
+/// Runs the real middleware stack (lifecycle, tracing, concurrency,
+/// panic catching, client-process monitor) over arbitrary byte streams.
+///
+/// `serve()` delegates here; the wire-tier tests (`src/server/tests.rs`)
+/// drive the same stack over `tokio::io::duplex`, so the tested stack can
+/// never drift from the shipped one.
+pub(crate) async fn run_over_streams<S, R, W>(server: S, reader: R, writer: W) -> ServerResult<()>
+where
+    S: Server + Clone + Send + Sync + 'static,
+    R: futures::AsyncRead,
+    W: futures::AsyncWrite,
+{
     let (server, _) = async_lsp::MainLoop::new_server(|client| {
         let builder = ServiceBuilder::new().layer(LifecycleLayer::default());
 
