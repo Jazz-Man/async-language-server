@@ -7,7 +7,7 @@
 
 use async_lsp::{
     ClientSocket,
-    lsp_types::{DidOpenTextDocumentParams, Position, Range, TextDocumentItem, Url},
+    lsp_types::{DidOpenTextDocumentParams, Range, TextDocumentItem, Url},
 };
 
 use crate::{
@@ -15,23 +15,16 @@ use crate::{
     text_utils::Encoding,
 };
 
+use crate::text_utils::testing::{self, p};
+
+pub(crate) use crate::text_utils::testing::url;
+
 pub(crate) struct TestServer;
 
 impl Server for TestServer {}
 
-pub(crate) fn url(path: &str) -> Url {
-    Url::parse(&format!("file:///tmp/{path}")).unwrap()
-}
-
-pub(crate) const fn p(line: u32, character: u32) -> Position {
-    Position { line, character }
-}
-
 pub(crate) const fn r(line: u32, start: u32, end: u32) -> Range {
-    Range {
-        start: p(line, start),
-        end: p(line, end),
-    }
+    testing::r(p(line, start), p(line, end))
 }
 
 pub(crate) fn open_document(state: &mut ServerState, uri: Url, text: impl Into<String>) {

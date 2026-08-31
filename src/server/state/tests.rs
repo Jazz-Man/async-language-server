@@ -15,6 +15,7 @@ use async_lsp::{
 };
 
 use crate::server::{DocumentMatcher, Server, ServerOptions, WorkspaceDiagnostics};
+use crate::text_utils::testing::url;
 
 use super::ServerState;
 
@@ -28,10 +29,6 @@ impl Server for TestServer {
                 .with_lang_strings(["test"]),
         ]
     }
-}
-
-fn url(path: &str) -> Url {
-    Url::parse(&format!("file:///tmp/{path}")).unwrap()
 }
 
 fn open_document(state: &mut ServerState, uri: Url, text: impl Into<String>) {

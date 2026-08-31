@@ -1,6 +1,7 @@
-use async_lsp::lsp_types::{Position as LspPosition, Range as LspRange};
-
-use crate::text_utils::RangeError;
+use crate::text_utils::{
+    RangeError,
+    testing::{p, r},
+};
 
 use super::RangeExt;
 
@@ -8,17 +9,6 @@ const T: &str = ""; // LSP range & position do not need text information
 const LF: char = '\n';
 const D1: char = '/';
 const D2: char = '@';
-
-const fn r(start: LspPosition, end: LspPosition) -> LspRange {
-    LspRange { start, end }
-}
-
-const fn p(line: u32, column: u32) -> LspPosition {
-    LspPosition {
-        line,
-        character: column,
-    }
-}
 
 // Basic happy path tests
 

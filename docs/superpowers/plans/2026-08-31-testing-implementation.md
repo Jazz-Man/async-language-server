@@ -2412,6 +2412,29 @@ Suggested message: `test: split_off boundaries and every RangeError variant trig
 
 ---
 
+### Task 20b: Deduplicate the LSP p()/url() test fixtures (owner DRY directive)
+
+**Files:**
+- Create: `src/text_utils/testing.rs`
+- Modify: `src/text_utils/mod.rs`, `src/requests/testing.rs`, `src/text_utils/range_ext/lsp_tests.rs`, `src/server/state/tests.rs`, and the requests test modules importing `p`
+
+**Interfaces:**
+- Produces: `crate::text_utils::testing::{p, url}` — `#[cfg(test)] pub(crate)`; `p(line: u32, character: u32) -> lsp_types::Position` (const), `url(path: &str) -> Url` (parses `file:///tmp/{path}`).
+- The `r()` consolidation (owner catch, fix round): the shared module also carries the general `r(start: Position, end: Position) -> Range`; `lsp_tests` imports it (local deleted); `requests::testing`'s 3-arg `r` becomes a one-line same-line sugar composing the shared `p`+`r` (signature unchanged, zero call-site churn). Only the bytes/ts `r()` stay local — they build different types (`Range<usize>`, `TsRange`): a naming convention, not duplication; recorded in the steering doc.
+
+**Landed notes:** requests' `state_with_documents`/`TestServer`/`open_document` stay in `requests::testing` (requests-domain). The three roll-up one-liners live in Task 20c.
+
+### Task 20c: Roll-up polish one-liners (pre-steering)
+
+**Files:** `src/server/state/tests.rs`, `src/documents/matcher.rs`, `src/text_utils/range_ext/tree_sitter_tests.rs`
+
+- T17: add the positive pre-condition `assert!(state.document(&uri).is_some())` after open in `document_save_removes_the_document_when_no_text_and_no_file`.
+- T18: the grammar-test assert message states the property, not visibility ("a bare matcher carries no grammar").
+- T20: the ts shrink fixture pairs `end_byte` with the point that actually names that byte in `"a\nb"` (consistent pairing).
+- Explicitly NOT taken: T12 "assert the config-test loop outcome" — after `drop(client)` the serve loop ends with the expected `Err(Eof)`, an `Ok` assert would fail; the reviewer's Minor was imprecise.
+
+---
+
 ### Task 21: Testing steering document
 
 **Files:**
