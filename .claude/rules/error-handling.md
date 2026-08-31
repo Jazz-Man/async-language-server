@@ -1,9 +1,11 @@
 # Error Handling
 
 This rule is normative: it states how errors must be handled, independent of
-where the code lives today. `ServerError` — the crate's single typed error,
-behind the `ServerResult<T>` alias — is constructed, mapped, and observed
-according to the sections below.
+where the code lives today. `ServerError` — the crate's single typed error of
+the server/protocol domain, behind the `ServerResult<T>` alias — is
+constructed, mapped, and observed according to the sections below. Leaf
+utilities without protocol semantics carry their own narrow error types
+defined in the same `src/error.rs` (currently `RangeError`).
 
 ## The typed error
 
@@ -41,9 +43,12 @@ TcpConnect {
 }
 ```
 
-- Keep the single crate-wide enum. Do not introduce per-module error types or
-  conversion hierarchies; split only if the enum grows to where matching it
-  gets noisy.
+- Keep `ServerError` as the single enum of the server/protocol domain. Leaf
+  utilities without protocol semantics (such as `RangeExt` carrying
+  `RangeError`) get their own narrow error type, defined in the same
+  `src/error.rs` file; do not fold unrelated situations into `ServerError`
+  merely to standardize the name, and do not scatter error types across
+  modules.
 
 ## One boundary, both directions
 
