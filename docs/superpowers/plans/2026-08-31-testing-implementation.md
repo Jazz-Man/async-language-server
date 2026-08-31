@@ -669,6 +669,91 @@ Suggested message: `docs: error-handling rule acknowledges leaf-utility error ty
 
 - [ ] **Step 4: Record the outcome** in the final task report (even "no further candidates"), so Task 21's steering doc reflects it.
 
+**Outcome (2026-08-31, owner gate passed):** 35 public items swept; one candidate approved —
+`Document::query`'s `Option` conflates "no grammar/tree" with "query failed to compile".
+Implemented as Task 7b below. Everything else: no candidate (nine borderline items
+documented in `.superpowers/sdd/task-7-report.md`).
+
+### Task 7b: QueryError — split Document::query failure modes (owner-approved)
+
+**Files:**
+- Modify: `src/error.rs` (feature-gated enum, after `RangeError`)
+- Modify: `src/documents/document.rs` (`query` signature + body)
+- Modify: `src/tree_sitter_utils.rs` (re-export)
+- Modify: `examples/tree_sitter.rs` (call site)
+- Modify: `src/server/state/tests.rs` (call site)
+
+**Interfaces:**
+- Produces: `Document::query(&self, query: impl AsRef<str>) -> Result<Vec<DocumentQueryCapture>, QueryError>`; `QueryError` (feature-gated) re-exported as `async_language_server::tree_sitter_utils::QueryError`.
+
+- [ ] **Step 1: Add the enum to `src/error.rs`** after `RangeError`:
+
+```rust
+/// Failures of [`Document::query`](crate::server::Document::query).
+///
+/// A leaf-utility error without protocol semantics, like [`RangeError`]:
+/// it never crosses the wire itself and is mapped by the caller at their
+/// own boundary.
+#[cfg(feature = "tree-sitter")]
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum QueryError {
+    /// The document has no tree-sitter language or parsed tree attached.
+    #[error("document has no tree-sitter language or parsed tree")]
+    NoTree,
+    /// The query string failed to compile.
+    #[error("invalid tree-sitter query")]
+    InvalidQuery {
+        /// The underlying compilation error.
+        #[source]
+        error: tree_sitter::QueryError,
+    },
+}
+```
+
+- [ ] **Step 2: Convert `Document::query`** in `src/documents/document.rs`:
+
+```rust
+    /// Creates and runs a query for the given query string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QueryError::NoTree`] when the document has no tree-sitter
+    /// language or parsed tree attached, and [`QueryError::InvalidQuery`]
+    /// when the query string fails to compile.
+    pub fn query(&self, query: impl AsRef<str>) -> Result<Vec<DocumentQueryCapture>, QueryError> {
+        let lang = self
+            .tree_sitter_lang
+            .as_ref()
+            .ok_or(QueryError::NoTree)?;
+        let tree = self
+            .tree_sitter_tree
+            .as_ref()
+            .ok_or(QueryError::NoTree)?;
+
+        let query = Query::new(lang, query.as_ref())
+            .map_err(|error| QueryError::InvalidQuery { error })?;
+```
+
+The body after that line is unchanged except the final `Some(items)` becomes `Ok(items)`, and the `Err`-arm `tracing::warn!` + `#[cfg(not(feature = "tracing"))] drop(error);` block disappears entirely — the compile error is now returned to the caller, not swallowed into a log. Import `QueryError` via `crate::error::QueryError`.
+
+- [ ] **Step 3: Re-export** in `src/tree_sitter_utils.rs`: `pub use crate::error::QueryError;`
+
+- [ ] **Step 4: Adapt the two call sites.** `examples/tree_sitter.rs` (the query call around line 61): handle the `Result` in whatever shape fits the example's didactic flow (e.g. `.expect("valid query")` is acceptable in example code). `src/server/state/tests.rs` (around line 290): adapt the assertion to the `Result` shape.
+
+- [ ] **Step 5: Verify** (the tree-sitter gate means all-features is the load-bearing config):
+
+```bash
+cargo test --all-features
+cargo test --no-default-features
+cargo fmt && cargo clippy --all-targets -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+```
+
+- [ ] **Step 6: Report for commit**
+
+Suggested message: `feat!: Document::query returns Result<_, QueryError> splitting NoTree from InvalidQuery (breaking)`
+
 ---
 
 ### Task 8: Extract the serve() stack helper
@@ -2172,7 +2257,7 @@ Suggested message: `test: DocumentMatcher find semantics, precedence, invalid-gl
 **Files:**
 - Modify: `src/documents/document.rs` (append to its tests module)
 
-**Interfaces:** Consumes the `JsonServer`-style state wiring pattern proven at `src/server/state/tests.rs:236-249`.
+**Interfaces:** Consumes the `JsonServer`-style state wiring pattern proven at `src/server/state/tests.rs:236-249` and `QueryError` from Task 7b (`crate::error::QueryError`).
 
 - [ ] **Step 1: Append to the tests module in `document.rs`** — construct documents through `ServerState` with a grammar-carrying matcher (the only in-crate way to get a parsed `Document`):
 
@@ -2215,17 +2300,20 @@ Suggested message: `test: DocumentMatcher find semantics, precedence, invalid-gl
         });
         let document = state.document(&uri).expect("document is tracked");
 
-        // Malformed query syntax: compiled inside query(), must return None.
-        assert_eq!(document.query("(node"), None);
+        // Malformed query syntax: the typed compile failure, not a bare None.
+        assert!(matches!(
+            document.query("(node"),
+            Err(QueryError::InvalidQuery { .. })
+        ));
 
-        // A document with no grammar/tree also answers None: same state,
-        // different URL, language string no matcher claims.
+        // A document with no grammar/tree answers NoTree, distinctly:
+        // same state, different URL, language string no matcher claims.
         let plain_uri = Url::from_file_path(root.join("plain.txt")).expect("path converts");
         let _ = state.handle_document_open(DidOpenTextDocumentParams {
             text_document: TextDocumentItem::new(plain_uri.clone(), "plaintext".into(), 1, "x".into()),
         });
         let plain = state.document(&plain_uri).expect("document is tracked");
-        assert_eq!(plain.query("(node)"), None);
+        assert!(matches!(plain.query("(node"), Err(QueryError::NoTree)));
 
         std::fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
