@@ -2435,6 +2435,23 @@ Suggested message: `test: split_off boundaries and every RangeError variant trig
 
 ---
 
+### Task 20d: Integrate cargo-dupes as a subcommand (owner choice: no dev-dependency)
+
+**Files:**
+- Create: `dupes.toml` (repo root)
+- Modify: `.claude/rules/tech.md` (battery section, one entry)
+
+**Interfaces:** none (tooling only; NO Cargo.toml change — cargo-dupes is a bin/subcommand, a dev-dependency would be dead weight in every test build).
+
+**Steps:**
+1. Install: `cargo install cargo-dupes` — DONE by the owner (2026-08-31); verify `cargo dupes --help` responds.
+2. Baseline report: `cargo dupes report` over `src/` — record what it finds (exact + near groups).
+3. Author `dupes.toml` encoding only invariants that hold TODAY (the arch-lint philosophy): starting point `exclude_tests = true` (the range_ext trio is deliberately parallel spec twins; inline tests carry the convention), `min_nodes = 15` (skip trivial fns), `similarity_threshold = 0.85`; tune per the baseline report. Intentional duplicates get `cargo dupes ignore <fingerprint> --reason "..."` entries (stored in `.dupes-ignore.toml`, committed) — never threshold-loosening without a reason.
+4. Add to `.claude/rules/tech.md` battery as an on-demand/periodic check: `cargo dupes check` with the thresholds the config encodes; not CI-gated, not part of the per-task battery.
+5. Report the baseline numbers and every tuning decision for the owner's checkpoint.
+
+---
+
 ### Task 21: Testing steering document
 
 **Files:**
