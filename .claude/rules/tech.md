@@ -43,6 +43,13 @@ about the code, not about the check: when anything fails, follow the global
 skills, find the root cause, then fix it. Never make a check pass with
 `#[allow]`, `--cap-lints`, or similar suppression.
 
+Outside the per-task battery (and outside CI), `cargo dupes check` runs on
+demand or periodically: it guards against exact and near AST duplication
+creeping back after the dupes refactor. `dupes.toml` sets the analysis knobs
+(`min_nodes`, `max_exact_duplicates`, `max_near_duplicates`) and `.dupes-ignore.toml` carries one reasoned
+entry per deliberate leftover — together they encode the invariants, so a
+non-ignored group means new duplication, not a threshold to loosen.
+
 ## Lints
 
 Lint levels live in `Cargo.toml`, not in source attributes:
