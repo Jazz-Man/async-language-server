@@ -799,3 +799,74 @@ async fn workspace_configuration_request_is_served_mid_request() {
         .await
         .expect("temp workspace can be removed");
 }
+
+// --- catalog #14-#15 (cancellation + framing robustness) ---
+
+#[tokio::test]
+async fn cancel_request_answers_request_cancelled() {
+    let (entered_tx, mut entered_rx) = mpsc::unbounded_channel();
+    let (release_tx, release_rx) = watch::channel(false);
+    let server_impl = GatedServer {
+        entered: entered_tx,
+        release: release_rx,
+    };
+    let (mut client, server) = spawn_wire_server(server_impl);
+    client.initialize_client(&["utf-16"]).await;
+
+    client
+        .send_request(
+            2,
+            "textDocument/hover",
+            hover_params("file:///tmp/wire.txt", 0),
+        )
+        .await;
+    // Bounded await, not `now_or_never`: on the current-thread runtime the
+    // server task only runs while this task is suspended, so a single poll
+    // cannot yet see the enter signal.
+    timeout(WIRE_TIMEOUT, entered_rx.recv())
+        .await
+        .expect("handler entered")
+        .expect("signal received");
+
+    // Cancel while the handler is still gated. The response is awaited
+    // before any release: async-lsp's main loop polls in-flight tasks
+    // before unread messages, so releasing first would let the gated
+    // handler complete Ok and turn the cancel into a no-op.
+    client.notify("$/cancelRequest", json!({ "id": 2 })).await;
+    let response = client.await_response(2).await;
+    assert_eq!(response["error"]["code"], -32800); // RequestCancelled
+
+    // Cleanup only: the aborted handler never ran to completion, so the
+    // watch is released merely to prove the channel is still alive.
+    release_tx.send(true).expect("release sends");
+
+    drop(client);
+    let _ = bounded(server).await;
+}
+
+#[tokio::test]
+async fn malformed_header_closes_the_connection() {
+    let (mut client, server) = spawn_wire_server(EchoServer);
+
+    client
+        .writer
+        .write_all(b"Content-Length: abc\r\n\r\n")
+        .await
+        .expect("garbage writes");
+
+    // The loop fails on framing and closes: EOF within the bound.
+    let closed = timeout(WIRE_TIMEOUT, client.read_message())
+        .await
+        .expect("server reacts within the bound");
+    assert!(closed.is_none(), "expected EOF, got {closed:?}");
+
+    // The join handle adds a layer over `ServerResult`: unwrap it first,
+    // then assert the loop itself failed (framing error, not a panic).
+    let outcome = bounded(server)
+        .await
+        .expect("serve loop completes within the timeout");
+    assert!(
+        outcome.is_err(),
+        "the loop must fail, not exit Ok: {outcome:?}"
+    );
+}
