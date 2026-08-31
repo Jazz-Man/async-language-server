@@ -176,3 +176,94 @@ impl DocumentMatchers {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use async_lsp::lsp_types::Url;
+
+    use super::{DocumentMatcher, DocumentMatchers};
+
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let millis = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time is after epoch")
+            .as_millis();
+        let root = std::env::temp_dir().join(format!("als-matcher-{name}-{millis}"));
+        fs::create_dir_all(&root).expect("temp dir can be created");
+        root
+    }
+
+    #[test]
+    fn find_matches_language_strings_case_insensitively() {
+        let matchers =
+            DocumentMatchers::new([DocumentMatcher::new("json").with_lang_strings(["Json"])]);
+
+        let found = matchers
+            .find(&Url::parse("file:///tmp/any.txt").unwrap(), "JSON")
+            .expect("matched by language");
+        assert_eq!(found.name(), "json");
+    }
+
+    #[test]
+    fn find_matches_url_globs_against_real_paths() {
+        let root = temp_dir("url-glob");
+        let uri = Url::from_file_path(root.join("data.json")).unwrap();
+        let matchers =
+            DocumentMatchers::new([DocumentMatcher::new("json").with_url_globs(["**/*.json"])]);
+
+        let found = matchers
+            .find(&uri, "plaintext")
+            .expect("matched by glob when the language is unknown");
+        assert_eq!(found.name(), "json");
+
+        fs::remove_dir_all(root).expect("temp dir can be removed");
+    }
+
+    #[test]
+    fn language_strings_win_over_url_globs() {
+        let root = temp_dir("precedence");
+        let uri = Url::from_file_path(root.join("data.json")).unwrap();
+        let matchers = DocumentMatchers::new([
+            DocumentMatcher::new("by-lang").with_lang_strings(["json"]),
+            DocumentMatcher::new("by-glob").with_url_globs(["**/*.json"]),
+        ]);
+
+        let found = matchers.find(&uri, "json").expect("matched");
+        assert_eq!(found.name(), "by-lang");
+
+        fs::remove_dir_all(root).expect("temp dir can be removed");
+    }
+
+    #[test]
+    fn invalid_globs_are_skipped_not_matched() {
+        let root = temp_dir("invalid-glob");
+        let uri = Url::from_file_path(root.join("data.json")).unwrap();
+        // "[" is not a valid glob: the matcher contributes nothing, and the
+        // document simply stays unmatched — the return half of the warn path.
+        let matchers =
+            DocumentMatchers::new([DocumentMatcher::new("broken").with_url_globs(["["])]);
+
+        assert!(matchers.find(&uri, "plaintext").is_none());
+
+        fs::remove_dir_all(root).expect("temp dir can be removed");
+    }
+
+    #[cfg(feature = "tree-sitter")]
+    #[test]
+    fn lang_grammar_rides_along_with_the_matcher() {
+        let matcher =
+            DocumentMatcher::new("json").with_lang_grammar(tree_sitter_json::LANGUAGE.into());
+
+        assert!(matcher.lang_grammar().is_some());
+        assert_eq!(
+            DocumentMatcher::new("bare").lang_grammar(),
+            None,
+            "the getter is pub(crate); default is no grammar"
+        );
+    }
+}
