@@ -1,5 +1,5 @@
 use async_lsp::lsp_types::{
-    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult, Url,
+    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
 };
 
 use crate::server::{Document, ServerState};
@@ -15,9 +15,7 @@ impl Request for DocumentDiagnostics {
     type Params = DocumentDiagnosticParams;
     type Response = DocumentDiagnosticReportResult;
 
-    fn extract_url(params: &Self::Params) -> Option<Url> {
-        Some(params.text_document.uri.clone())
-    }
+    request_extract_url!(text_document);
 
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
         match response {

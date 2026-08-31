@@ -1,5 +1,5 @@
 use async_lsp::lsp_types::{
-    CodeActionOrCommand as LspCodeActionOrCommand, CodeActionParams as LspCodeActionParams, Url,
+    CodeActionOrCommand as LspCodeActionOrCommand, CodeActionParams as LspCodeActionParams,
 };
 
 use crate::server::{Document, ServerState};
@@ -18,9 +18,7 @@ impl Request for CodeAction {
     type Params = LspCodeActionParams;
     type Response = Option<Vec<LspCodeActionOrCommand>>;
 
-    fn extract_url(params: &Self::Params) -> Option<Url> {
-        Some(params.text_document.uri.clone())
-    }
+    request_extract_url!(text_document);
 
     fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
         convert_range(state, document, &mut params.range, Direction::Incoming);

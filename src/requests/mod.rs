@@ -2,6 +2,38 @@ use async_lsp::lsp_types::Url;
 
 use crate::server::{Document, ServerState};
 
+/// Implements [`Request::extract_url`] inside an existing `impl Request`
+/// block, for a request whose params carry the document URL at the given
+/// field path, e.g. `text_document` or `text_document_position_params.text_document`.
+macro_rules! request_extract_url {
+    ($($segment:ident).*) => {
+        fn extract_url(params: &Self::Params) -> Option<async_lsp::lsp_types::Url> {
+            Some(params $(.$segment)* .uri.clone())
+        }
+    };
+}
+
+/// Implements [`Request::modify_params`] inside an existing `impl Request`
+/// block, for a request whose params carry one incoming position at the
+/// given field path, e.g. `text_document_position.position`: the generated
+/// body delegates to `convert_position` with `Direction::Incoming`.
+macro_rules! request_modify_params_position {
+    ($($segment:ident).*) => {
+        fn modify_params(
+            state: &crate::server::ServerState,
+            document: &crate::server::Document,
+            params: &mut Self::Params,
+        ) {
+            crate::requests::conversion::convert_position(
+                state,
+                document,
+                &mut params $(.$segment)*,
+                crate::requests::conversion::Direction::Incoming,
+            );
+        }
+    };
+}
+
 mod code_action;
 mod code_action_resolve;
 mod completion;

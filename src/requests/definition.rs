@@ -1,14 +1,11 @@
 use async_lsp::lsp_types::{
     GotoDefinitionParams as LspGotoDefinitionParams,
-    GotoDefinitionResponse as LspGotoDefinitionResponse, Url,
+    GotoDefinitionResponse as LspGotoDefinitionResponse,
 };
 
 use crate::server::{Document, ServerState};
 
-use super::{
-    Request,
-    conversion::{Direction, convert_position, modify_outgoing_goto_response},
-};
+use super::{Request, conversion::modify_outgoing_goto_response};
 
 pub struct Definition;
 
@@ -16,24 +13,8 @@ impl Request for Definition {
     type Params = LspGotoDefinitionParams;
     type Response = Option<LspGotoDefinitionResponse>;
 
-    fn extract_url(params: &Self::Params) -> Option<Url> {
-        Some(
-            params
-                .text_document_position_params
-                .text_document
-                .uri
-                .clone(),
-        )
-    }
-
-    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        convert_position(
-            state,
-            document,
-            &mut params.text_document_position_params.position,
-            Direction::Incoming,
-        );
-    }
+    request_extract_url!(text_document_position_params.text_document);
+    request_modify_params_position!(text_document_position_params.position);
 
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
         modify_outgoing_goto_response(state, document, response);

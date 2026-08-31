@@ -3,10 +3,10 @@ use std::{ops::ControlFlow, sync::Arc};
 use async_lsp::{
     ClientSocket, ErrorCode, LanguageServer, ResponseError, Result,
     lsp_types::{
-        CodeAction, CompletionItem, DidChangeConfigurationParams, DidChangeTextDocumentParams,
-        DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-        DidSaveTextDocumentParams, InitializeParams, InitializeResult, InitializedParams, Url,
-        WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
+        DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWorkspaceFoldersParams,
+        DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+        InitializeParams, InitializeResult, InitializedParams, Url, WorkspaceDiagnosticParams,
+        WorkspaceDiagnosticReportResult,
     },
 };
 use futures::future::BoxFuture;
@@ -15,7 +15,7 @@ use futures::future::BoxFuture;
 use tracing::debug;
 
 use crate::{
-    requests::{CodeActionResolve, CompletionResolve, Direction, convert_resolve_item},
+    requests::{Direction, convert_resolve_item},
     server::{Server, ServerState},
     text_utils::Encoding,
 };
@@ -98,6 +98,43 @@ macro_rules! implement_methods {
         $(
             implement_method!($lsp_method => $server_method @ $request_type);
         )*
+    };
+}
+
+macro_rules! implement_resolve_method {
+    ($lsp_method:ident => $server_method:ident @ $request_type:ty) => {
+        fn $lsp_method(
+            &mut self,
+            mut params: <$request_type as crate::requests::Request>::Params,
+        ) -> BoxFuture<
+            'static,
+            Result<<$request_type as crate::requests::Request>::Response, Self::Error>,
+        > {
+            let server = Arc::clone(&self.server);
+            let state = self.state.clone();
+            Box::pin(async move {
+                // Resolve requests carry no text-document URL: convert against
+                // the sole tracked document, if the server tracks exactly one.
+                let sole = {
+                    let documents = state.documents();
+                    (documents.len() == 1).then(|| documents[0].clone())
+                };
+                convert_resolve_item::<$request_type, _>(
+                    &state,
+                    sole.as_ref(),
+                    &mut params,
+                    Direction::Incoming,
+                );
+                let mut result = server.$server_method(state.clone(), params).await?;
+                convert_resolve_item::<$request_type, _>(
+                    &state,
+                    sole.as_ref(),
+                    &mut result,
+                    Direction::Outgoing,
+                );
+                Ok(result)
+            })
+        }
     };
 }
 
@@ -186,63 +223,14 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         ))
     }
 
-    fn completion_item_resolve(
-        &mut self,
-        mut params: CompletionItem,
-    ) -> BoxFuture<'static, Result<CompletionItem, Self::Error>> {
-        let server = Arc::clone(&self.server);
-        let state = self.state.clone();
-        Box::pin(async move {
-            let sole = {
-                let documents = state.documents();
-                (documents.len() == 1).then(|| documents[0].clone())
-            };
-            convert_resolve_item::<CompletionResolve, _>(
-                &state,
-                sole.as_ref(),
-                &mut params,
-                Direction::Incoming,
-            );
-            let mut result = server.completion_resolve(state.clone(), params).await?;
-            convert_resolve_item::<CompletionResolve, _>(
-                &state,
-                sole.as_ref(),
-                &mut result,
-                Direction::Outgoing,
-            );
-            Ok(result)
-        })
-    }
-
-    fn code_action_resolve(
-        &mut self,
-        mut params: CodeAction,
-    ) -> BoxFuture<'static, Result<CodeAction, Self::Error>> {
-        let server = Arc::clone(&self.server);
-        let state = self.state.clone();
-        Box::pin(async move {
-            let sole = {
-                let documents = state.documents();
-                (documents.len() == 1).then(|| documents[0].clone())
-            };
-            convert_resolve_item::<CodeActionResolve, _>(
-                &state,
-                sole.as_ref(),
-                &mut params,
-                Direction::Incoming,
-            );
-            let mut result = server.code_action_resolve(state.clone(), params).await?;
-            convert_resolve_item::<CodeActionResolve, _>(
-                &state,
-                sole.as_ref(),
-                &mut result,
-                Direction::Outgoing,
-            );
-            Ok(result)
-        })
-    }
-
     // async-lsp method name => our method name @ request type definition
+
+    implement_resolve_method!(
+        completion_item_resolve => completion_resolve @ crate::requests::CompletionResolve
+    );
+    implement_resolve_method!(
+        code_action_resolve => code_action_resolve @ crate::requests::CodeActionResolve
+    );
 
     implement_methods!(
         hover                   => hover                 @ crate::requests::Hover,

@@ -1,5 +1,5 @@
 use async_lsp::lsp_types::{
-    DocumentFormattingParams as LspDocumentFormattingParams, TextEdit as LspTextEdit, Url,
+    DocumentFormattingParams as LspDocumentFormattingParams, TextEdit as LspTextEdit,
 };
 
 use crate::server::{Document, ServerState};
@@ -15,9 +15,7 @@ impl Request for DocumentFormat {
     type Params = LspDocumentFormattingParams;
     type Response = Option<Vec<LspTextEdit>>;
 
-    fn extract_url(params: &Self::Params) -> Option<Url> {
-        Some(params.text_document.uri.clone())
-    }
+    request_extract_url!(text_document);
 
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
         convert_optional_vec(

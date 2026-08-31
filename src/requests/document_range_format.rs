@@ -1,5 +1,5 @@
 use async_lsp::lsp_types::{
-    DocumentRangeFormattingParams as LspDocumentRangeFormattingParams, TextEdit as LspTextEdit, Url,
+    DocumentRangeFormattingParams as LspDocumentRangeFormattingParams, TextEdit as LspTextEdit,
 };
 
 use crate::server::{Document, ServerState};
@@ -15,9 +15,7 @@ impl Request for DocumentRangeFormat {
     type Params = LspDocumentRangeFormattingParams;
     type Response = Option<Vec<LspTextEdit>>;
 
-    fn extract_url(params: &Self::Params) -> Option<Url> {
-        Some(params.text_document.uri.clone())
-    }
+    request_extract_url!(text_document);
 
     fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
         convert_range(state, document, &mut params.range, Direction::Incoming);

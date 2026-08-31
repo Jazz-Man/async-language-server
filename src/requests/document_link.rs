@@ -1,5 +1,5 @@
 use async_lsp::lsp_types::{
-    DocumentLink as LspDocumentLink, DocumentLinkParams as LspDocumentLinkParams, Url,
+    DocumentLink as LspDocumentLink, DocumentLinkParams as LspDocumentLinkParams,
 };
 
 use crate::server::{Document, ServerState};
@@ -15,9 +15,7 @@ impl Request for DocumentLink {
     type Params = LspDocumentLinkParams;
     type Response = Option<Vec<LspDocumentLink>>;
 
-    fn extract_url(params: &Self::Params) -> Option<Url> {
-        Some(params.text_document.uri.clone())
-    }
+    request_extract_url!(text_document);
 
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
         if let Some(links) = response.as_mut() {

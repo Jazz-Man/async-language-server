@@ -1,12 +1,12 @@
 use async_lsp::lsp_types::{
-    CompletionParams as LspCompletionParams, CompletionResponse as LspCompletionResponse, Url,
+    CompletionParams as LspCompletionParams, CompletionResponse as LspCompletionResponse,
 };
 
 use crate::server::{Document, ServerState};
 
 use super::{
     Request,
-    conversion::{Direction, convert_completion_text_edit, convert_position, convert_text_edit},
+    conversion::{Direction, convert_completion_text_edit, convert_text_edit},
 };
 
 pub struct Completion;
@@ -15,18 +15,8 @@ impl Request for Completion {
     type Params = LspCompletionParams;
     type Response = Option<LspCompletionResponse>;
 
-    fn extract_url(params: &Self::Params) -> Option<Url> {
-        Some(params.text_document_position.text_document.uri.clone())
-    }
-
-    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        convert_position(
-            state,
-            document,
-            &mut params.text_document_position.position,
-            Direction::Incoming,
-        );
-    }
+    request_extract_url!(text_document_position.text_document);
+    request_modify_params_position!(text_document_position.position);
 
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
         if let Some(response) = response.as_mut() {
