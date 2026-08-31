@@ -1,9 +1,6 @@
 use async_lsp::lsp_types::CompletionItem as LspCompletionItem;
 
-use crate::{
-    server::{Document, ServerState},
-    text_utils::Encoding,
-};
+use crate::server::{Document, ServerState};
 
 use super::{
     Request,
@@ -19,69 +16,31 @@ impl Request for CompletionResolve {
     // CompletionItem doesn't contain a document URI
 
     fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        if let Some(edit) = params.text_edit.as_mut() {
-            convert_completion_text_edit(state, document, edit, Direction::Incoming);
-        }
-
-        if let Some(additional_edits) = params.additional_text_edits.as_mut() {
-            for edit in additional_edits.iter_mut() {
-                convert_text_edit(state, document, edit, Direction::Incoming);
-            }
-        }
+        convert_completion_item(state, document, params, Direction::Incoming);
     }
 
     fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        if let Some(edit) = response.text_edit.as_mut() {
-            convert_completion_text_edit(state, document, edit, Direction::Outgoing);
-        }
-
-        if let Some(additional_edits) = response.additional_text_edits.as_mut() {
-            for edit in additional_edits.iter_mut() {
-                convert_text_edit(state, document, edit, Direction::Outgoing);
-            }
-        }
+        convert_completion_item(state, document, response, Direction::Outgoing);
     }
 }
 
-/// Converts a resolve request's item to UTF-8 against the given document
-/// snapshot.
-///
-/// Resolve requests carry no document URL, so there is no request document:
-/// the caller supplies the snapshot to convert against — in the usual
-/// completion-then-resolve flow the sole tracked document, captured once for
-/// the whole request. Without one, the item passes through unchanged.
-pub(crate) fn convert_incoming_completion_resolve(
+/// Converts a completion item's edits between the client encoding and UTF-8
+/// against the given document snapshot, leaving every other field as-is.
+fn convert_completion_item(
     state: &ServerState,
-    document: Option<&Document>,
+    document: &Document,
     item: &mut LspCompletionItem,
+    direction: Direction,
 ) {
-    if state.get_position_encoding() == Encoding::UTF8 {
-        return;
+    if let Some(edit) = item.text_edit.as_mut() {
+        convert_completion_text_edit(state, document, edit, direction);
     }
-    let Some(document) = document else {
-        return;
-    };
-    <CompletionResolve as Request>::modify_params(state, document, item);
-}
 
-/// Converts a resolve response's edits against the given document snapshot.
-///
-/// Resolve requests carry no document URL, so there is no request document:
-/// the caller supplies the snapshot to convert against — in the usual
-/// completion-then-resolve flow the sole tracked document, captured once for
-/// the whole request. Without one, the response passes through unchanged.
-pub(crate) fn convert_completion_resolve(
-    state: &ServerState,
-    document: Option<&Document>,
-    response: &mut LspCompletionItem,
-) {
-    if state.get_position_encoding() == Encoding::UTF8 {
-        return;
+    if let Some(additional_edits) = item.additional_text_edits.as_mut() {
+        for edit in additional_edits.iter_mut() {
+            convert_text_edit(state, document, edit, direction);
+        }
     }
-    let Some(document) = document else {
-        return;
-    };
-    <CompletionResolve as Request>::modify_response(state, document, response);
 }
 
 #[cfg(test)]
@@ -91,11 +50,10 @@ mod tests {
         CompletionItem, CompletionTextEdit as LspCompletionTextEdit, TextEdit,
     };
 
+    use crate::requests::{CompletionResolve, Direction, convert_resolve_item};
     use crate::server::{ServerOptions, ServerState};
     use crate::testing::{TestServer, open_document, same_line, state_with_documents, url};
     use crate::text_utils::Encoding;
-
-    use super::{convert_completion_resolve, convert_incoming_completion_resolve};
 
     #[test]
     fn resolve_edits_convert_against_the_sole_tracked_document() {
@@ -119,7 +77,12 @@ mod tests {
         let document = state
             .document(&url("only.txt"))
             .expect("sole document is tracked");
-        convert_completion_resolve(&state, Some(&document), &mut item);
+        convert_resolve_item::<CompletionResolve, _>(
+            &state,
+            Some(&document),
+            &mut item,
+            Direction::Outgoing,
+        );
 
         let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
             panic!("expected edit");
@@ -141,7 +104,7 @@ mod tests {
             ..Default::default()
         };
 
-        convert_completion_resolve(&state, None, &mut item);
+        convert_resolve_item::<CompletionResolve, _>(&state, None, &mut item, Direction::Outgoing);
 
         let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
             panic!("expected edit");
@@ -174,8 +137,18 @@ mod tests {
         let sole = state
             .document(&url("only.txt"))
             .expect("sole document is tracked");
-        convert_incoming_completion_resolve(&state, Some(&sole), &mut item);
-        convert_completion_resolve(&state, Some(&sole), &mut item);
+        convert_resolve_item::<CompletionResolve, _>(
+            &state,
+            Some(&sole),
+            &mut item,
+            Direction::Incoming,
+        );
+        convert_resolve_item::<CompletionResolve, _>(
+            &state,
+            Some(&sole),
+            &mut item,
+            Direction::Outgoing,
+        );
 
         let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
             panic!("expected edit");

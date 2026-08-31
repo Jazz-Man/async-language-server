@@ -15,6 +15,7 @@ use futures::future::BoxFuture;
 use tracing::debug;
 
 use crate::{
+    requests::{CodeActionResolve, CompletionResolve, Direction, convert_resolve_item},
     server::{Server, ServerState},
     text_utils::Encoding,
 };
@@ -196,13 +197,19 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
                 let documents = state.documents();
                 (documents.len() == 1).then(|| documents[0].clone())
             };
-            crate::requests::convert_incoming_completion_resolve(
+            convert_resolve_item::<CompletionResolve, _>(
                 &state,
                 sole.as_ref(),
                 &mut params,
+                Direction::Incoming,
             );
             let mut result = server.completion_resolve(state.clone(), params).await?;
-            crate::requests::convert_completion_resolve(&state, sole.as_ref(), &mut result);
+            convert_resolve_item::<CompletionResolve, _>(
+                &state,
+                sole.as_ref(),
+                &mut result,
+                Direction::Outgoing,
+            );
             Ok(result)
         })
     }
@@ -218,13 +225,19 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
                 let documents = state.documents();
                 (documents.len() == 1).then(|| documents[0].clone())
             };
-            crate::requests::convert_incoming_code_action_resolve(
+            convert_resolve_item::<CodeActionResolve, _>(
                 &state,
                 sole.as_ref(),
                 &mut params,
+                Direction::Incoming,
             );
             let mut result = server.code_action_resolve(state.clone(), params).await?;
-            crate::requests::convert_code_action_resolve(&state, sole.as_ref(), &mut result);
+            convert_resolve_item::<CodeActionResolve, _>(
+                &state,
+                sole.as_ref(),
+                &mut result,
+                Direction::Outgoing,
+            );
             Ok(result)
         })
     }

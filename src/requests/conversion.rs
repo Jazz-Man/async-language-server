@@ -4,8 +4,9 @@
 //! direction-parameterized (`Direction::Incoming` = client encoding to
 //! UTF-8, before the handler; `Direction::Outgoing` = UTF-8 to the client
 //! encoding, after), while the remaining `modify_*` helpers are
-//! fixed-direction shapes whose incoming and outgoing forms differ in more
-//! than the encoding pair.
+//! fixed-direction entry points: those whose two directions share a shape
+//! delegate to a `convert_*` helper with the direction pinned, and the rest
+//! differ in more than the encoding pair.
 
 use async_lsp::lsp_types::{
     CompletionTextEdit as LspCompletionTextEdit, Diagnostic as LspDiagnostic,
@@ -18,6 +19,8 @@ use crate::{
     server::{Document, ServerState},
     text_utils::{Encoding, position_to_encoding},
 };
+
+use super::Request;
 
 /// Direction of an encoding conversion between the client's negotiated
 /// position encoding and the crate-internal UTF-8.
@@ -133,17 +136,59 @@ pub(crate) fn convert_optional_vec<T>(
     }
 }
 
+/// Converts a resolve request's item against the given document snapshot,
+/// in `direction`.
+///
+/// Resolve requests carry no document URL, so there is no request document:
+/// the caller supplies the snapshot to convert against — in the usual
+/// completion-then-resolve or code-action-then-resolve flow the sole tracked
+/// document, captured once for the whole request. The item passes through
+/// unchanged when the negotiated encoding is already UTF-8 or no snapshot
+/// was supplied. `R` is the item's [`Request`]; the bound pins its params
+/// and response types to the same item type `T`, which is what a resolve
+/// round trip does.
+pub(crate) fn convert_resolve_item<R, T>(
+    state: &ServerState,
+    document: Option<&Document>,
+    item: &mut T,
+    direction: Direction,
+) where
+    R: Request<Params = T, Response = T>,
+{
+    if state.get_position_encoding() == Encoding::UTF8 {
+        return;
+    }
+    let Some(document) = document else {
+        return;
+    };
+    match direction {
+        Direction::Incoming => R::modify_params(state, document, item),
+        Direction::Outgoing => R::modify_response(state, document, item),
+    }
+}
+
+/// Converts a diagnostic's range and related locations between the client
+/// encoding and UTF-8 against the given document snapshot.
+pub(crate) fn convert_diagnostic(
+    state: &ServerState,
+    document: &Document,
+    diag: &mut LspDiagnostic,
+    direction: Direction,
+) {
+    convert_range(state, document, &mut diag.range, direction);
+    if let Some(related) = diag.related_information.as_mut() {
+        for info in related {
+            convert_location(state, document, &mut info.location, direction);
+        }
+    }
+}
+
 pub(crate) fn modify_incoming_diagnostic(
     state: &ServerState,
     document: &Document,
     diag: &mut LspDiagnostic,
 ) {
-    convert_range(state, document, &mut diag.range, Direction::Incoming);
-    if let Some(related) = diag.related_information.as_mut() {
-        for info in related {
-            convert_location(state, document, &mut info.location, Direction::Incoming);
-        }
-    }
+    convert_diagnostic(state, document, diag, Direction::Incoming);
 }
 
 pub(crate) fn modify_outgoing_diagnostic(
@@ -151,8 +196,7 @@ pub(crate) fn modify_outgoing_diagnostic(
     document: &Document,
     diag: &mut LspDiagnostic,
 ) {
-    let url = document.url().clone();
-    modify_outgoing_diagnostic_at_url(state, document, &url, diag);
+    convert_diagnostic(state, document, diag, Direction::Outgoing);
 }
 
 pub(crate) fn modify_outgoing_diagnostic_at_url(

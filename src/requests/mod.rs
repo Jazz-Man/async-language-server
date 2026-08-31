@@ -20,13 +20,10 @@ mod rename;
 mod rename_prepare;
 
 pub(crate) use code_action::CodeAction;
-pub(crate) use code_action_resolve::{
-    convert_code_action_resolve, convert_incoming_code_action_resolve,
-};
+pub(crate) use code_action_resolve::CodeActionResolve;
 pub(crate) use completion::Completion;
-pub(crate) use completion_resolve::{
-    convert_completion_resolve, convert_incoming_completion_resolve,
-};
+pub(crate) use completion_resolve::CompletionResolve;
+pub(crate) use conversion::{Direction, convert_resolve_item};
 pub(crate) use declaration::Declaration;
 pub(crate) use definition::Definition;
 pub(crate) use document_diagnostics::DocumentDiagnostics;
