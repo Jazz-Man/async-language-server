@@ -1448,18 +1448,21 @@ async fn at_most_eight_requests_run_concurrently() {
         .expect_err("the ninth handler must wait for a permit");
 
     release_tx.send(true).expect("release sends");
-    timeout(WIRE_TIMEOUT, entered_rx.recv())
+
+    // TRIPWIRE (owner decision 2026-08-31): upstream deadlock — with
+    // ConcurrencyLayer at capacity, async-lsp 0.2.4's MainLoop stops polling
+    // in-flight tasks while waiting for poll_ready (the inner dispatch select
+    // polls only poll_ready + flush), so the gated futures are never polled
+    // and the permits never release. https://github.com/oxalica/async-lsp/pull/30
+    // The ninth handler must STILL not enter after release.
+    timeout(Duration::from_millis(250), entered_rx.recv())
         .await
-        .expect("the ninth handler enters after release")
-        .expect("signal received");
+        .expect_err("the ninth handler stays wedged (upstream async-lsp#30)");
 
-    for id in 10..19 {
-        let response = client.await_response(id).await;
-        assert!(response.get("result").is_some(), "id {id}");
-    }
-
-    drop(client);
-    let _ = bounded(server).await;
+    // The join handle can never complete: abort it. When this test starts
+    // failing after an async-lsp upgrade, the fix landed — flip the second
+    // absence-check to asserting the ninth handler enters and completes.
+    server.abort();
 }
 ```
 
@@ -1469,6 +1472,8 @@ async fn at_most_eight_requests_run_concurrently() {
 
 Run: `cargo test --lib server::tests`
 Expected: 10 passed. If the staleness test reports the hover succeeding instead of `-32801`, investigate the version snapshot logic (`implement_method!` step 4a) — that is the code under test, not a test bug to route around.
+
+**Upstream note (verified from vendored source + PR #30):** the concurrency test's second half is a TRIPWIRE, not a behavioral expectation — async-lsp 0.2.4's `MainLoop` deadlocks at `ConcurrencyLayer` capacity (never polls in-flight tasks during `poll_ready` wait; stops reading the wire). Cleanup aborts the wedged join handle. After the upstream fix merges and we upgrade, flip the second absence-check to assert recovery.
 
 - [ ] **Step 4: Report for commit**
 
