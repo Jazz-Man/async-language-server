@@ -18,7 +18,7 @@
 - **Git is read-only for agents** (repo hook blocks writes): every task ends by reporting a suggested commit message; the owner commits. Never run `git add`/`git commit`.
 - All written artifacts (code, comments, docs, commit messages) in English.
 - Use the LSP tools for code navigation and the `rust-skills` rules for Rust decisions.
-- Tests never use wall-clock sleeps; every cross-task await is bounded (`futures::FutureExt::timeout`, 5 s unless stated).
+- Tests never use wall-clock sleeps; every cross-task await is bounded (`tokio::time::timeout`, 5 s unless stated; the `time` feature is added to the existing tokio dev-dependency — futures-rs has no time support at all, the research's `FutureExt::timeout` premise was wrong).
 - `Encoding` is `Copy` (`src/text_utils/encoding.rs:17`).
 - Line references below were verified at plan time against `develop` @ `1fc97a3`; if drift is found, re-anchor before editing.
 
@@ -695,7 +695,7 @@ documented in `.superpowers/sdd/task-7-report.md`).
 /// it never crosses the wire itself and is mapped by the caller at their
 /// own boundary.
 #[cfg(feature = "tree-sitter")]
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum QueryError {
     /// The document has no tree-sitter language or parsed tree attached.
@@ -829,6 +829,7 @@ Suggested message: `refactor: extract run_over_streams from serve() for stack-fa
 **Files:**
 - Create: `src/server/tests.rs`
 - Modify: `src/server/mod.rs` (add `#[cfg(test)] mod tests;` after `mod with_state;`)
+- Modify: `Cargo.toml` (add `"time"` to the existing tokio dev-dependency features — futures-rs has no timeout; this is the spec §4.4 alternative)
 
 **Interfaces:**
 - Consumes: `run_over_streams` (Task 8).
@@ -853,9 +854,10 @@ use async_lsp::lsp_types::{
     Hover, HoverContents, HoverParams, MarkedString, Position, Range as LspRange,
     TextDocumentPositionParams,
 };
-use futures::FutureExt;
+use futures::FutureExt as _; // `now_or_never` only; futures has no timeout
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _, DuplexStream, ReadBuf, split};
+use tokio::time::timeout;
 
 use crate::error::ServerResult;
 use crate::server::{Server, serve::run_over_streams};
@@ -863,8 +865,7 @@ use crate::server::{Server, serve::run_over_streams};
 const WIRE_TIMEOUT: Duration = Duration::from_secs(5);
 
 async fn bounded<F: std::future::Future>(future: F) -> F::Output {
-    future
-        .timeout(WIRE_TIMEOUT)
+    timeout(WIRE_TIMEOUT, future)
         .await
         .expect("completes within the bounded wire timeout")
 }
@@ -914,16 +915,12 @@ struct RawClient {
 
 impl RawClient {
     async fn write_message(&mut self, message: &Value) {
-        let body = serde_json::to_string(message).expect("message serializes");
-        self.stream
-            .write_all(format!("Content-Length: {}\r\n\r\n", body.len()).as_bytes())
-            .await
-            .expect("header writes");
-        self.stream
-            .write_all(body.as_bytes())
-            .await
-            .expect("body writes");
-        self.stream.flush().await.expect("flushes");
+        timeout(WIRE_TIMEOUT, async {
+            let body = serde_json::to_string(message).expect("message serializes");
+            // …write `Content-Length: {len}\r\n\r\n` header, then body, then flush…
+        })
+        .await
+        .expect("writes complete within the bounded wire timeout");
     }
 
     /// Reads one framed message; `None` on EOF (server closed the wire).
@@ -1067,6 +1064,8 @@ async fn initialize_negotiates_position_encoding_end_to_end() {
     let _ = bounded(server).await;
 }
 ```
+
+**Harness hardening (review finding, fixed in-round):** the landed `RawClient` holds a buffered read half + write half (`read_until` needs `AsyncBufRead`), and `write_message`/`read_message` wrap their bodies in `timeout(WIRE_TIMEOUT, …)` — client I/O is bounded BY CONSTRUCTION, so every test in Tasks 10-13 inherits the guarantee; EOF is a normal completion inside the bound, only a silent hang panics.
 
 - [ ] **Step 2: Wire the module** — in `src/server/mod.rs`, after `mod with_state;` add:
 
@@ -1435,25 +1434,19 @@ async fn at_most_eight_requests_run_concurrently() {
     }
 
     for _ in 0..8 {
-        entered_rx
-            .recv()
-            .timeout(WIRE_TIMEOUT)
+        timeout(WIRE_TIMEOUT, entered_rx.recv())
             .await
             .expect("eight handlers enter")
             .expect("signal received");
     }
     // The only bounded absence-check in the suite: nothing enters while all
     // eight permits are held.
-    entered_rx
-        .recv()
-        .timeout(Duration::from_millis(250))
+    timeout(Duration::from_millis(250), entered_rx.recv())
         .await
         .expect_err("the ninth handler must wait for a permit");
 
     release_tx.send(true).expect("release sends");
-    entered_rx
-        .recv()
-        .timeout(WIRE_TIMEOUT)
+    timeout(WIRE_TIMEOUT, entered_rx.recv())
         .await
         .expect("the ninth handler enters after release")
         .expect("signal received");
@@ -1468,7 +1461,7 @@ async fn at_most_eight_requests_run_concurrently() {
 }
 ```
 
-(`FutureExt::timeout` on `recv()` needs `use futures::FutureExt as _;` — already imported in Task 9; `now_or_never` is also a `FutureExt` method.)
+(`timeout` is `tokio::time::timeout`, imported by the Task 9 harness; `now_or_never` — used in the staleness test — is a real `futures::FutureExt` method, hence that import stays.)
 
 - [ ] **Step 3: Verify**
 
@@ -1519,11 +1512,10 @@ async fn shutdown_exit_terminates_the_server_loop_cleanly() {
     bounded(server).await.expect("serve loop resolves Ok(())");
 
     // EOF is the expected termination, not a hang: read until close.
+    // (First extend RawClient with a small `read_to_end` helper that drains
+    // its buffered reader — however the Task 9 harness named that field.)
     let mut raw = Vec::new();
-    client
-        .stream
-        .read_to_end(&mut raw)
-        .timeout(WIRE_TIMEOUT)
+    timeout(WIRE_TIMEOUT, client.read_to_end(&mut raw))
         .await
         .expect("server closes the wire")
         .expect("read succeeds");
@@ -1567,9 +1559,7 @@ async fn workspace_configuration_request_is_served_mid_request() {
 
     // The server asks for its setting mid-flight; answer from the raw side.
     let configuration_request = loop {
-        let message = client
-            .read_message()
-            .timeout(WIRE_TIMEOUT)
+        let message = timeout(WIRE_TIMEOUT, client.read_message())
             .await
             .expect("configuration request arrives")
             .expect("wire stays open");
@@ -1660,9 +1650,7 @@ async fn malformed_header_closes_the_connection() {
         .expect("garbage writes");
 
     // The loop fails on framing and closes: EOF within the bound.
-    let closed = client
-        .read_message()
-        .timeout(WIRE_TIMEOUT)
+    let closed = timeout(WIRE_TIMEOUT, client.read_message())
         .await
         .expect("server reacts within the bound");
     assert!(closed.is_none(), "expected EOF, got {closed:?}");
@@ -1703,9 +1691,9 @@ use std::time::Duration;
 
 use async_language_server::server::{Server, ServerError, ServerResult, Transport, serve};
 use async_lsp::lsp_types::{Hover, HoverContents, HoverParams, MarkedString, Position, Range};
-use futures::FutureExt;
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _, TcpStream};
+use tokio::time::timeout;
 
 const WIRE_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -1774,9 +1762,7 @@ impl RawClient {
         self.write_message(&json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}))
             .await;
         loop {
-            let message = self
-                .read_message()
-                .timeout(WIRE_TIMEOUT)
+            let message = timeout(WIRE_TIMEOUT, self.read_message())
                 .await
                 .expect("responds in time")
                 .expect("connection open");
@@ -1804,8 +1790,7 @@ async fn socket_connect_failure_maps_to_tcp_connect_error() {
     let port = listener.local_addr().unwrap().port();
     drop(listener);
 
-    let error = serve(Transport::Socket(port), EchoServer)
-        .timeout(WIRE_TIMEOUT)
+    let error = timeout(WIRE_TIMEOUT, serve(Transport::Socket(port), EchoServer))
         .await
         .expect("fails within the bound")
         .expect_err("connect fails");
@@ -2467,7 +2452,8 @@ mapping, concurrency bound, termination, wire encoding.
 - Real temp workspaces on disk, millisecond-unique names under
   `std::env::temp_dir()`.
 - Determinism: channel gates, never sleeps; every cross-task await bounded
-  by `futures::FutureExt::timeout` (tokio's `time` feature is not enabled).
+  by `tokio::time::timeout` (the `time` feature on the existing tokio
+  dev-dependency; futures-rs has no time support).
   `processId: null` in test `initialize` keeps the client monitor inert.
 - All three feature configurations must compile and pass; keep tests free
   of tree-sitter-gated API unless the test itself is `#[cfg(feature = "tree-sitter")]`.
