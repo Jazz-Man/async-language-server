@@ -1,5 +1,7 @@
 use async_lsp::lsp_types::{Position as LspPosition, Range as LspRange};
 
+use crate::text_utils::RangeError;
+
 use super::RangeExt;
 
 const T: &str = ""; // LSP range & position do not need text information
@@ -193,4 +195,58 @@ fn sub_delimited_tri_multiline() {
     assert_eq!(first, Some(r(p(0, 0), p(0, 3))));
     assert_eq!(second, Some(r(p(1, 0), p(2, 0))));
     assert_eq!(third, Some(r(p(2, 1), p(2, 3))));
+}
+
+// Boundary and error path tests
+
+#[test]
+fn split_off_boundaries() {
+    let range = r(p(1, 5), p(1, 15));
+    assert_eq!(
+        range.split_off_left(T, p(0, 0)).expect("valid range"),
+        r(p(1, 5), p(1, 5))
+    );
+    assert_eq!(
+        range.split_off_right(T, p(0, 10)).expect("valid range"),
+        r(p(1, 15), p(1, 15))
+    );
+}
+
+#[test]
+fn out_of_range_positions_return_position_out_of_range() {
+    assert_eq!(
+        r(p(0, 0), p(0, 10)).split_at(T, p(0, 11)).unwrap_err(),
+        RangeError::PositionOutOfRange
+    );
+    assert_eq!(
+        r(p(0, 0), p(0, 10)).sub(T, p(0, 3), p(0, 11)).unwrap_err(),
+        RangeError::PositionOutOfRange
+    );
+}
+
+#[test]
+fn reversed_sub_positions_return_start_after_end() {
+    assert_eq!(
+        r(p(0, 0), p(0, 10)).sub(T, p(0, 7), p(0, 3)).unwrap_err(),
+        RangeError::StartAfterEnd
+    );
+}
+
+#[test]
+fn multi_byte_delimiters_return_delimiter_not_single_byte() {
+    assert_eq!(
+        r(p(0, 0), p(0, 7))
+            .sub_delimited("one—two", '—')
+            .unwrap_err(),
+        RangeError::DelimiterNotSingleByte { delimiter: '—' }
+    );
+}
+
+#[test]
+fn shrink_requires_a_single_line_range() {
+    let multiline = r(p(0, 0), p(1, 0)); // spans "a\nb"
+    assert_eq!(
+        multiline.shrink(1, 1).unwrap_err(),
+        RangeError::NotSingleLine
+    );
 }

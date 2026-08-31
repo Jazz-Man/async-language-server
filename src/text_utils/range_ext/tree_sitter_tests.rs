@@ -1,5 +1,7 @@
 use tree_sitter::{Point as TsPosition, Range as TsRange};
 
+use crate::text_utils::RangeError;
+
 use super::RangeExt;
 
 const LF: char = '\n';
@@ -249,4 +251,65 @@ fn sub_delimited_complex_multiline() {
         .expect("valid range");
     assert_eq!(left, Some(r(0, p(0, 0), 11, p(1, 5))));
     assert_eq!(right, Some(r(12, p(1, 6), 22, p(2, 3))));
+}
+
+// Boundary and error path tests
+
+#[test]
+fn split_off_boundaries() {
+    let text = "hello";
+    let range = r(0, p(0, 0), 5, p(0, 5));
+    assert_eq!(
+        range.split_off_left(text, p(0, 0)).expect("valid range"),
+        r(0, p(0, 0), 0, p(0, 0))
+    );
+    assert_eq!(
+        range.split_off_right(text, p(0, 5)).expect("valid range"),
+        r(5, p(0, 5), 5, p(0, 5))
+    );
+}
+
+#[test]
+fn reversed_sub_positions_return_start_after_end() {
+    let text = "hello";
+    assert_eq!(
+        r(0, p(0, 0), 5, p(0, 5))
+            .sub(text, p(0, 3), p(0, 1))
+            .unwrap_err(),
+        RangeError::StartAfterEnd
+    );
+}
+
+#[test]
+fn multi_byte_delimiters_return_delimiter_not_single_byte() {
+    let text = "one—two";
+    assert_eq!(
+        r(0, p(0, 0), 9, p(0, 9))
+            .sub_delimited(text, '—')
+            .unwrap_err(),
+        RangeError::DelimiterNotSingleByte { delimiter: '—' }
+    );
+}
+
+#[test]
+fn mismatched_text_length_returns_text_range_mismatch() {
+    let text = "short";
+    assert_eq!(
+        r(0, p(0, 0), 7, p(0, 7))
+            .sub_delimited(text, D1)
+            .unwrap_err(),
+        RangeError::TextRangeMismatch {
+            text_len: 5,
+            range_len: 7
+        }
+    );
+}
+
+#[test]
+fn shrink_requires_a_single_line_range() {
+    let multiline = r(0, p(0, 0), 3, p(1, 0)); // spans "a\nb"
+    assert_eq!(
+        multiline.shrink(1, 1).unwrap_err(),
+        RangeError::NotSingleLine
+    );
 }

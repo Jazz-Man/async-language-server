@@ -2339,9 +2339,9 @@ Suggested message: `test: Document::query returns typed errors for invalid queri
 ```rust
 #[test]
 fn split_off_boundaries() {
-    let range = r(5, 15);
-    assert_eq!(range.split_off_left(T, 0).expect("valid range"), r(5, 5));
-    assert_eq!(range.split_off_right(T, 10).expect("valid range"), r(15, 15));
+    // Construct r(5, 15) inline per call: Range<usize> is Clone, not Copy.
+    assert_eq!(r(5, 15).split_off_left(T, 0).expect("valid range"), r(5, 5));
+    assert_eq!(r(5, 15).split_off_right(T, 10).expect("valid range"), r(15, 15));
 }
 
 #[test]
@@ -2363,8 +2363,10 @@ fn reversed_sub_positions_return_start_after_end() {
 
 #[test]
 fn multi_byte_delimiters_return_delimiter_not_single_byte() {
+    // "one—two" is 9 bytes; the range must match the text length or the
+    // length check fires BEFORE the delimiter check (Task 4 fix order).
     assert_eq!(
-        r(0, 7).sub_delimited("one—two", '—').unwrap_err(),
+        r(0, 9).sub_delimited("one—two", '—').unwrap_err(),
         RangeError::DelimiterNotSingleByte { delimiter: '—' }
     );
 }
