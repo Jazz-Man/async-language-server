@@ -2261,7 +2261,7 @@ Suggested message: `test: DocumentMatcher find semantics, precedence, invalid-gl
 ```rust
     #[cfg(feature = "tree-sitter")]
     #[test]
-    fn query_returns_none_for_an_invalid_query_string() {
+    fn query_errors_on_invalid_query_and_grammarless_documents() {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         use async_lsp::{
@@ -2323,7 +2323,7 @@ Expected: 2 passed (existing reader test + new). Also `cargo test --no-default-f
 
 - [ ] **Step 3: Report for commit**
 
-Suggested message: `test: Document::query returns None on invalid query and grammar-less documents`
+Suggested message: `test: Document::query returns typed errors for invalid queries and grammar-less documents`
 
 ---
 

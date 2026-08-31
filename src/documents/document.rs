@@ -296,4 +296,77 @@ mod tests {
 
         assert_eq!(actual, b"hello");
     }
+
+    #[cfg(feature = "tree-sitter")]
+    #[test]
+    fn query_errors_on_invalid_query_and_grammarless_documents() {
+        use std::{
+            fs,
+            time::{SystemTime, UNIX_EPOCH},
+        };
+
+        use async_lsp::{
+            ClientSocket,
+            lsp_types::{DidOpenTextDocumentParams, TextDocumentItem, Url},
+        };
+
+        use crate::error::QueryError;
+        use crate::server::{DocumentMatcher, Server, ServerOptions, ServerState};
+
+        struct JsonServer;
+
+        impl Server for JsonServer {
+            fn server_document_matchers() -> Vec<DocumentMatcher> {
+                vec![
+                    DocumentMatcher::new("json")
+                        .with_lang_strings(["json"])
+                        .with_lang_grammar(tree_sitter_json::LANGUAGE.into()),
+                ]
+            }
+        }
+
+        let millis = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time is after epoch")
+            .as_millis();
+        let root = std::env::temp_dir().join(format!("als-query-{millis}"));
+        fs::create_dir_all(&root).expect("temp workspace can be created");
+        let uri = Url::from_file_path(root.join("doc.json")).expect("path converts to a URL");
+
+        let mut state = ServerState::with_options::<JsonServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default(),
+        );
+        let _ = state.handle_document_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                uri.clone(),
+                "json".into(),
+                1,
+                r#"{"a": 1}"#.into(),
+            ),
+        });
+        let document = state.document(&uri).expect("document is tracked");
+
+        // Malformed query syntax: the typed compile failure, not a bare None.
+        assert!(matches!(
+            document.query("(node"),
+            Err(QueryError::InvalidQuery { .. })
+        ));
+
+        // A document with no grammar/tree answers NoTree, distinctly:
+        // same state, different URL, language string no matcher claims.
+        let plain_uri = Url::from_file_path(root.join("plain.txt")).expect("path converts");
+        let _ = state.handle_document_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                plain_uri.clone(),
+                "plaintext".into(),
+                1,
+                "x".into(),
+            ),
+        });
+        let plain = state.document(&plain_uri).expect("document is tracked");
+        assert!(matches!(plain.query("(node"), Err(QueryError::NoTree)));
+
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
 }
