@@ -1,0 +1,20 @@
+# cargo-dupes configuration.
+#
+# Encodes the duplication invariants of this crate: `cargo dupes check`
+# (run on demand, see .claude/rules/tech.md) must exit 0 against these
+# settings. Deliberate leftovers carry an entry with a reason in
+# .dupes-ignore.toml; thresholds are never loosened to hide a group.
+
+# Trivial one-line accessors (`fn url(&self) -> &Url { &self.url }`) and
+# similar micro-shapes stay under this node count by design.
+min_nodes = 15
+
+# Tests are part of the analysis (owner call: "tests are code too").
+# Deliberately parallel test groups — spec-matrix rows, fixture shapes —
+# carry an entry with a reason in .dupes-ignore.toml like any other group.
+
+# The gate: unignored groups are the failure condition. Every deliberate
+# duplicate must carry a reasoned entry in .dupes-ignore.toml; a NEW
+# unignored group must fail `cargo dupes check`.
+max_exact_duplicates = 0
+max_near_duplicates = 0

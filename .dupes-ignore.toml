@@ -1,0 +1,147 @@
+[[ignore]]
+fingerprint = "d9a381ff3f5dca75"
+reason = "resolve twins (code-action, completion-item): modify_params/modify_response delegate to the same item-specific converter with only Direction flipped (T20h shape)"
+
+[[ignore]]
+fingerprint = "e65ad068648fc2a0"
+reason = "single-field Request hooks (document-link resolve params/response, rename-prepare params, range-format params): one-line delegation to convert_range/convert_position"
+
+[[ignore]]
+fingerprint = "19bb6db0a0226924"
+reason = "Request::modify_response hooks (references, range-format, format) delegating to the outgoing locations/text-edits converters; trait-mandated per-file hooks"
+
+[[ignore]]
+fingerprint = "1eb0db22997f837e"
+reason = "spec-matrix test fixtures (TestServer/DisabledServer/ConfigurableServer document_diagnostics) in the #[cfg(test)] sibling module with_state/tests.rs"
+
+[[ignore]]
+fingerprint = "e21d8c00487b7815"
+reason = "async-lsp LanguageServer notification forwards (did_open/did_close/did_save): tracing line plus delegation to the state handler; the trait mandates one method per notification"
+
+[[ignore]]
+fingerprint = "e2c7af90d4455197"
+reason = "WorkspaceDiagnosticsState atomic load-and-return accessors (supported, can_refresh on AtomicBool; current_generation on AtomicU64); the shared shape is the design, not drift"
+
+[[ignore]]
+fingerprint = "06f46feff88c5331"
+reason = "DocumentMatcher builder pair with_url_globs/with_lang_strings: mirror-by-design extend of Into<String> items into the respective set"
+
+[[ignore]]
+fingerprint = "2f800ef357d21f2d"
+reason = "Declaration/Definition modify_response: one-line delegation to convert_location (goto requests share the location-response shape)"
+
+[[ignore]]
+fingerprint = "5e64d1f8cb621fc2"
+reason = "examples' full_report helper appears in both minimal.rs and tree_sitter.rs; examples stay self-contained and didactically parallel by design"
+
+[[ignore]]
+fingerprint = "646121fdf47245b8"
+reason = "EchoServer::hover duplicated between tests/lsp_wire.rs and src/server/tests.rs; deliberately deferred to the pending wire-tests file split"
+
+[[ignore]]
+fingerprint = "6c4db5f43053b240"
+reason = "examples' server_capabilities builders (JsonServer, LongLineServer) are deliberately parallel so each example reads standalone"
+
+[[ignore]]
+fingerprint = "796b160440b3f2f3"
+reason = "named incoming/outgoing wrappers over the direction-generic convert_diagnostic (T20f); call sites read better than raw Direction arguments"
+
+[[ignore]]
+fingerprint = "85dca4caef4bd446"
+reason = "enable/disable_workspace_diagnostics mirror the same lsp_types capability-variant match with only the boolean flipped"
+
+[[ignore]]
+fingerprint = "882ff9b7680235f9"
+reason = "futures AsyncWrite mandates both poll_flush and poll_close; each forwards to the inner write half (test support in the #[cfg(test)] sibling src/server/tests.rs)"
+
+[[ignore]]
+fingerprint = "8fa261f1a1daff69"
+reason = "WorkspaceDiagnosticConfig builder pair with_hidden_files/with_ignore_files: mirror-by-design delegation to the walker's corresponding options"
+
+[[ignore]]
+fingerprint = "94155f420ec8db10"
+reason = "client-capability checks can_request/can_register_configuration: mirror pair of atomic load && setting().is_some()"
+
+[[ignore]]
+fingerprint = "99943b778a5e10cf"
+reason = "node_at_position vs node_at_position_named differ only in descendant_for_point_range vs named_descendant_for_point_range; the tree-sitter API forces the twin"
+
+[[ignore]]
+fingerprint = "bf04805cf660a907"
+reason = "AsyncWrite mandates both poll_flush and poll_close; LspTransportWrite forwards each across its enum variants (Socket/Stdio)"
+
+[[ignore]]
+fingerprint = "e4c0eb70c1319dc1"
+reason = "trim_crlf duplicated between tests/lsp_wire.rs and src/server/tests.rs; deliberately deferred to the pending wire-tests file split"
+
+[[ignore]]
+fingerprint = "f9b5a480a3cae9d6"
+reason = "test-support position/range builders in src/testing.rs, a #[cfg(test)] pub(crate) module"
+
+[[ignore]]
+fingerprint = "fe902b81118cdf76"
+reason = "test fixtures re-declare the same matcher list per suite (state/tests.rs, with_state/tests.rs)"
+
+[[ignore]]
+fingerprint = "2cd01ee93bcca1c4"
+reason = "position_to_encoding spec-matrix rows (conversions.rs inline tests): one test per encoding-pair or line-cap row; each row's inputs and expected columns are the content, the harness shape is shared by design"
+
+[[ignore]]
+fingerprint = "db11ca6b346bce01"
+reason = "RangeExt::sub spec-matrix rows in tree_sitter_tests.rs (basic, empty, multiline, multi-line span): the three range_ext flavor files run the same spec in parallel; rows differ in inputs and expected byte/point values"
+
+[[ignore]]
+fingerprint = "3084ed243e866d48"
+reason = "RangeExt::sub spec-matrix rows in lsp_tests.rs (basic, empty, multiline): the three range_ext flavor files run the same spec in parallel; rows differ in inputs and expected line/character values"
+
+[[ignore]]
+fingerprint = "8a7ed10faf859369"
+reason = "RangeExt::split_at spec-matrix rows in tree_sitter_tests.rs (basic, multiline, newline boundary): shared call/assert template, one behavior row per test"
+
+[[ignore]]
+fingerprint = "b606e36d2a08902d"
+reason = "RangeExt::sub_delimited spec-matrix rows in tree_sitter_tests.rs (basic, multiline, complex multiline): shared call/assert template, one behavior row per test"
+
+[[ignore]]
+fingerprint = "34be46f435114321"
+reason = "split_off_left/split_off_right mirror pair in tree_sitter_tests.rs: mirror methods get mirror happy-path rows"
+
+[[ignore]]
+fingerprint = "435416306436856f"
+reason = "sub_delimited edge pair in tree_sitter_tests.rs (delimiter at end, no delimiter): two rows of the same edge-case matrix with distinct expected sides"
+
+[[ignore]]
+fingerprint = "6b1ed7ce8dd3018b"
+reason = "RangeExt::split_at spec-matrix rows in lsp_tests.rs (basic, multiline): shared call/assert template, one behavior row per test"
+
+[[ignore]]
+fingerprint = "6d8e8b50ed7167c0"
+reason = "RangeExt::sub_delimited spec-matrix rows in lsp_tests.rs (basic, multiline): shared call/assert template, one behavior row per test"
+
+[[ignore]]
+fingerprint = "73fbd547adb85775"
+reason = "RangeExt::sub_delimited_tri spec-matrix rows in lsp_tests.rs (basic, multiline): shared call/assert template, one behavior row per test"
+
+[[ignore]]
+fingerprint = "94470c0fadf2b930"
+reason = "RangeExt::sub_delimited_tri spec-matrix rows in tree_sitter_tests.rs (basic, multiline): shared call/assert template, one behavior row per test"
+
+[[ignore]]
+fingerprint = "95df29debdfb5f1d"
+reason = "RangeExt::sub spec-matrix rows in bytes_tests.rs (basic, empty): the three range_ext flavor files run the same spec in parallel; rows differ in inputs and expected byte offsets"
+
+[[ignore]]
+fingerprint = "ab90a750f1ab7d48"
+reason = "split_off_left/split_off_right mirror pair in bytes_tests.rs: mirror methods get mirror happy-path rows"
+
+[[ignore]]
+fingerprint = "becea62cca931e47"
+reason = "split_off_left/split_off_right mirror pair in lsp_tests.rs: mirror methods get mirror happy-path rows"
+
+[[ignore]]
+fingerprint = "cce39c7bbaeb9e8a"
+reason = "position-encoding preference pair in with_state/tests.rs (prefers UTF-8 when offered, prefers UTF-32 over UTF-16): two rows of the POSITION_ENCODING_PREFERRED_ORDER negotiation matrix, same harness by design"
+
+[[ignore]]
+fingerprint = "e90ca61b7ce32065"
+reason = "sub_delimited edge pair in lsp_tests.rs (delimiter at end, no delimiter): two rows of the same edge-case matrix with distinct expected sides"
