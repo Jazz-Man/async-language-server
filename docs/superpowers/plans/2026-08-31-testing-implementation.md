@@ -1596,6 +1596,8 @@ async fn workspace_configuration_request_is_served_mid_request() {
 
 Scope note (verified at plan time): the crate's only server→client request is `workspace/configuration` (sent from `src/workspace/diagnostics.rs:279-331`); it never sends `client/registerCapability` (`grep -ri "registerCapability" src/` is empty), so that half of catalog #11 has no trigger without new production code and is intentionally not faked.
 
+**Landed deviations (review-adjudicated):** (1) `ConfigurableServer` also overrides `server_capabilities` to advertise a diagnostic provider — without it the wrapper answers `-32601 "workspace diagnostics are disabled"` on the wire and the report assertion is unsatisfiable; (2) `await_response` checks `pending` first — wire ordering is report-THEN-configuration on the current runtime, so both orders are handled; (3) the shutdown test's `expect` is split so the inner `Ok(())` is actually asserted (`unused_must_use`); (4) fixture filesystem calls use `tokio::fs` with the `"fs"` tokio dev-dep feature (same pattern as `time`/`sync`) instead of arch-lint `no-sync-io` comment allows — root fix, no suppression.
+
 - [ ] **Step 3: Verify**
 
 Run: `cargo test --lib server::tests`
