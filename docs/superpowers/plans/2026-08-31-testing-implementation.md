@@ -2469,6 +2469,38 @@ Suggested message: `test: split_off boundaries and every RangeError variant trig
 
 ---
 
+### Task 20f: Collapse conversion.rs incoming/outgoing pairs (dupes refactor R1)
+
+**Files:** `src/requests/conversion.rs` + every Request impl calling the renamed helpers.
+
+**Design:** the 7 incoming/outgoing pairs differ only in conversion direction (negotiated→UTF8 vs UTF8→negotiated). Introduce `pub(crate) enum Direction { Incoming, Outgoing }` (in conversion.rs) and one fn per shape taking `(state, doc/params, item, direction)`; the encoding pair derives from direction + the negotiated encoding. The `at_url` variants keep their lookup semantics. Public-to-the-crate call sites migrate to the direction form. NO conversion arithmetic may change — the exact same `position_to_encoding` calls with the same (source,target) per direction; the 9 request tests + W2 wire tests (#2, #6) are the guards.
+
+**Verify:** full battery three configs; `cargo test --lib requests::` green; wire tests green; dupes stats shows groups 26/28/30/33/35/57/61 gone.
+
+### Task 20g: Shared Goto/Format response converters (dupes refactor R2)
+
+**Files:** `src/requests/declaration.rs`, `definition.rs`, `references.rs`, `document_format.rs`, `document_range_format.rs` (+ a shared spot in `src/requests/conversion.rs`).
+
+**Design:** `Declaration::modify_response` ≡ `Definition::modify_response` (19-line copy-paste over `GotoDefinitionResponse`/`GotoDeclarationResponse` variants) → one generic converter over a small local trait abstracting Scalar/Array/Link variant mapping (both lsp_types enums are structurally identical). The References/Format/RangeFormat trio (group 15: `Option<Vec<Location>>` / `Option<Vec<TextEdit>>` shaped) → one shared vec-mapping helper parameterized by the element converter. Signatures of the `Request` impls unchanged.
+
+**Verify:** battery + request tests; dupes groups 15/55 gone.
+
+### Task 20h: Generalize the resolve twins (dupes refactor R3)
+
+**Files:** `src/requests/completion_resolve.rs`, `code_action_resolve.rs` (+ shared helpers in conversion.rs).
+
+**Design:** the two modules are structural twins (incoming/outgoing resolve converters + Request impls). Factor the shared skeleton into generic helpers parameterized over the item's editable-text-edits shape (accessor-based; `CompletionItem` vs `CodeAction` edit fields differ structurally). If the generics cost exceeds two modules' duplication, STOP and report — an explicit trade-off judgment, not a forced merge.
+
+**Verify:** battery; resolve tests (3 in completion_resolve) green; dupes groups 7/29/47 gone or reduced with rationale.
+
+### Task 20i: Macro-dedup the three-place boilerplate (dupes refactor R4) + cargo-dupes config
+
+**Files:** `src/requests/mod.rs` (macro), the Request files, `dupes.toml` (new), `.claude/rules/tech.md`.
+
+**Design:** (a) `extract_url` / trivial `modify_params` bodies repeated across 6+ files → a declarative macro in requests/mod.rs (`request_extract_url!(Declaration, References, …)` style); (b) then AUTHOR `dupes.toml` encoding today's post-refactor invariants: `min_nodes = 15`, `exclude_tests = true`, plus `cargo dupes ignore <fp> --reason "..."` entries for the deliberate leftovers (three-place trait-impl shape where the macro didn't reach, examples parallelism, the deferred W2/W3 pair) — reasons mandatory, never threshold-loosening; (c) one entry in tech.md's battery as an on-demand check (`cargo dupes check`); (d) verification: `cargo dupes check` exit 0, battery green, and the report's remaining groups are all either refactored or ignored-with-reason.
+
+---
+
 ### Task 21: Testing steering document
 
 **Files:**
