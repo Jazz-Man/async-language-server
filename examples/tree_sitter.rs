@@ -14,7 +14,7 @@ use async_language_server::lsp_types::{
     TextDocumentSyncKind,
 };
 use async_language_server::server::{
-    DocumentMatcher, Server, ServerError, ServerResult, ServerState, Transport, serve,
+    DocumentMatcher, Server, ServerError, ServerResult, ServerState, serve,
 };
 
 #[derive(Clone)]
@@ -94,5 +94,5 @@ fn full_report(items: Vec<Diagnostic>) -> DocumentDiagnosticReportResult {
 
 #[tokio::main]
 async fn main() -> ServerResult<()> {
-    serve(Transport::Stdio, JsonServer).await
+    serve(JsonServer).await
 }

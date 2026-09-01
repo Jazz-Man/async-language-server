@@ -12,7 +12,7 @@ use async_language_server::lsp_types::{
     FullDocumentDiagnosticReport, Position, Range, RelatedFullDocumentDiagnosticReport,
     ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
 };
-use async_language_server::server::{Server, ServerResult, ServerState, Transport, serve};
+use async_language_server::server::{Server, ServerResult, ServerState, serve};
 
 /// Lines longer than this many bytes are reported.
 const MAX_LINE_BYTES: usize = 80;
@@ -84,5 +84,5 @@ fn full_report(items: Vec<Diagnostic>) -> DocumentDiagnosticReportResult {
 
 #[tokio::main]
 async fn main() -> ServerResult<()> {
-    serve(Transport::Stdio, LongLineServer).await
+    serve(LongLineServer).await
 }

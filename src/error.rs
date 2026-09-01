@@ -71,27 +71,14 @@ pub enum QueryError {
 /// ```
 /// use async_language_server::server::ServerError;
 ///
-/// let error = ServerError::TcpConnect {
-///     port: 9999,
-///     error: std::io::Error::other("connection refused"),
+/// let error = ServerError::InvalidFilePath {
+///     path: std::path::PathBuf::from("/nonexistent"),
 /// };
-/// assert_eq!(error.to_string(), "failed to connect to port 9999");
+/// assert_eq!(error.to_string(), "invalid file path '/nonexistent'");
 /// ```
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ServerError {
-    /// Failed to connect a socket to the given TCP port.
-    #[error("failed to connect to port {port}")]
-    #[deprecated(
-        note = "sockets are being removed; see docs/superpowers/specs/2026-09-01-rm-socket-stage1-design.md"
-    )]
-    TcpConnect {
-        /// The port that was being connected to.
-        port: u16,
-        /// The underlying connect error.
-        #[source]
-        error: std::io::Error,
-    },
     /// A file path could not be represented as a `file://` URL.
     #[error("invalid file path '{path}'")]
     InvalidFilePath {
@@ -144,17 +131,6 @@ mod tests {
     use super::ServerError;
 
     #[test]
-    fn tcp_connect_preserves_its_source() {
-        let error = ServerError::TcpConnect {
-            port: 9999,
-            error: std::io::Error::other("connection refused"),
-        };
-
-        assert_eq!(error.to_string(), "failed to connect to port 9999");
-        assert_eq!(error.source().unwrap().to_string(), "connection refused");
-    }
-
-    #[test]
     fn io_errors_preserve_their_source() {
         let error = ServerError::Io(std::io::Error::other("disk gone"));
 
@@ -203,17 +179,6 @@ mod tests {
 
         assert_eq!(response.code, ErrorCode::INTERNAL_ERROR);
         assert_eq!(response.message, "invalid file path '/bad'");
-    }
-
-    #[test]
-    fn tcp_connect_maps_to_internal_error() {
-        let response = ResponseError::from(ServerError::TcpConnect {
-            port: 9999,
-            error: std::io::Error::other("connection refused"),
-        });
-
-        assert_eq!(response.code, ErrorCode::INTERNAL_ERROR);
-        assert_eq!(response.message, "failed to connect to port 9999");
     }
 
     #[test]

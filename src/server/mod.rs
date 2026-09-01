@@ -1,9 +1,9 @@
 //! High-level API for implementing language servers.
 //!
 //! Implement [`Server`] with only the methods you need, configure
-//! [`ServerOptions`] and [`DocumentMatcher`]s, then run it with [`serve`]
-//! over a [`Transport`]. Each request receives a [`ServerState`], which
-//! tracks open documents as [`Document`] snapshots.
+//! [`ServerOptions`] and [`DocumentMatcher`]s, then run it with [`serve`].
+//! Each request receives a [`ServerState`], which tracks open documents as
+//! [`Document`] snapshots.
 //!
 //! All [`Server`] methods work with UTF-8 positions regardless of the
 //! encoding negotiated with the client — conversions between UTF-8,
@@ -27,7 +27,6 @@ pub use self::state::ServerState;
 pub use crate::documents::DocumentMatcher;
 pub use crate::documents::{Document, DocumentReader};
 pub use crate::error::{RangeError, ServerError, ServerErrorCode, ServerResult};
-pub use crate::transport::Transport;
 
 #[cfg(feature = "tree-sitter")]
 pub use crate::documents::DocumentQueryCapture;

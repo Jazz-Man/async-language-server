@@ -17,7 +17,7 @@ use async_language_server::lsp_types::{
     FullDocumentDiagnosticReport, RelatedFullDocumentDiagnosticReport,
 };
 use async_language_server::server::{
-    DocumentMatcher, Server, ServerResult, ServerState, Transport, serve,
+    DocumentMatcher, Server, ServerResult, ServerState, serve,
 };
 
 #[derive(Clone)]
@@ -50,7 +50,7 @@ impl Server for MyServer {
 
 #[tokio::main]
 async fn main() -> ServerResult<()> {
-    serve(Transport::Stdio, MyServer).await
+    serve(MyServer).await
 }
 ```
 

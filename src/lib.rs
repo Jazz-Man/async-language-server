@@ -8,7 +8,6 @@ pub use tree_sitter;
 mod documents;
 mod error;
 mod requests;
-mod transport;
 mod workspace;
 
 // The single shared test-support home for every inline test module
