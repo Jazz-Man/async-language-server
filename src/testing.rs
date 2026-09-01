@@ -15,6 +15,12 @@
 //! flavor names its local range builder `r`, with types specific to that
 //! flavor — they are not (and need not be) the shared LSP fixtures
 //! (`line_position`, `line_range`, `same_line`).
+//!
+//! The `conversion_tests!` macro at the bottom of this module is the
+//! table-driven W0 harness: one row stamps the standard conversion test
+//! (fixture → `modify_params` → UTF-8 assert → `modify_response` → client
+//! assert). Rows pin the single-incoming-position shape; richer tests stay
+//! hand-written next to their `Request` impls.
 
 use std::{
     fs,
@@ -138,9 +144,11 @@ pub(crate) fn json_matchers() -> Vec<DocumentMatcher> {
 /// extracted position equals `expected`.
 ///
 /// The closure is taken as an [`Fn`] bound rather than called directly
-/// inside [`conversion_tests!`] because a closure behind a `macro_rules!`
-/// `expr` fragment cannot infer its parameter type from a direct call site;
-/// the `impl Fn(&T) -> Position` bound supplies the expected signature.
+/// inside [`conversion_tests!`] because rustc cannot infer the parameter
+/// types of an immediately-invoked closure — a plain parenthesized closure
+/// call fails identically, so the limitation is that general inference
+/// rule, not the `macro_rules!` `expr` metavariable; the
+/// `impl Fn(&T) -> Position` bound supplies the expected signature.
 pub(crate) fn assert_converted_position<T>(
     value: &T,
     extract: impl Fn(&T) -> Position,
