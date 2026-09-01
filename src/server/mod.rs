@@ -16,6 +16,9 @@ mod state;
 mod with_state;
 
 #[cfg(test)]
+pub(crate) mod testing;
+
+#[cfg(test)]
 mod tests;
 
 pub use self::options::{

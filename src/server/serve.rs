@@ -9,7 +9,7 @@ use async_lsp::{
     panic::CatchUnwindLayer, router::Router, server::LifecycleLayer,
 };
 use futures::{AsyncRead, AsyncWrite};
-use tokio::io::{AsyncRead as _, AsyncWrite as _, ReadBuf, Stdin, Stdout};
+use tokio::io::ReadBuf;
 use tower::ServiceBuilder;
 
 #[cfg(feature = "tracing")]
@@ -61,8 +61,8 @@ where
 {
     run_over_streams(
         server,
-        StdinAdapter(tokio::io::stdin()),
-        StdoutAdapter(tokio::io::stdout()),
+        TokioReader(tokio::io::stdin()),
+        TokioWriter(tokio::io::stdout()),
     )
     .await
 }
@@ -72,7 +72,7 @@ where
 /// byte streams.
 ///
 /// `serve()` runs it over the process stdio; the wire-tier tests
-/// (`src/server/tests.rs`) drive the same stack over in-memory duplex
+/// (`src/server/tests/`) drive the same stack over in-memory duplex
 /// pipes, so the tested stack can never drift from the shipped one.
 pub(crate) async fn run_over_streams<S, R, W>(server: S, reader: R, writer: W) -> ServerResult<()>
 where
@@ -102,10 +102,10 @@ where
         .map_err(Into::into)
 }
 
-/// Bridges tokio's stdin to the futures `AsyncRead` the loop speaks.
-struct StdinAdapter(Stdin);
+/// Bridges any tokio reader to the futures `AsyncRead` the loop speaks.
+pub(crate) struct TokioReader<T>(pub(crate) T);
 
-impl AsyncRead for StdinAdapter {
+impl<T: tokio::io::AsyncRead + Unpin> AsyncRead for TokioReader<T> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -120,10 +120,10 @@ impl AsyncRead for StdinAdapter {
     }
 }
 
-/// Bridges tokio's stdout to the futures `AsyncWrite` the loop speaks.
-struct StdoutAdapter(Stdout);
+/// Bridges any tokio writer to the futures `AsyncWrite` the loop speaks.
+pub(crate) struct TokioWriter<T>(pub(crate) T);
 
-impl AsyncWrite for StdoutAdapter {
+impl<T: tokio::io::AsyncWrite + Unpin> AsyncWrite for TokioWriter<T> {
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
