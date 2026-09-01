@@ -149,3 +149,7 @@ reason = "file-ops trio response pins (will_create/will_rename/will_delete_files
 [[ignore]]
 fingerprint = "f83853ca365213c9"
 reason = "capture-server bodies in with_state/tests.rs (link_resolve, hover): trait-mandated per-method Server impls sharing the capture-mutex fixture shape; each dispatch test needs its own echo/capture handler for its method"
+
+[[ignore]]
+fingerprint = "e0894e2bcf1c1930"
+reason = "outgoing per-item range loops (document_links, code_lenses): the registry mandates one named outgoing helper per response shape, each a plain for-loop over items converting the item's range"

@@ -8,12 +8,14 @@
 //! no pure direction pins over a `convert_*` helper remain.
 
 use async_lsp::lsp_types::{
-    CompletionTextEdit as LspCompletionTextEdit, Diagnostic as LspDiagnostic,
-    DocumentDiagnosticReportKind, DocumentHighlight as LspDocumentHighlight,
-    DocumentLink as LspDocumentLink, GotoDefinitionResponse as LspGotoDefinitionResponse,
-    Hover as LspHover, Location as LspLocation, LocationLink as LspLocationLink, OneOf,
-    Position as LspPosition, PrepareRenameResponse as LspPrepareRenameResponse, Range as LspRange,
-    TextEdit as LspTextEdit, Url, WorkspaceEdit as LspWorkspaceEdit,
+    CodeLens as LspCodeLens, CompletionTextEdit as LspCompletionTextEdit,
+    Diagnostic as LspDiagnostic, DocumentDiagnosticReportKind,
+    DocumentHighlight as LspDocumentHighlight, DocumentLink as LspDocumentLink,
+    FoldingRange as LspFoldingRange, GotoDefinitionResponse as LspGotoDefinitionResponse,
+    Hover as LspHover, LinkedEditingRanges as LspLinkedEditingRanges, Location as LspLocation,
+    LocationLink as LspLocationLink, OneOf, Position as LspPosition,
+    PrepareRenameResponse as LspPrepareRenameResponse, Range as LspRange, TextEdit as LspTextEdit,
+    Url, WorkspaceEdit as LspWorkspaceEdit,
 };
 
 use crate::{
@@ -322,6 +324,71 @@ pub(crate) fn modify_outgoing_document_highlights(
             convert_range(state, document, &mut highlight.range, direction);
         },
     );
+}
+
+/// Converts each folding range's optional character columns from UTF-8 to
+/// the client encoding; line numbers are encoding-independent.
+pub(crate) fn modify_outgoing_folding_ranges(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<Vec<LspFoldingRange>>,
+) {
+    if let Some(ranges) = response {
+        for range in ranges {
+            convert_folding_range(state, document, range, Direction::Outgoing);
+        }
+    }
+}
+
+fn convert_folding_range(
+    state: &ServerState,
+    document: &Document,
+    range: &mut LspFoldingRange,
+    direction: Direction,
+) {
+    if let Some(character) = range.start_character.as_mut() {
+        let mut position = LspPosition {
+            line: range.start_line,
+            character: *character,
+        };
+        convert_position(state, document, &mut position, direction);
+        *character = position.character;
+    }
+    if let Some(character) = range.end_character.as_mut() {
+        let mut position = LspPosition {
+            line: range.end_line,
+            character: *character,
+        };
+        convert_position(state, document, &mut position, direction);
+        *character = position.character;
+    }
+}
+
+/// Converts each range of a linkedEditingRange response from UTF-8 to the
+/// client encoding.
+pub(crate) fn modify_outgoing_linked_editing_ranges(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<LspLinkedEditingRanges>,
+) {
+    if let Some(ranges) = response {
+        for range in &mut ranges.ranges {
+            convert_range(state, document, range, Direction::Outgoing);
+        }
+    }
+}
+
+/// Converts each code lens's range from UTF-8 to the client encoding.
+pub(crate) fn modify_outgoing_code_lenses(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<Vec<LspCodeLens>>,
+) {
+    if let Some(lenses) = response {
+        for lens in lenses {
+            convert_range(state, document, &mut lens.range, Direction::Outgoing);
+        }
+    }
 }
 
 /// Converts each edit's range of a formatting-family response from UTF-8

@@ -121,6 +121,28 @@ macro_rules! generated_methods {
                 incoming: position at text_document_position.position,
                 outgoing: modify_outgoing_text_edits,
             }
+            folding_range: folding_range @ FoldingRange {
+                doc: "Handles `textDocument/foldingRange` requests from the client.\n\nReturns the folding ranges of the document in `params`, or `None`. Requires a folding range provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::FoldingRangeParams,
+                response: Option<Vec<async_lsp::lsp_types::FoldingRange>>,
+                document: text_document,
+                outgoing: modify_outgoing_folding_ranges,
+            }
+            linked_editing_range: linked_editing_range @ LinkedEditingRange {
+                doc: "Handles `textDocument/linkedEditingRange` requests from the client.\n\nReturns the ranges that rename together with the symbol at the position in `params`, or `None`. Requires a linked editing range provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::LinkedEditingRangeParams,
+                response: Option<async_lsp::lsp_types::LinkedEditingRanges>,
+                document: text_document_position_params.text_document,
+                incoming: position at text_document_position_params.position,
+                outgoing: modify_outgoing_linked_editing_ranges,
+            }
+            code_lens: code_lens @ CodeLens {
+                doc: "Handles `textDocument/codeLens` requests from the client.\n\nReturns the code lenses of the document in `params`, or `None`. Requires a code lens provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::CodeLensParams,
+                response: Option<Vec<async_lsp::lsp_types::CodeLens>>,
+                document: text_document,
+                outgoing: modify_outgoing_code_lenses,
+            }
             will_save_wait_until: will_save_wait_until @ WillSaveWaitUntil {
                 doc: "Handles `textDocument/willSaveWaitUntil` requests from the client.\n\nReturns edits applied to the document before it is saved, or `None`. Requires `will_save_wait_until` enabled in the text-document sync options of [`Server::server_capabilities`].",
                 params: async_lsp::lsp_types::WillSaveTextDocumentParams,
@@ -168,6 +190,11 @@ macro_rules! custom_methods {
                 doc: "Handles `textDocument/diagnostic` requests from the client.\n\nReturns the diagnostics for the document in `params`. The document's current snapshot is available through `state.document(&params.text_document.uri)`. Requires a diagnostic provider in [`Server::server_capabilities`].",
                 params: async_lsp::lsp_types::DocumentDiagnosticParams,
                 response: async_lsp::lsp_types::DocumentDiagnosticReportResult,
+            }
+            selection_range: selection_range @ SelectionRange {
+                doc: "Handles `textDocument/selectionRange` requests from the client.\n\nReturns the selection-range chains for the positions in `params`, or `None`; `positions[i]` must be contained in `result[i].range`. Requires a selection range provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::SelectionRangeParams,
+                response: Option<Vec<async_lsp::lsp_types::SelectionRange>>,
             }
         }
     };

@@ -94,6 +94,7 @@ macro_rules! registry_request_impls {
 
 mod code_action;
 mod code_action_resolve;
+mod code_lens;
 mod completion;
 mod completion_resolve;
 mod conversion;
@@ -105,13 +106,16 @@ mod document_highlight;
 mod document_link;
 mod document_link_resolve;
 mod document_range_format;
+mod folding_range;
 mod hover;
 mod implementation;
+mod linked_editing_range;
 mod on_type_formatting;
 mod references;
 pub(crate) mod registry;
 mod rename;
 mod rename_prepare;
+mod selection_range;
 mod type_definition;
 mod will_create_files;
 mod will_delete_files;
@@ -125,6 +129,7 @@ pub(crate) use completion_resolve::CompletionResolve;
 pub(crate) use conversion::{Direction, convert_resolve_item};
 pub(crate) use document_diagnostics::DocumentDiagnostics;
 pub(crate) use document_link_resolve::DocumentLinkResolve;
+pub(crate) use selection_range::SelectionRange;
 
 crate::requests::registry::generated_methods!(registry_request_impls);
 
