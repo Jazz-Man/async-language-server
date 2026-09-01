@@ -9,11 +9,11 @@
 
 use async_lsp::lsp_types::{
     CompletionTextEdit as LspCompletionTextEdit, Diagnostic as LspDiagnostic,
-    DocumentDiagnosticReportKind, DocumentLink as LspDocumentLink,
-    GotoDefinitionResponse as LspGotoDefinitionResponse, Hover as LspHover,
-    Location as LspLocation, LocationLink as LspLocationLink, OneOf, Position as LspPosition,
-    PrepareRenameResponse as LspPrepareRenameResponse, Range as LspRange, TextEdit as LspTextEdit,
-    Url, WorkspaceEdit as LspWorkspaceEdit,
+    DocumentDiagnosticReportKind, DocumentHighlight as LspDocumentHighlight,
+    DocumentLink as LspDocumentLink, GotoDefinitionResponse as LspGotoDefinitionResponse,
+    Hover as LspHover, Location as LspLocation, LocationLink as LspLocationLink, OneOf,
+    Position as LspPosition, PrepareRenameResponse as LspPrepareRenameResponse, Range as LspRange,
+    TextEdit as LspTextEdit, Url, WorkspaceEdit as LspWorkspaceEdit,
 };
 
 use crate::{
@@ -128,7 +128,7 @@ pub(crate) fn convert_optional_vec<T>(
     document: &Document,
     items: &mut Option<Vec<T>>,
     direction: Direction,
-    convert_item: fn(&ServerState, &Document, &mut T, Direction),
+    convert_item: impl Fn(&ServerState, &Document, &mut T, Direction),
 ) {
     if let Some(items) = items {
         for item in items {
@@ -304,6 +304,24 @@ pub(crate) fn modify_outgoing_document_links(
             convert_range(state, document, &mut link.range, Direction::Outgoing);
         }
     }
+}
+
+/// Converts each highlight's range of a documentHighlight response from
+/// UTF-8 to the client encoding.
+pub(crate) fn modify_outgoing_document_highlights(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<Vec<LspDocumentHighlight>>,
+) {
+    convert_optional_vec(
+        state,
+        document,
+        response,
+        Direction::Outgoing,
+        |state, document, highlight, direction| {
+            convert_range(state, document, &mut highlight.range, direction);
+        },
+    );
 }
 
 /// Converts each edit's range of a formatting-family response from UTF-8

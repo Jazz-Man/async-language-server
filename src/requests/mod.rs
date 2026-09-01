@@ -101,14 +101,17 @@ mod declaration;
 mod definition;
 mod document_diagnostics;
 mod document_format;
+mod document_highlight;
 mod document_link;
 mod document_link_resolve;
 mod document_range_format;
 mod hover;
+mod implementation;
 mod references;
 pub(crate) mod registry;
 mod rename;
 mod rename_prepare;
+mod type_definition;
 
 pub(crate) use code_action::CodeAction;
 pub(crate) use code_action_resolve::CodeActionResolve;

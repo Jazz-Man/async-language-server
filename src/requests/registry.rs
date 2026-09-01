@@ -89,6 +89,30 @@ macro_rules! generated_methods {
                 incoming: range at range,
                 outgoing: modify_outgoing_text_edits,
             }
+            implementation: implementation @ Implementation {
+                doc: "Handles `textDocument/implementation` requests from the client.\n\nReturns the implementation locations of the symbol at the position in `params`, or `None`. Requires an implementation provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::request::GotoImplementationParams,
+                response: Option<async_lsp::lsp_types::request::GotoImplementationResponse>,
+                document: text_document_position_params.text_document,
+                incoming: position at text_document_position_params.position,
+                outgoing: modify_outgoing_goto_response,
+            }
+            type_definition: type_definition @ TypeDefinition {
+                doc: "Handles `textDocument/typeDefinition` requests from the client.\n\nReturns the type definition locations of the symbol at the position in `params`, or `None`. Requires a type definition provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::request::GotoTypeDefinitionParams,
+                response: Option<async_lsp::lsp_types::request::GotoTypeDefinitionResponse>,
+                document: text_document_position_params.text_document,
+                incoming: position at text_document_position_params.position,
+                outgoing: modify_outgoing_goto_response,
+            }
+            document_highlight: document_highlight @ DocumentHighlight {
+                doc: "Handles `textDocument/documentHighlight` requests from the client.\n\nReturns the highlights of the symbol at the position in `params`, or `None`. Requires a document highlight provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::DocumentHighlightParams,
+                response: Option<Vec<async_lsp::lsp_types::DocumentHighlight>>,
+                document: text_document_position_params.text_document,
+                incoming: position at text_document_position_params.position,
+                outgoing: modify_outgoing_document_highlights,
+            }
         }
     };
 }
