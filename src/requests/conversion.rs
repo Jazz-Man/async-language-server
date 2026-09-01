@@ -448,3 +448,48 @@ pub(crate) fn convert_workspace_edit(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use async_lsp::lsp_types::{
+        DocumentChanges, OneOf, OptionalVersionedTextDocumentIdentifier, TextDocumentEdit,
+        TextEdit, WorkspaceEdit,
+    };
+
+    use crate::requests::{Request, WillCreateFiles};
+    use crate::testing::{same_line, state_with_documents};
+
+    #[test]
+    fn workspace_edit_document_changes_edits_convert_outgoing() {
+        let (state, _plain, emoji) = state_with_documents();
+        let document = state.document(&emoji).expect("emoji document is tracked");
+        let mut response = Some(WorkspaceEdit {
+            document_changes: Some(DocumentChanges::Edits(vec![TextDocumentEdit {
+                text_document: OptionalVersionedTextDocumentIdentifier {
+                    uri: emoji,
+                    version: None,
+                },
+                edits: vec![OneOf::Left(TextEdit {
+                    range: same_line(0, 4, 4),
+                    new_text: "x".into(),
+                })],
+            }])),
+            ..WorkspaceEdit::default()
+        });
+
+        <WillCreateFiles as Request>::modify_response(&state, &document, &mut response);
+
+        let edits = response
+            .expect("edit present")
+            .document_changes
+            .expect("document changes present");
+        let DocumentChanges::Edits(edits) = edits else {
+            panic!("expected edits");
+        };
+        let [OneOf::Left(edit)] = edits[0].edits.as_slice() else {
+            panic!("expected one left edit");
+        };
+        // Keyed at the emoji document: UTF-8 byte 4 converts to client 2.
+        assert_eq!(edit.range, same_line(0, 2, 2));
+    }
+}

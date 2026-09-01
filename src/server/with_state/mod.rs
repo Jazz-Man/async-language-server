@@ -10,11 +10,13 @@ use async_lsp::{
     },
 };
 use futures::future::BoxFuture;
+use ropey::Rope;
 
 #[cfg(feature = "tracing")]
 use tracing::debug;
 
 use crate::{
+    documents::Document,
     requests::{Direction, convert_resolve_item},
     server::{Server, ServerState},
     text_utils::Encoding,
@@ -51,46 +53,94 @@ macro_rules! implement_method {
                     <$request_type as crate::requests::Request>::extract_url(&params);
                 let mut ver: Option<i32> = None;
 
-                // 2. If we got an URL, track the document version & call the "modify params" callback
-                if let Some(url) = url.as_ref() {
-                    if let Some(doc) = state.document(url) {
-                        ver.replace(doc.version());
-                        <$request_type as crate::requests::Request>::modify_params(
-                            &state,
-                            &doc,
-                            &mut params,
-                        );
-                    }
+                // 2. If we got an URL, track the document version
+                if let Some(url) = url.as_ref()
+                    && let Some(doc) = state.document(url)
+                {
+                    ver.replace(doc.version());
                 }
 
-                // 3. Call the user-defined language server function
+                // 3. Call the "modify params" callback against the request's
+                //    conversion document: the tracked snapshot for a tracked
+                //    URL, a disk snapshot for an untracked file URL, or the
+                //    sole tracked document for URL-less requests
+                let params_doc = conversion_document(&state, url.as_ref());
+                if let Some(doc) = params_doc.as_ref() {
+                    <$request_type as crate::requests::Request>::modify_params(
+                        &state,
+                        doc,
+                        &mut params,
+                    );
+                }
+
+                // 4. Call the user-defined language server function
                 let mut result = server
                     .$our_server_trait_method(state.clone(), params)
                     .await?;
 
-                // 4. Check our document again, if we had one originally
-                if let Some(url) = url.as_ref() {
-                    if let Some(doc) = state.document(url) {
-                        // 4a. If the version changed, our result is stale, and we should try again
-                        if ver.is_some_and(|v| v != doc.version()) {
-                            return Err(ResponseError::new(
-                                ErrorCode::CONTENT_MODIFIED,
-                                "document was modified during processing",
-                            ));
-                        }
-                        // 4b. Version is not stale, run the final "modify response" callback
-                        <$request_type as crate::requests::Request>::modify_response(
-                            &state,
-                            &doc,
-                            &mut result,
-                        );
-                    }
+                // 5. Check our document again, if we had one originally. If the
+                //    version changed, our result is stale, and we should try again
+                if let Some(url) = url.as_ref()
+                    && let Some(doc) = state.document(url)
+                    && ver.is_some_and(|v| v != doc.version())
+                {
+                    return Err(ResponseError::new(
+                        ErrorCode::CONTENT_MODIFIED,
+                        "document was modified during processing",
+                    ));
+                }
+
+                // 6. Run the final "modify response" callback against a freshly
+                //    resolved conversion document
+                if let Some(doc) = conversion_document(&state, url.as_ref()) {
+                    <$request_type as crate::requests::Request>::modify_response(
+                        &state,
+                        &doc,
+                        &mut result,
+                    );
                 }
 
                 Ok(result)
             })
         }
     };
+}
+
+/// Resolves the document a request's conversions run against: the
+/// tracked snapshot for `url` when tracked; otherwise, for file URLs, a
+/// per-request snapshot read from disk (best-effort — unreadable or
+/// non-file URLs convert nothing, the historical behavior); for URL-less
+/// requests, the sole tracked document when exactly one is tracked (the
+/// resolve-family heuristic), else none.
+fn conversion_document(state: &ServerState, url: Option<&Url>) -> Option<Document> {
+    let Some(url) = url else {
+        let documents = state.documents();
+        return (documents.len() == 1).then(|| documents[0].clone());
+    };
+    state.document(url).or_else(|| read_document_from_disk(url))
+}
+
+/// Reads a per-request document snapshot from a file URL. Blocking by
+/// design, matching the crate's other disk reads; never panics on
+/// external input — failures return `None` and conversion is skipped.
+fn read_document_from_disk(url: &Url) -> Option<Document> {
+    if url.scheme() != "file" {
+        return None;
+    }
+    let path = url.to_file_path().ok()?;
+    // arch-lint: allow(no-sync-io) reason="the dispatch fallback reads one file per request via std::fs, matching the crate's other synchronous disk reads"
+    let text = std::fs::read_to_string(path).ok()?;
+    Some(Document {
+        uri: url.clone(),
+        text: Rope::from(text),
+        version: 0,
+        language: String::new(),
+        matcher: None,
+        #[cfg(feature = "tree-sitter")]
+        tree_sitter_lang: None,
+        #[cfg(feature = "tree-sitter")]
+        tree_sitter_tree: None,
+    })
 }
 
 macro_rules! implement_methods {
@@ -115,10 +165,7 @@ macro_rules! implement_resolve_method {
             Box::pin(async move {
                 // Resolve requests carry no text-document URL: convert against
                 // the sole tracked document, if the server tracks exactly one.
-                let sole = {
-                    let documents = state.documents();
-                    (documents.len() == 1).then(|| documents[0].clone())
-                };
+                let sole = conversion_document(&state, None);
                 convert_resolve_item::<$request_type, _>(
                     &state,
                     sole.as_ref(),

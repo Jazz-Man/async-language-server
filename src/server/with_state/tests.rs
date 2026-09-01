@@ -8,15 +8,17 @@ use std::{
 use async_lsp::{
     ClientSocket, ErrorCode, LanguageServer,
     lsp_types::{
-        ClientCapabilities, CompletionItem, CompletionTextEdit, DiagnosticOptions,
-        DiagnosticServerCapabilities, DidChangeConfigurationParams,
+        ClientCapabilities, CompletionItem, CompletionTextEdit, CreateFilesParams,
+        DiagnosticOptions, DiagnosticServerCapabilities, DidChangeConfigurationParams,
         DidChangeWorkspaceFoldersParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
         DocumentDiagnosticReport, DocumentDiagnosticReportKind, DocumentDiagnosticReportResult,
-        DocumentLink, FullDocumentDiagnosticReport, GeneralClientCapabilities, InitializeParams,
-        OneOf, PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
-        RelatedFullDocumentDiagnosticReport, ServerCapabilities, TextDocumentItem, TextEdit, Url,
-        WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
-        WorkspaceDocumentDiagnosticReport, WorkspaceFoldersChangeEvent,
+        DocumentLink, FileCreate, FullDocumentDiagnosticReport, GeneralClientCapabilities, Hover,
+        HoverContents, HoverParams, InitializeParams, MarkupContent, MarkupKind, OneOf,
+        PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
+        RelatedFullDocumentDiagnosticReport, ServerCapabilities, TextDocumentIdentifier,
+        TextDocumentItem, TextDocumentPositionParams, TextEdit, Url, WorkDoneProgressParams,
+        WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
+        WorkspaceDocumentDiagnosticReport, WorkspaceEdit, WorkspaceFoldersChangeEvent,
     },
 };
 
@@ -24,7 +26,7 @@ use crate::server::{
     DocumentMatcher, LanguageServerWithState, Server, ServerOptions, ServerResult, ServerState,
     WorkspaceDiagnostics,
 };
-use crate::testing::{diagnostic, same_line, temp_workspace, url, workspace_folder};
+use crate::testing::{diagnostic, line_position, same_line, temp_workspace, url, workspace_folder};
 use crate::text_utils::Encoding;
 
 struct TestServer;
@@ -127,6 +129,58 @@ impl Server for LinkCaptureServer {
     }
 }
 
+/// Answers `workspace/willCreateFiles` with a workspace edit keyed at
+/// `url("edit.txt")`, carrying a UTF-8 byte-4 range.
+struct EditServer;
+
+impl Server for EditServer {
+    fn will_create_files(
+        &self,
+        _state: ServerState,
+        _params: CreateFilesParams,
+    ) -> impl std::future::Future<Output = ServerResult<Option<WorkspaceEdit>>> + Send {
+        let mut changes = HashMap::new();
+        changes.insert(
+            url("edit.txt"),
+            vec![TextEdit {
+                range: same_line(0, 4, 4),
+                new_text: "x".into(),
+            }],
+        );
+        std::future::ready(Ok(Some(WorkspaceEdit {
+            changes: Some(changes),
+            ..WorkspaceEdit::default()
+        })))
+    }
+}
+
+/// Echoes a hover whose range sits at UTF-8 byte 4, capturing the
+/// position the handler received.
+struct HoverCaptureServer {
+    received: Arc<Mutex<Option<Position>>>,
+}
+
+impl Server for HoverCaptureServer {
+    fn hover(
+        &self,
+        _state: ServerState,
+        params: HoverParams,
+    ) -> impl std::future::Future<Output = ServerResult<Option<Hover>>> + Send {
+        let received = Arc::clone(&self.received);
+        async move {
+            *received.lock().expect("capture mutex") =
+                Some(params.text_document_position_params.position);
+            Ok(Some(Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::PlainText,
+                    value: "hover".into(),
+                }),
+                range: Some(same_line(0, 4, 4)),
+            }))
+        }
+    }
+}
+
 /// Drives documentLink/resolve over real dispatch: opens `documents`,
 /// sends a link at UTF-16 position (0,2) with the given target, and returns
 /// (what the handler received, what the client got back).
@@ -159,6 +213,37 @@ fn drive_link_resolve(documents: &[(&str, &str)], target: Option<Url>) -> (Optio
     .expect("link resolves");
 
     (*received.lock().expect("capture mutex"), resolved.range)
+}
+
+/// Drives workspace/willCreateFiles over real dispatch: opens `documents`,
+/// answers with a UTF-8 byte-4 edit keyed at `url("edit.txt")`, and returns
+/// the range the client received.
+fn drive_will_create_files(documents: &[(&str, &str)]) -> Range {
+    let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), EditServer);
+    server.state.set_position_encoding(Encoding::UTF16);
+    for (name, text) in documents {
+        let _ = server.did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: url(name),
+                language_id: "plaintext".into(),
+                version: 0,
+                text: (*text).into(),
+            },
+        });
+    }
+
+    let edit = futures::executor::block_on(server.will_create_files(CreateFilesParams {
+        files: vec![FileCreate {
+            uri: url("new.txt").to_string(),
+        }],
+    }))
+    .expect("will_create_files succeeds")
+    .expect("edit present");
+    edit.changes
+        .expect("changes present")
+        .get(&url("edit.txt"))
+        .expect("edit is keyed at the emoji URL")[0]
+        .range
 }
 
 fn test_capabilities() -> Option<ServerCapabilities> {
@@ -735,6 +820,80 @@ fn link_resolve_skips_conversion_without_a_sole_document() {
 
     assert_eq!(received, Some(same_line(0, 2, 2)));
     assert_eq!(returned, same_line(0, 2, 2));
+}
+
+#[test]
+fn url_less_response_converts_against_sole_document() {
+    // One tracked document ("🙂abc": byte 4 == UTF-16 unit 2); the edit keys
+    // at that document's URL. A URL-less file-ops request must still run its
+    // outgoing hook, converting against the sole tracked document.
+    assert_eq!(
+        drive_will_create_files(&[("edit.txt", "🙂abc")]),
+        same_line(0, 2, 2)
+    );
+}
+
+#[test]
+fn url_less_passes_through_without_sole_document() {
+    // Zero tracked documents: nothing to convert against.
+    assert_eq!(drive_will_create_files(&[]), same_line(0, 4, 4));
+
+    // Two tracked documents: no sole document, so the response is
+    // returned in the handler's UTF-8 columns, unconverted.
+    assert_eq!(
+        drive_will_create_files(&[("a.txt", "🙂abc"), ("b.txt", "🙂🙂")]),
+        same_line(0, 4, 4)
+    );
+}
+
+#[test]
+fn untracked_url_converts_against_disk() {
+    // "🙂abc" on disk, never opened: byte 4 == UTF-16 unit 2. A second,
+    // unrelated document is tracked (with ASCII text, so converting against
+    // it would NOT move column 2 to byte 4) — the conversion must read the
+    // disk text, not fall back to the sole tracked document.
+    let root = temp_workspace("workspace", "untracked-disk");
+    let file = root.join("emoji.txt");
+    fs::write(&file, "🙂abc").expect("test file can be written");
+    let file = fs::canonicalize(file).expect("test file can be canonicalized");
+    let disk_url = Url::from_file_path(file).expect("path can be converted to a URL");
+
+    let received = Arc::new(Mutex::new(None));
+    let mut server = LanguageServerWithState::new(
+        ClientSocket::new_closed(),
+        HoverCaptureServer {
+            received: Arc::clone(&received),
+        },
+    );
+    server.state.set_position_encoding(Encoding::UTF16);
+    let _ = server.did_open(DidOpenTextDocumentParams {
+        text_document: TextDocumentItem::new(
+            url("other.txt"),
+            "plaintext".into(),
+            0,
+            "abcdef".into(),
+        ),
+    });
+
+    let hover = futures::executor::block_on(server.hover(HoverParams {
+        text_document_position_params: TextDocumentPositionParams::new(
+            TextDocumentIdentifier::new(disk_url),
+            line_position(0, 2),
+        ),
+        work_done_progress_params: WorkDoneProgressParams::default(),
+    }))
+    .expect("hover succeeds");
+
+    // Params side: the handler saw the disk text's UTF-8 byte column...
+    assert_eq!(
+        *received.lock().expect("capture mutex"),
+        Some(line_position(0, 4))
+    );
+    // ...and the response came back in the client's UTF-16 columns.
+    let hover = hover.expect("hover present");
+    assert_eq!(hover.range.expect("range present"), same_line(0, 2, 2));
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
 fn initialize_params(root: &PathBuf) -> InitializeParams {
