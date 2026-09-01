@@ -57,10 +57,14 @@ omission, and no notification from the upstream list can produce an
 
 ## Architecture 1 — Method registry
 
-One table is the single source of truth for (wire method, trait method name,
-Request type, params/result types, doc). Multiple consumers stamp from it;
-the pattern is the same one upstream uses (`omni_trait_generated.rs` consumed
-by `define!`).
+One registry module (`src/requests/registry.rs`) is the single source of
+truth for (trait method name, async-lsp method name, Request type,
+params/response types, doc, hook shape), split into three tables —
+`generated_methods!` (rows fully determine a `Request` impl),
+`custom_methods!` (names/types only; hooks live in the per-method file),
+and `resolve_methods!` (the resolve trio). Multiple consumers stamp from
+the tables via macro passthrough; the pattern is the same one upstream uses
+(`omni_trait_generated.rs` consumed by `define!`).
 
 ```rust
 // src/requests/registry.rs — the table
