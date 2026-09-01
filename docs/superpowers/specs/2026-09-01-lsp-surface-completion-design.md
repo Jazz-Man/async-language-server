@@ -143,10 +143,13 @@ responses, URL-less responses, resolve family — hand-written as today.
 One hand-written test exercises the macro's expansion on a canonical case
 (the "test of the attribute" in the owner's PHP analogy).
 
-Retrofit (Plan 1 Task 2): the existing conversion tests (hover, completion,
-completion_resolve, code_action, declaration, definition, references,
-rename, rename_prepare, document_format, document_range_format,
-document_link, document_diagnostics) migrate in place into rows. Expected
+Retrofit (Plan 1 Task 2): the regular-shape conversion tests migrate in
+place into rows — definition and hover first (canonical pair, Plan 1 Task
+1), then declaration, references, document_link, document_format,
+document_range_format, rename_prepare, and completion's incoming side if
+it fits the single-position shape. The irregular tests (code_action,
+rename, document_diagnostics) and the resolve-family tests stay
+hand-written — the coverage boundary excludes them. Expected
 dupes effect: row lists are not near-duplicate AST bodies; if expansions
 trip `cargo dupes check` (it analyzes source, not expansions), one reasoned
 `.dupes-ignore.toml` entry for the macro itself — never per row.
