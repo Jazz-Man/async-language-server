@@ -76,7 +76,8 @@ pub trait RangeExt: Sized {
     /// # Errors
     ///
     /// Returns [`RangeError::PositionOutOfRange`] if `at` lies beyond the
-    /// end of the range.
+    /// end of the range, or (for tree-sitter ranges) does not land on a
+    /// character boundary of the text.
     fn split_at(self, text: &str, at: Self::Position) -> Result<(Self, Self), RangeError>;
 
     /// Splits the given range into two parts at the specified position,
@@ -114,7 +115,9 @@ pub trait RangeExt: Sized {
     /// # Errors
     ///
     /// Returns [`RangeError::PositionOutOfRange`] if `from` or `to` lie beyond
-    /// the end of the range, or [`RangeError::StartAfterEnd`] if `from > to`.
+    /// the end of the range or (for tree-sitter ranges) do not land on a
+    /// character boundary of the text, or [`RangeError::StartAfterEnd`] if
+    /// `from > to`.
     fn sub(self, text: &str, from: Self::Position, to: Self::Position) -> Result<Self, RangeError>;
 
     /// Splits the given range into two optional subranges, using the given delimiter.
