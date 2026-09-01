@@ -18,7 +18,7 @@ Two layers wrap `async-lsp`:
 `serve()` (`src/server/serve.rs`) wires the implementor into async-lsp's `MainLoop`
 behind a tower `ServiceBuilder` stack — `LifecycleLayer`, `TracingLayer`
 (`tracing` feature), `ConcurrencyLayer(8)`, `CatchUnwindLayer`,
-`ClientProcessMonitorLayer` — over a `Transport` (`Stdio`, or `Socket(port)`).
+`ClientProcessMonitorLayer` — over the process standard input and output.
 
 ## The UTF-8 invariant
 

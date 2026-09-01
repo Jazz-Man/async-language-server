@@ -35,10 +35,6 @@ fingerprint = "5e64d1f8cb621fc2"
 reason = "examples' full_report helper appears in both minimal.rs and tree_sitter.rs; examples stay self-contained and didactically parallel by design"
 
 [[ignore]]
-fingerprint = "646121fdf47245b8"
-reason = "EchoServer::hover duplicated between tests/lsp_wire.rs and src/server/tests.rs; deliberately deferred to the pending wire-tests file split"
-
-[[ignore]]
 fingerprint = "6c4db5f43053b240"
 reason = "examples' server_capabilities builders (JsonServer, LongLineServer) are deliberately parallel so each example reads standalone"
 
@@ -52,7 +48,7 @@ reason = "enable/disable_workspace_diagnostics mirror the same lsp_types capabil
 
 [[ignore]]
 fingerprint = "882ff9b7680235f9"
-reason = "futures AsyncWrite mandates both poll_flush and poll_close; each forwards to the inner write half (test support in the #[cfg(test)] sibling src/server/tests.rs)"
+reason = "futures AsyncWrite mandates both poll_flush and poll_close; TokioWriter forwards each to the inner tokio writer (poll_flush / poll_shutdown) in src/server/serve.rs"
 
 [[ignore]]
 fingerprint = "8fa261f1a1daff69"
@@ -65,14 +61,6 @@ reason = "client-capability checks can_request/can_register_configuration: mirro
 [[ignore]]
 fingerprint = "99943b778a5e10cf"
 reason = "node_at_position vs node_at_position_named differ only in descendant_for_point_range vs named_descendant_for_point_range; the tree-sitter API forces the twin"
-
-[[ignore]]
-fingerprint = "bf04805cf660a907"
-reason = "AsyncWrite mandates both poll_flush and poll_close; LspTransportWrite forwards each across its enum variants (Socket/Stdio)"
-
-[[ignore]]
-fingerprint = "e4c0eb70c1319dc1"
-reason = "trim_crlf duplicated between tests/lsp_wire.rs and src/server/tests.rs; deliberately deferred to the pending wire-tests file split"
 
 [[ignore]]
 fingerprint = "f9b5a480a3cae9d6"

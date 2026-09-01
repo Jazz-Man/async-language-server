@@ -18,19 +18,19 @@ statistics. The typing criterion: a type must remove a representable
 invalid state or separate a genuinely confusable pair — otherwise the
 type is ceremony.
 
-## The three tiers
+## The two tiers
 
 | tier | where | what it pins |
 |---|---|---|
 | W0 unit | inline `#[cfg(test)] mod tests` / sibling `tests.rs` | arithmetic, conversion math, state machines, `Request` conversion hooks |
-| W2 wire white-box | `src/server/tests.rs` | framing + serde + the real middleware stack (`serve::run_over_streams`) over `tokio::io::duplex`, driven by a raw JSON-RPC client |
-| W3 wire black-box | `tests/lsp_wire.rs` | `serve()` + `Transport::Socket` over real TCP |
+| wire | `src/server/tests/` | framing + serde + the real middleware stack (`serve::run_over_streams`) over `tokio::io::duplex` through the internal seam, driven by a raw JSON-RPC client |
 
-Choose the lowest tier that can express the assertion. W2/W3 exist only
-for what unit tests cannot see: lifecycle gating, staleness retry, panic
-mapping, the concurrency bound, termination, wire encoding.
+Choose the lowest tier that can express the assertion. The wire tier
+exists only for what unit tests cannot see: lifecycle gating, staleness
+retry, panic mapping, the concurrency bound, termination, wire encoding.
 
-The concurrency test (`at_most_eight_requests_run_concurrently`) doubles
+The concurrency test (`at_most_eight_requests_run_concurrently`, in
+`src/server/tests/robustness.rs`) doubles
 as a tripwire for an upstream deadlock: with `ConcurrencyLayer` at
 capacity, async-lsp 0.2.4's `MainLoop` stops polling in-flight tasks
 while waiting for `poll_ready` (oxalica/async-lsp#30), so the ninth
@@ -54,14 +54,9 @@ instructions in the test's own comment.
   tree-sitter `r()` twins stay local in their own test files: each flavor
   names its local range builder `r`, with types specific to that flavor —
   they are not (and need not be) the shared LSP fixtures.
-- `src/server/tests.rs` — the W2 scaffolding: `spawn_wire_server`,
-  `RawClient`, `EchoServer` / `GatedServer` / `PanickingServer`,
-  `bounded`.
-- `tests/lsp_wire.rs` — its own minimal framing client: integration
-  tests cannot reach `#[cfg(test)]` modules inside the library, so the
-  duplication is accepted for now, not endorsed — splitting the
-  wire-test files is the scheduled post-cycle brainstorm (see the
-  matching deferred entries in `.dupes-ignore.toml`).
+- `src/server/testing.rs` — the wire scaffolding: `spawn_wire_server`,
+  `RawClient`, `EchoServer`, `bounded`; `GatedServer` / `PanickingServer`
+  stay local to `src/server/tests/robustness.rs`, their only consumers.
 
 ## Conventions
 
@@ -73,7 +68,7 @@ instructions in the test's own comment.
   attributed to its file.
 - Determinism: channel gates, never sleeps. Every cross-task await is
   bounded by `tokio::time::timeout` (`WIRE_TIMEOUT`, five seconds in
-  both wire files) — futures-rs has no timer, so the bound rides the
+  the wire harness) — futures-rs has no timer, so the bound rides the
   `time` feature of the tokio dev-dependency. `processId: null` in test
   `initialize` keeps `ClientProcessMonitorLayer` inert; shutdown asserts
   the expected EOF instead of hanging.
@@ -93,7 +88,7 @@ instructions in the test's own comment.
 `max_exact_duplicates = 0` and `max_near_duplicates = 0`, and tests sit
 inside the analysis (owner call: tests are code). There is no
 `exclude_tests` knob and none is to be added. Deliberate parallelism —
-spec-matrix rows, mirror pairs, the two wire-test clients — carries one
+spec-matrix rows, mirror pairs — carries one
 reasoned entry per group in `.dupes-ignore.toml`; a NEW unignored group
 must fail the check, and thresholds are never loosened to hide one. The
 command runs on demand or periodically, outside the per-task battery
@@ -112,7 +107,7 @@ multi-position methods.
 Testing adds one piece: a W0 conversion test in the `#[cfg(test)] mod
 tests` block next to the `Request` impl, importing fixtures from
 `crate::testing` (`state_with_documents` is the standard UTF-16 fixture).
-Dispatch needs nothing new: the parametrized W2 unknown-method test
+Dispatch needs nothing new: the parametrized wire unknown-method test
 (`unwired_methods_return_method_not_found`) pins `-32601` for every
 method the crate does not wire, so surface growth adds no wire tests.
 

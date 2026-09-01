@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Library crate (no binary) that wraps `async-lsp` to make language servers with less boilerplate: tokio stdio/TCP transports, ropey-based incremental document sync, automatic position-encoding negotiation (UTF-8/16/32), and optional tree-sitter integration. Personal project, version 0.0.0, not published to crates.io — consumed as a git dependency or fork. Public API lives under `async_language_server::server::*`, with `lsp_types` re-exported at the crate root.
+Library crate (no binary) that wraps `async-lsp` to make language servers with less boilerplate: tokio stdio transport, ropey-based incremental document sync, automatic position-encoding negotiation (UTF-8/16/32), and optional tree-sitter integration. Personal project, version 0.0.0, not published to crates.io — consumed as a git dependency or fork. Public API lives under `async_language_server::server::*`, with `lsp_types` re-exported at the crate root.
 
 ## Commands
 
@@ -19,7 +19,7 @@ Library crate (no binary) that wraps `async-lsp` to make language servers with l
 
 Two layers around async-lsp:
 
-1. **User layer — `Server` trait** (`src/server/server_trait.rs`): implementors override async methods (`hover`, `completion`, `definition`, `document_diagnostics`, ...). All optional; unimplemented ones return `METHOD_NOT_FOUND`. `serve()` (`src/server/serve.rs`) wires the implementor into async-lsp's `MainLoop` behind a tower middleware stack (lifecycle, tracing, concurrency limit of 8, panic catching, client-process monitor) over a `Transport` (`Stdio` default, or `Socket(port)`).
+1. **User layer — `Server` trait** (`src/server/server_trait.rs`): implementors override async methods (`hover`, `completion`, `definition`, `document_diagnostics`, ...). All optional; unimplemented ones return `METHOD_NOT_FOUND`. `serve()` (`src/server/serve.rs`) wires the implementor into async-lsp's `MainLoop` behind a tower middleware stack (lifecycle, tracing, concurrency limit of 8, panic catching, client-process monitor) over the process stdio.
 
 2. **Plumbing — `LanguageServerWithState`** (`src/server/with_state/mod.rs`, initialize flow in `src/server/with_state/initialize.rs`): implements async-lsp's `LanguageServer`. Handles `initialize` (position-encoding negotiation, capability merging, workspace folders) and all document notifications, then forwards requests to the `Server` trait.
 

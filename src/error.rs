@@ -96,7 +96,7 @@ pub enum ServerError {
     /// Error raised by the underlying async-lsp machinery.
     #[error("{0}")]
     Lsp(#[from] async_lsp::Error),
-    /// I/O error raised by a transport or a file read.
+    /// I/O error from the stdio wire or a file read.
     #[error("{0}")]
     Io(#[from] std::io::Error),
     /// An error that does not fit any other variant; the boxed error provides

@@ -35,9 +35,9 @@ pub enum ServerError {
   `#[source]` and build the variant through `map_err` or a named constructor:
 
 ```rust
-#[error("failed to connect to port {port}")]
-TcpConnect {
-    port: u16,
+#[error("failed to read document {path}")]
+DocumentRead {
+    path: PathBuf,
     #[source]
     error: std::io::Error,
 }

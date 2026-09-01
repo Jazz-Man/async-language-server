@@ -1,7 +1,7 @@
 # async-language-server
 
 A higher-level abstraction over [async-lsp] for writing language servers with
-less boilerplate: tokio stdio/TCP transports, ropey-based incremental document
+less boilerplate: tokio stdio transport, ropey-based incremental document
 sync, automatic position-encoding negotiation (UTF-8/16/32), optional
 [tree-sitter] integration, and workspace-wide diagnostics.
 
@@ -65,9 +65,9 @@ the encoding negotiated with the client — conversions are handled internally.
 - **`DocumentMatcher`** — associates documents with a language by URL globs
   and/or language-id strings, optionally carrying a tree-sitter grammar
   (language-per-document).
-- **`serve()` + `Transport`** — wires your server into async-lsp behind a
-  tower middleware stack (tracing, concurrency limit, panic catching,
-  client-process monitor) over stdio or a TCP socket.
+- **`serve()`** — wires your server into async-lsp behind a tower middleware
+  stack (tracing, concurrency limit, panic catching, client-process monitor)
+  over the process stdio.
 - **Workspace diagnostics** — `workspace/diagnostic` with walker-based
   scanning; exposure configured through `ServerOptions`.
 - **`oneshot`** — run a `Server` over files on disk with no LSP client:
