@@ -26,8 +26,11 @@ omission, and no notification from the upstream list can produce an
    protocol (the parked cycle's approved URL-less conversion shape is
    recovered below).
 2. **Semantic tokens: full trio** (full, full/delta, range).
-3. **Notifications: full package** — all six unwired notifications get
-   handlers (no trait hooks; see Notifications).
+3. **Notifications: full package + sync trait hooks everywhere** — all six
+   unwired notifications get internal handlers, and EVERY client→server
+   notification the crate dispatches (twelve) exposes a synchronous
+   `Server`-trait hook (revised twice during spec review; see
+   Notifications).
 4. **Harness**: local `macro_rules!` in `src/testing.rs`, stamps one
    `#[test]` per row; a dedicated retrofit task migrates existing
    conversion tests into rows.
@@ -294,23 +297,64 @@ spec-example array round-trip.
 
 ## Notifications
 
-No `Server`-trait hooks this cycle: notification handlers must stay
-synchronous (LSP + async-lsp constraint), the trait is async-request
-shaped, and no downstream need exists. Handlers live on
-`LanguageServerWithState` + sync state methods after
-`handle_document_save`; additive trait hooks can come later if asked.
+Every unwired notification gets an internal handler on
+`LanguageServerWithState` plus a sync state method after the
+`handle_document_save` pattern. Handlers stay synchronous (LSP + async-lsp
+constraint: notifications are processed inline, in order).
 
-| notification | behavior |
-|---|---|
-| did_change_watched_files | for each `FileEvent` (`uri: Url`, `typ`: Created/Changed/Deleted) whose URI is a tracked **Workspace**-origin document: re-read from disk (sync `std::fs`, same discipline as the didChange fallback); Deleted → drop the snapshot; Open-origin documents untouched (the editor owns them). Unreadable → trace + continue |
-| did_rename_files / did_delete_files | drop tracked Workspace snapshots matching the old URIs (String URIs parsed fallibly; unparseable traced and skipped); next workspace scan re-adds |
-| did_create_files | no-op + `debug!` (tracing feature) |
-| will_save | no-op + `debug!` |
-| work_done_progress_cancel | no-op + `debug!` with token |
-| `$/setTrace`, `$/cancelRequest`, `$/progress` | untouched — async-lsp auto-ignores the `$/` prefix |
+**Sync trait hooks** (owner decision, revised during spec review): the
+five state-relevant notifications also expose a hook on the `Server` trait
+so implementors can react without touching plumbing:
+
+```rust
+/// Called after the internal handler processes the notification.
+/// Synchronous by protocol constraint; default no-op.
+fn will_save(&self, _state: &ServerState, _params: &WillSaveTextDocumentParams) {}
+```
+
+- Hook set: **every client→server notification the crate dispatches** —
+  the six new ones (`will_save`, `did_change_watched_files`,
+  `did_create_files`, `did_rename_files`, `did_delete_files`,
+  `work_done_progress_cancel`) plus the six already-internal ones
+  (`did_open`, `did_change`, `did_close`, `did_save`,
+  `did_change_configuration`, `did_change_workspace_folders`). Owner's
+  rationale: retrofitting hooks later costs a full re-derivation cycle;
+  build the uniform surface now. The `$/` trio (setTrace, cancelRequest,
+  progress) is the one deliberate exception — async-lsp auto-ignores the
+  `$/` prefix, and a `cancelRequest` hook without request-cancellation
+  machinery would be noise; revisit only if cancellation support ever
+  lands.
+- Shape: `&self`, `&ServerState`, `&params`, returns `()`. Sync by
+  necessity — an async hook would require spawning a task and would break
+  LSP message ordering; hooks may not await and must not panic (the same
+  contract the internal handlers already carry).
+- Ordering: internal handler first, hook second — hooks observe
+  post-internal state (the `did_change_watched_files` hook sees already
+  refreshed documents).
+- Default bodies are empty — additive; no implementor breaks.
+- Hooks are hand-written trait methods, not registry rows (the registry is
+  request-shaped).
+
+| notification | internal behavior | trait hook |
+|---|---|---|
+| did_change_watched_files | for each `FileEvent` (`uri: Url`, `typ`: Created/Changed/Deleted) whose URI is a tracked **Workspace**-origin document: re-read from disk (sync `std::fs`, same discipline as the didChange fallback); Deleted → drop the snapshot; Open-origin documents untouched (the editor owns them). Unreadable → trace + continue | `did_change_watched_files` |
+| did_rename_files / did_delete_files | drop tracked Workspace snapshots matching the old URIs (String URIs parsed fallibly; unparseable traced and skipped); next workspace scan re-adds | `did_rename_files` / `did_delete_files` |
+| did_create_files | no-op + `debug!` (tracing feature) | `did_create_files` |
+| will_save | `debug!` only — the hook is the point | `will_save` |
+| work_done_progress_cancel | no-op + `debug!` with token | `work_done_progress_cancel` |
+| did_open / did_change / did_close / did_save | existing document-sync machinery (rope edits, incremental sync, origin bookkeeping) — unchanged | `did_open` / `did_change` / `did_close` / `did_save` |
+| did_change_configuration | existing configuration flow (workspace-diagnostics settings, watched-section registration) | `did_change_configuration` |
+| did_change_workspace_folders | existing workspace-roots update | `did_change_workspace_folders` |
+| `$/setTrace`, `$/cancelRequest`, `$/progress` | untouched — async-lsp auto-ignores the `$/` prefix | none — the deliberate exception |
 
 Tests: W0 state machines — watched-files re-reads a file mutated on disk
-(temp workspace), delete drops, rename drops, Open-origin immunity.
+(temp workspace), delete drops, rename drops, Open-origin immunity; the
+existing document-sync tests double as proof that default hooks change
+nothing. Hook wiring is pinned by one table-driven test: drive each of the
+twelve notifications through `LanguageServerWithState` with a recording
+server; assert the hook fired after the internal handler (the did_change
+hook observes the post-edit document, the watched-files hook the refreshed
+one).
 
 ## Error handling
 
@@ -352,8 +396,9 @@ Tests: W0 state machines — watched-files re-reads a file mutated on disk
   will_save_wait_until, file-ops + `_workspace_edit`); folding/selection/
   symbols cluster; colors; hierarchy cluster; inlay/inline cluster;
   signature_help; moniker/linked_editing/execute_command tail.
-- **Plan 3 — Specials** (~5 tasks): token converter + full/range; delta +
-  UTF-8 cache; resolve trio; notifications package; final sweep.
+- **Plan 3 — Specials** (~6 tasks): token converter + full/range; delta +
+  UTF-8 cache; resolve trio; notification internal handlers; all twelve
+  sync hooks + table-driven wiring test; final sweep.
 
 Each plan: its own SDD run, per-task reviews (sonnet implementer, opus
 reviewer), final whole-branch review; the owner commits per task.
@@ -373,7 +418,6 @@ grows — it shrinks as methods land).
 - Server→client surface (publishDiagnostics conversion helpers, refresh
   requests, applyEdit plumbing) — the crate hands the `ClientSocket` to
   implementors; higher-level wrappers are a future decision.
-- `Server`-trait notification hooks (will_save forwarding etc.).
 - Notebook document sync (absent from the pinned async-lsp trait).
 - Any lsp-poc-derived requirements (out of scope per the product rule).
 - async-lsp upgrades (tracked separately by the PR #30 watch).
