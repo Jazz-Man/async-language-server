@@ -231,13 +231,15 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
     implement_resolve_method!(
         code_action_resolve => code_action_resolve @ crate::requests::CodeActionResolve
     );
+    implement_resolve_method!(
+        document_link_resolve => link_resolve @ crate::requests::DocumentLinkResolve
+    );
 
     implement_methods!(
         hover                   => hover                 @ crate::requests::Hover,
         completion              => completion            @ crate::requests::Completion,
         code_action             => code_action           @ crate::requests::CodeAction,
         document_link           => link                  @ crate::requests::DocumentLink,
-        document_link_resolve   => link_resolve          @ crate::requests::DocumentLinkResolve,
         declaration             => declaration           @ crate::requests::Declaration,
         definition              => definition            @ crate::requests::Definition,
         references              => references            @ crate::requests::References,

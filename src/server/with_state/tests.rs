@@ -1,4 +1,9 @@
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fs,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use async_lsp::{
     ClientSocket, ErrorCode, LanguageServer,
@@ -7,8 +12,8 @@ use async_lsp::{
         DiagnosticServerCapabilities, DidChangeConfigurationParams,
         DidChangeWorkspaceFoldersParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
         DocumentDiagnosticReport, DocumentDiagnosticReportKind, DocumentDiagnosticReportResult,
-        FullDocumentDiagnosticReport, GeneralClientCapabilities, InitializeParams, OneOf,
-        PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
+        DocumentLink, FullDocumentDiagnosticReport, GeneralClientCapabilities, InitializeParams,
+        OneOf, PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
         RelatedFullDocumentDiagnosticReport, ServerCapabilities, TextDocumentItem, TextEdit, Url,
         WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
         WorkspaceDocumentDiagnosticReport, WorkspaceFoldersChangeEvent,
@@ -19,7 +24,8 @@ use crate::server::{
     DocumentMatcher, LanguageServerWithState, Server, ServerOptions, ServerResult, ServerState,
     WorkspaceDiagnostics,
 };
-use crate::testing::{diagnostic, temp_workspace, workspace_folder};
+use crate::testing::{diagnostic, same_line, temp_workspace, url, workspace_folder};
+use crate::text_utils::Encoding;
 
 struct TestServer;
 
@@ -101,6 +107,58 @@ impl Server for ConfigurableServer {
     {
         std::future::ready(test_document_diagnostics(&state, params))
     }
+}
+
+struct LinkCaptureServer {
+    received: Arc<Mutex<Option<Range>>>,
+}
+
+impl Server for LinkCaptureServer {
+    fn link_resolve(
+        &self,
+        _state: ServerState,
+        link: DocumentLink,
+    ) -> impl std::future::Future<Output = ServerResult<DocumentLink>> + Send {
+        let received = Arc::clone(&self.received);
+        async move {
+            *received.lock().expect("capture mutex") = Some(link.range);
+            Ok(link)
+        }
+    }
+}
+
+/// Drives documentLink/resolve over real dispatch: opens `documents`,
+/// sends a link at UTF-16 position (0,2) with the given target, and returns
+/// (what the handler received, what the client got back).
+fn drive_link_resolve(documents: &[(&str, &str)], target: Option<Url>) -> (Option<Range>, Range) {
+    let received = Arc::new(Mutex::new(None));
+    let mut server = LanguageServerWithState::new(
+        ClientSocket::new_closed(),
+        LinkCaptureServer {
+            received: Arc::clone(&received),
+        },
+    );
+    server.state.set_position_encoding(Encoding::UTF16);
+    for (name, text) in documents {
+        let _ = server.did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: url(name),
+                language_id: "plaintext".into(),
+                version: 0,
+                text: (*text).into(),
+            },
+        });
+    }
+
+    let resolved = futures::executor::block_on(server.document_link_resolve(DocumentLink {
+        range: same_line(0, 2, 2),
+        target,
+        tooltip: None,
+        data: None,
+    }))
+    .expect("link resolves");
+
+    (*received.lock().expect("capture mutex"), resolved.range)
 }
 
 fn test_capabilities() -> Option<ServerCapabilities> {
@@ -652,6 +710,31 @@ fn resolve_converts_with_sole_document_and_passes_through_with_two() {
     assert_eq!(edit.range.start, Position::new(0, 2));
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+#[test]
+fn link_resolve_converts_against_the_sole_tracked_document() {
+    // One tracked document ("🙂abc": byte 4 == UTF-16 unit 2); the link's
+    // target points at an untracked URL. Resolve-side conversion keys on
+    // the sole document, never the target.
+    let (received, returned) =
+        drive_link_resolve(&[("only.txt", "🙂abc")], Some(url("untracked.md")));
+
+    assert_eq!(received, Some(same_line(0, 4, 4)));
+    assert_eq!(returned, same_line(0, 2, 2));
+}
+
+#[test]
+fn link_resolve_skips_conversion_without_a_sole_document() {
+    // Two tracked documents: the params cannot name the source document,
+    // and the target is the OTHER tracked document. Conversion must be
+    // skipped — the handler sees the client's UTF-16 positions verbatim,
+    // not positions converted against the target's text.
+    let (received, returned) =
+        drive_link_resolve(&[("a.txt", "🙂abc"), ("b.txt", "🙂🙂")], Some(url("b.txt")));
+
+    assert_eq!(received, Some(same_line(0, 2, 2)));
+    assert_eq!(returned, same_line(0, 2, 2));
 }
 
 fn initialize_params(root: &PathBuf) -> InitializeParams {
