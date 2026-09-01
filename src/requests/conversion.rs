@@ -8,15 +8,18 @@
 //! no pure direction pins over a `convert_*` helper remain.
 
 use async_lsp::lsp_types::{
-    CodeLens as LspCodeLens, ColorInformation as LspColorInformation,
-    ColorPresentation as LspColorPresentation, CompletionTextEdit as LspCompletionTextEdit,
-    Diagnostic as LspDiagnostic, DocumentDiagnosticReportKind,
-    DocumentHighlight as LspDocumentHighlight, DocumentLink as LspDocumentLink,
-    FoldingRange as LspFoldingRange, GotoDefinitionResponse as LspGotoDefinitionResponse,
-    Hover as LspHover, LinkedEditingRanges as LspLinkedEditingRanges, Location as LspLocation,
+    CallHierarchyIncomingCall as LspCallHierarchyIncomingCall,
+    CallHierarchyItem as LspCallHierarchyItem,
+    CallHierarchyOutgoingCall as LspCallHierarchyOutgoingCall, CodeLens as LspCodeLens,
+    ColorInformation as LspColorInformation, ColorPresentation as LspColorPresentation,
+    CompletionTextEdit as LspCompletionTextEdit, Diagnostic as LspDiagnostic,
+    DocumentDiagnosticReportKind, DocumentHighlight as LspDocumentHighlight,
+    DocumentLink as LspDocumentLink, FoldingRange as LspFoldingRange,
+    GotoDefinitionResponse as LspGotoDefinitionResponse, Hover as LspHover,
+    LinkedEditingRanges as LspLinkedEditingRanges, Location as LspLocation,
     LocationLink as LspLocationLink, OneOf, Position as LspPosition,
     PrepareRenameResponse as LspPrepareRenameResponse, Range as LspRange, TextEdit as LspTextEdit,
-    Url, WorkspaceEdit as LspWorkspaceEdit,
+    TypeHierarchyItem as LspTypeHierarchyItem, Url, WorkspaceEdit as LspWorkspaceEdit,
 };
 
 use crate::{
@@ -98,6 +101,64 @@ pub(crate) fn convert_location(
 ) {
     let uri = loc.uri.clone();
     convert_range_at_url(state, document, &uri, &mut loc.range, direction);
+}
+
+/// Converts a call hierarchy item's two ranges between encodings, against
+/// the item's own document when tracked, falling back to `document`.
+pub(crate) fn convert_call_hierarchy_item(
+    state: &ServerState,
+    document: &Document,
+    item: &mut LspCallHierarchyItem,
+    direction: Direction,
+) {
+    let uri = item.uri.clone();
+    convert_range_at_url(state, document, &uri, &mut item.range, direction);
+    convert_range_at_url(state, document, &uri, &mut item.selection_range, direction);
+}
+
+/// Converts a type hierarchy item's two ranges between encodings, against
+/// the item's own document when tracked, falling back to `document`.
+pub(crate) fn convert_type_hierarchy_item(
+    state: &ServerState,
+    document: &Document,
+    item: &mut LspTypeHierarchyItem,
+    direction: Direction,
+) {
+    let uri = item.uri.clone();
+    convert_range_at_url(state, document, &uri, &mut item.range, direction);
+    convert_range_at_url(state, document, &uri, &mut item.selection_range, direction);
+}
+
+/// Converts an incoming call's `from` item and every range in `from_ranges`
+/// between encodings — the ranges sit in the caller's document, so they
+/// convert against the `from` item's own document when tracked, falling
+/// back to `document`.
+pub(crate) fn convert_call_hierarchy_incoming_call(
+    state: &ServerState,
+    document: &Document,
+    call: &mut LspCallHierarchyIncomingCall,
+    direction: Direction,
+) {
+    convert_call_hierarchy_item(state, document, &mut call.from, direction);
+    for range in &mut call.from_ranges {
+        convert_range_at_url(state, document, &call.from.uri, range, direction);
+    }
+}
+
+/// Converts an outgoing call's `to` item and every range in `from_ranges`
+/// between encodings. The ranges sit in the caller's — the request's —
+/// document, so they convert against `document` directly; only the `to`
+/// item's own ranges follow its URI.
+pub(crate) fn convert_call_hierarchy_outgoing_call(
+    state: &ServerState,
+    document: &Document,
+    call: &mut LspCallHierarchyOutgoingCall,
+    direction: Direction,
+) {
+    convert_call_hierarchy_item(state, document, &mut call.to, direction);
+    for range in &mut call.from_ranges {
+        convert_range(state, document, range, direction);
+    }
 }
 
 pub(crate) fn convert_text_edit(
@@ -420,6 +481,38 @@ pub(crate) fn modify_outgoing_color_presentations(
             }
         }
     }
+}
+
+/// Converts each item's ranges of a prepareCallHierarchy response from
+/// UTF-8 to the client encoding.
+pub(crate) fn modify_outgoing_call_hierarchy_items(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<Vec<LspCallHierarchyItem>>,
+) {
+    convert_optional_vec(
+        state,
+        document,
+        response,
+        Direction::Outgoing,
+        convert_call_hierarchy_item,
+    );
+}
+
+/// Converts each item's ranges of a prepareTypeHierarchy response from
+/// UTF-8 to the client encoding.
+pub(crate) fn modify_outgoing_type_hierarchy_items(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<Vec<LspTypeHierarchyItem>>,
+) {
+    convert_optional_vec(
+        state,
+        document,
+        response,
+        Direction::Outgoing,
+        convert_type_hierarchy_item,
+    );
 }
 
 /// Converts each edit's range of a formatting-family response from UTF-8

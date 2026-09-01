@@ -165,6 +165,29 @@ macro_rules! generated_methods {
                 incoming: range at range,
                 outgoing: modify_outgoing_color_presentations,
             }
+            prepare_call_hierarchy: prepare_call_hierarchy @ CallHierarchyPrepare {
+                doc: "Handles `textDocument/prepareCallHierarchy` requests from the client.\n\nReturns the call hierarchy items for the symbol at the position in `params`, or `None`. Requires a call hierarchy provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::CallHierarchyPrepareParams,
+                response: Option<Vec<async_lsp::lsp_types::CallHierarchyItem>>,
+                document: text_document_position_params.text_document,
+                incoming: position at text_document_position_params.position,
+                outgoing: modify_outgoing_call_hierarchy_items,
+            }
+            prepare_type_hierarchy: prepare_type_hierarchy @ TypeHierarchyPrepare {
+                doc: "Handles `textDocument/prepareTypeHierarchy` requests from the client.\n\nReturns the type hierarchy items for the symbol at the position in `params`, or `None`. Requires a type hierarchy provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::TypeHierarchyPrepareParams,
+                response: Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>,
+                document: text_document_position_params.text_document,
+                incoming: position at text_document_position_params.position,
+                outgoing: modify_outgoing_type_hierarchy_items,
+            }
+            moniker: moniker @ Moniker {
+                doc: "Handles `textDocument/moniker` requests from the client.\n\nReturns the symbol monikers at the position in `params`, or `None`. Requires a moniker provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::MonikerParams,
+                response: Option<Vec<async_lsp::lsp_types::Moniker>>,
+                document: text_document_position_params.text_document,
+                incoming: position at text_document_position_params.position,
+            }
             will_create_files: will_create_files @ WillCreateFiles {
                 doc: "Handles `workspace/willCreateFiles` requests from the client.\n\nReturns a workspace edit applied before the files in `params` are created, or `None`. Requires `workspace.fileOperations.willCreate` in [`Server::server_capabilities`].",
                 params: async_lsp::lsp_types::CreateFilesParams,
@@ -210,6 +233,26 @@ macro_rules! custom_methods {
                 doc: "Handles `textDocument/selectionRange` requests from the client.\n\nReturns the selection-range chains for the positions in `params`, or `None`; `positions[i]` must be contained in `result[i].range`. Requires a selection range provider in [`Server::server_capabilities`].",
                 params: async_lsp::lsp_types::SelectionRangeParams,
                 response: Option<Vec<async_lsp::lsp_types::SelectionRange>>,
+            }
+            incoming_calls: incoming_calls @ IncomingCalls {
+                doc: "Handles `callHierarchy/incomingCalls` requests from the client.\n\nReturns the callers of the item in `params`, or `None`. Only issued when the server registered a call hierarchy provider. The item's ranges arrive converted to UTF-8 and return converted to the negotiated encoding, each against the item's own document when tracked.",
+                params: async_lsp::lsp_types::CallHierarchyIncomingCallsParams,
+                response: Option<Vec<async_lsp::lsp_types::CallHierarchyIncomingCall>>,
+            }
+            outgoing_calls: outgoing_calls @ OutgoingCalls {
+                doc: "Handles `callHierarchy/outgoingCalls` requests from the client.\n\nReturns the callees of the item in `params`, or `None`. Only issued when the server registered a call hierarchy provider. The item's own ranges arrive converted to UTF-8 and return converted to the negotiated encoding against the item's document when tracked; the response's `from_ranges` convert against the request document (the caller's).",
+                params: async_lsp::lsp_types::CallHierarchyOutgoingCallsParams,
+                response: Option<Vec<async_lsp::lsp_types::CallHierarchyOutgoingCall>>,
+            }
+            supertypes: supertypes @ Supertypes {
+                doc: "Handles `typeHierarchy/supertypes` requests from the client.\n\nReturns the supertypes of the item in `params`, or `None`. Only issued when the server registered a type hierarchy provider. The item's ranges arrive converted to UTF-8 and return converted to the negotiated encoding, each against the item's own document when tracked.",
+                params: async_lsp::lsp_types::TypeHierarchySupertypesParams,
+                response: Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>,
+            }
+            subtypes: subtypes @ Subtypes {
+                doc: "Handles `typeHierarchy/subtypes` requests from the client.\n\nReturns the subtypes of the item in `params`, or `None`. Only issued when the server registered a type hierarchy provider. Conversion as per `supertypes`.",
+                params: async_lsp::lsp_types::TypeHierarchySubtypesParams,
+                response: Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>,
             }
         }
     };

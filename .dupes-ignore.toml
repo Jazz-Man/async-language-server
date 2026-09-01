@@ -4,7 +4,7 @@ reason = "resolve twins (code-action, completion-item): modify_params/modify_res
 
 [[ignore]]
 fingerprint = "e65ad068648fc2a0"
-reason = "single-field Request hooks (document-link resolve params/response, rename-prepare params, range-format params): one-line delegation to convert_range/convert_position"
+reason = "single-field Request hooks across custom request files (document-link resolve params/response; incoming/outgoing calls, supertype/subtype modify_params): one-line delegation to a shared convert_range or convert_*_item converter"
 
 [[ignore]]
 fingerprint = "19bb6db0a0226924"
@@ -153,3 +153,15 @@ reason = "capture-server bodies in with_state/tests.rs (link_resolve, hover): tr
 [[ignore]]
 fingerprint = "e0894e2bcf1c1930"
 reason = "outgoing per-item range loops (document_links, code_lenses): the registry mandates one named outgoing helper per response shape, each a plain for-loop over items converting the item's range"
+
+[[ignore]]
+fingerprint = "7fc169e91fd317f7"
+reason = "per-file `item` fixture builders in the four hierarchy test modules (incoming/outgoing calls, supertypes/subtypes): the lsp-types CallHierarchyItem/TypeHierarchyItem pair is structurally identical, so a crate::testing builder home would itself be a twin pair; the three-place pattern mandates per-method test modules with local fixtures"
+
+[[ignore]]
+fingerprint = "20cc495a1690c780"
+reason = "supertypes/subtypes hand-written conversion pins: mirror requests over the same item-carrier shape, one test per Request impl in its own per-method file per the three-place pattern (file-ops trio precedent)"
+
+[[ignore]]
+fingerprint = "3ca1c2536ff13cb7"
+reason = "convert_call_hierarchy_item/convert_type_hierarchy_item: the two lsp-types item structs share their field shapes but are distinct foreign types; unifying them would need a private access trait whose only value is dedup (ceremony per the crate's typing criterion), so the mirror pair stays"
