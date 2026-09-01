@@ -40,9 +40,12 @@ impl Request for Completion {
 
 #[cfg(test)]
 mod tests {
-    use async_lsp::lsp_types::{CompletionItem, CompletionResponse, TextEdit};
+    use async_lsp::lsp_types::{
+        CompletionItem, CompletionParams, CompletionResponse, PartialResultParams,
+        TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, WorkDoneProgressParams,
+    };
 
-    use crate::testing::{same_line, state_with_documents};
+    use crate::testing::{conversion_tests, line_position, same_line, state_with_documents};
 
     use super::{Completion, Request};
 
@@ -65,5 +68,21 @@ mod tests {
             items[0].additional_text_edits.as_ref().unwrap()[0].range,
             same_line(0, 2, 2),
         );
+    }
+
+    conversion_tests! {
+        completion_incoming_utf16_becomes_utf8: Completion {
+            params: |uri| CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    line_position(0, 2),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+            incoming: |p| p.text_document_position.position,
+            expects: line_position(0, 4),
+        }
     }
 }
