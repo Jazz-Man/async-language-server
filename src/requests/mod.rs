@@ -107,11 +107,16 @@ mod document_link_resolve;
 mod document_range_format;
 mod hover;
 mod implementation;
+mod on_type_formatting;
 mod references;
 pub(crate) mod registry;
 mod rename;
 mod rename_prepare;
 mod type_definition;
+mod will_create_files;
+mod will_delete_files;
+mod will_rename_files;
+mod will_save_wait_until;
 
 pub(crate) use code_action::CodeAction;
 pub(crate) use code_action_resolve::CodeActionResolve;

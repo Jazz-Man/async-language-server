@@ -113,6 +113,39 @@ macro_rules! generated_methods {
                 incoming: position at text_document_position_params.position,
                 outgoing: modify_outgoing_document_highlights,
             }
+            on_type_formatting: on_type_formatting @ OnTypeFormatting {
+                doc: "Handles `textDocument/onTypeFormatting` requests from the client.\n\nReturns edits formatting around the typed character at the position in `params`, or `None`. Requires a document on-type formatting provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::DocumentOnTypeFormattingParams,
+                response: Option<Vec<async_lsp::lsp_types::TextEdit>>,
+                document: text_document_position.text_document,
+                incoming: position at text_document_position.position,
+                outgoing: modify_outgoing_text_edits,
+            }
+            will_save_wait_until: will_save_wait_until @ WillSaveWaitUntil {
+                doc: "Handles `textDocument/willSaveWaitUntil` requests from the client.\n\nReturns edits applied to the document before it is saved, or `None`. Requires `will_save_wait_until` enabled in the text-document sync options of [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::WillSaveTextDocumentParams,
+                response: Option<Vec<async_lsp::lsp_types::TextEdit>>,
+                document: text_document,
+                outgoing: modify_outgoing_text_edits,
+            }
+            will_create_files: will_create_files @ WillCreateFiles {
+                doc: "Handles `workspace/willCreateFiles` requests from the client.\n\nReturns a workspace edit applied before the files in `params` are created, or `None`. Requires `workspace.fileOperations.willCreate` in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::CreateFilesParams,
+                response: Option<async_lsp::lsp_types::WorkspaceEdit>,
+                outgoing: modify_outgoing_workspace_edit,
+            }
+            will_rename_files: will_rename_files @ WillRenameFiles {
+                doc: "Handles `workspace/willRenameFiles` requests from the client.\n\nReturns a workspace edit applied before the files in `params` are renamed, or `None`. Requires `workspace.fileOperations.willRename` in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::RenameFilesParams,
+                response: Option<async_lsp::lsp_types::WorkspaceEdit>,
+                outgoing: modify_outgoing_workspace_edit,
+            }
+            will_delete_files: will_delete_files @ WillDeleteFiles {
+                doc: "Handles `workspace/willDeleteFiles` requests from the client.\n\nReturns a workspace edit applied before the files in `params` are deleted, or `None`. Requires `workspace.fileOperations.willDelete` in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::DeleteFilesParams,
+                response: Option<async_lsp::lsp_types::WorkspaceEdit>,
+                outgoing: modify_outgoing_workspace_edit,
+            }
         }
     };
 }

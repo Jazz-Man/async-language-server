@@ -141,3 +141,7 @@ reason = "link-resolve scenario-matrix pair in with_state/tests.rs (sole-doc con
 [[ignore]]
 fingerprint = "390d3562637a1839"
 reason = "outgoing references/formatting helpers (modify_outgoing_locations, modify_outgoing_text_edits): the registry mandates one named outgoing helper per response shape, each a one-line delegation to convert_optional_vec with only the item converter differing"
+
+[[ignore]]
+fingerprint = "6a82743bb2dfeb89"
+reason = "file-ops trio response pins (will_create/will_rename/will_delete_files): one hand-written modify_response test per Request impl, in its own per-method file per the three-place pattern; the ASTs are identical by design and differ only in identifiers"
