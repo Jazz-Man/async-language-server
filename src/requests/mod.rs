@@ -95,11 +95,13 @@ macro_rules! registry_request_impls {
 mod code_action;
 mod code_action_resolve;
 mod code_lens;
+mod color_presentation;
 mod completion;
 mod completion_resolve;
 mod conversion;
 mod declaration;
 mod definition;
+mod document_color;
 mod document_diagnostics;
 mod document_format;
 mod document_highlight;

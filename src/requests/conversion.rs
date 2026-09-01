@@ -8,7 +8,8 @@
 //! no pure direction pins over a `convert_*` helper remain.
 
 use async_lsp::lsp_types::{
-    CodeLens as LspCodeLens, CompletionTextEdit as LspCompletionTextEdit,
+    CodeLens as LspCodeLens, ColorInformation as LspColorInformation,
+    ColorPresentation as LspColorPresentation, CompletionTextEdit as LspCompletionTextEdit,
     Diagnostic as LspDiagnostic, DocumentDiagnosticReportKind,
     DocumentHighlight as LspDocumentHighlight, DocumentLink as LspDocumentLink,
     FoldingRange as LspFoldingRange, GotoDefinitionResponse as LspGotoDefinitionResponse,
@@ -387,6 +388,36 @@ pub(crate) fn modify_outgoing_code_lenses(
     if let Some(lenses) = response {
         for lens in lenses {
             convert_range(state, document, &mut lens.range, Direction::Outgoing);
+        }
+    }
+}
+
+/// Converts each color information's range from UTF-8 to the client
+/// encoding. The documentColor result is a bare vector.
+pub(crate) fn modify_outgoing_color_informations(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Vec<LspColorInformation>,
+) {
+    for information in response {
+        convert_range(state, document, &mut information.range, Direction::Outgoing);
+    }
+}
+
+/// Converts each presentation's edits from UTF-8 to the client encoding.
+pub(crate) fn modify_outgoing_color_presentations(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Vec<LspColorPresentation>,
+) {
+    for presentation in response {
+        if let Some(edit) = presentation.text_edit.as_mut() {
+            convert_text_edit(state, document, edit, Direction::Outgoing);
+        }
+        if let Some(edits) = presentation.additional_text_edits.as_mut() {
+            for edit in edits {
+                convert_text_edit(state, document, edit, Direction::Outgoing);
+            }
         }
     }
 }

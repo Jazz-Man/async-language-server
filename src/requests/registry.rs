@@ -150,6 +150,21 @@ macro_rules! generated_methods {
                 document: text_document,
                 outgoing: modify_outgoing_text_edits,
             }
+            document_color: document_color @ DocumentColor {
+                doc: "Handles `textDocument/documentColor` requests from the client.\n\nReturns all color references found in the document in `params`. Requires a color provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::DocumentColorParams,
+                response: Vec<async_lsp::lsp_types::ColorInformation>,
+                document: text_document,
+                outgoing: modify_outgoing_color_informations,
+            }
+            color_presentation: color_presentation @ ColorPresentation {
+                doc: "Handles `textDocument/colorPresentation` requests from the client.\n\nReturns the presentations for the color at the range in `params`. Sent as the resolve leg of a document color provider.",
+                params: async_lsp::lsp_types::ColorPresentationParams,
+                response: Vec<async_lsp::lsp_types::ColorPresentation>,
+                document: text_document,
+                incoming: range at range,
+                outgoing: modify_outgoing_color_presentations,
+            }
             will_create_files: will_create_files @ WillCreateFiles {
                 doc: "Handles `workspace/willCreateFiles` requests from the client.\n\nReturns a workspace edit applied before the files in `params` are created, or `None`. Requires `workspace.fileOperations.willCreate` in [`Server::server_capabilities`].",
                 params: async_lsp::lsp_types::CreateFilesParams,
