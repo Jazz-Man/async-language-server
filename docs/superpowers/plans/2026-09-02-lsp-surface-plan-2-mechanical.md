@@ -705,6 +705,98 @@ mod tests {
 
 ---
 
+### Task 3.5: Dispatch conversion fallbacks (engine)
+
+Added after the Task 3 review confirmed the engine gap (owner decision
+2026-09-02): URL-less requests never run their stamped `outgoing:` hook in
+dispatch, and untracked-URL requests pass positions through unconverted.
+Spec section "Architecture 1.5 — Dispatch conversion fallbacks" is the
+contract.
+
+**Files:**
+- Modify: `src/server/with_state/mod.rs` (implement_method! + two helpers)
+- Test: `src/server/with_state/tests.rs` (three dispatch tests), `src/requests/conversion.rs` (document_changes pin)
+
+**Interfaces:**
+- Produces: `fn conversion_document(state: &ServerState, url: Option<&Url>) -> Option<Document>` and `fn read_document_from_disk(url: &Url) -> Option<Document>` (both private to `with_state`), used by `implement_method!` on BOTH sides of the handler call (params side and response side resolve fresh, mirroring the tracked path's re-fetch).
+
+- [ ] **Step 1: The engine change** — in `implement_method!`, replace both `if let Some(url) = url.as_ref() { if let Some(doc) = state.document(url) {` blocks:
+
+```rust
+// Params side:
+let mut ver: Option<i32> = None;
+if let Some(url) = url.as_ref() {
+    if let Some(tracked) = state.document(url) {
+        ver.replace(tracked.version());
+    }
+}
+let params_doc = conversion_document(&state, url.as_ref());
+if let Some(doc) = params_doc.as_ref() {
+    <$request_type as crate::requests::Request>::modify_params(&state, doc, &mut params);
+}
+```
+
+```rust
+// Response side (after the handler await):
+if let Some(url) = url.as_ref()
+    && let Some(tracked) = state.document(url)
+    && ver.is_some_and(|v| v != tracked.version())
+{
+    return Err(ResponseError::new(
+        ErrorCode::CONTENT_MODIFIED,
+        "document was modified during processing",
+    ));
+}
+if let Some(doc) = conversion_document(&state, url.as_ref()) {
+    <$request_type as crate::requests::Request>::modify_response(&state, &doc, &mut result);
+}
+```
+
+And the two helpers (above or below the macro):
+
+```rust
+/// Resolves the document a request's conversions run against: the
+/// tracked snapshot for `url` when tracked; otherwise, for file URLs, a
+/// per-request snapshot read from disk (best-effort — unreadable or
+/// non-file URLs convert nothing, the historical behavior); for URL-less
+/// requests, the sole tracked document when exactly one is tracked (the
+/// resolve-family heuristic), else none.
+fn conversion_document(state: &ServerState, url: Option<&Url>) -> Option<Document> {
+    match url {
+        Some(url) => state.document(url).or_else(|| read_document_from_disk(url)),
+        None => {
+            let documents = state.documents();
+            (documents.len() == 1).then(|| documents[0].clone())
+        }
+    }
+}
+
+/// Reads a per-request document snapshot from a file URL. Blocking by
+/// design, matching the crate's other disk reads; never panics on
+/// external input — failures return `None` and conversion is skipped.
+fn read_document_from_disk(url: &Url) -> Option<Document> {
+    if url.scheme() != "file" {
+        return None;
+    }
+    let path = url.to_file_path().ok()?;
+    let text = std::fs::read_to_string(path).ok()?;
+    Some(Document::from_disk_text(url.clone(), text))
+}
+```
+
+(`Document::from_disk_text` is the plan's name — use the SAME construction
+`src/workspace/diagnostics.rs` uses when loading Workspace-origin documents
+(read that file first; if it wraps a different constructor or carries
+matcher/language work, extract just the text-to-Document part and record
+the actual name as a deviation).)
+
+- [ ] **Step 2: Dispatch tests** in `src/server/with_state/tests.rs` (drive through `LanguageServerWithState` like the existing `drive_link_resolve` pattern — read it first and follow its capture-server + `futures::executor::block_on` shape):
+  1. `url_less_response_converts_against_sole_document` — one tracked document; a capture server whose `will_create_files` returns `Some(WorkspaceEdit)` with a UTF-8 range at byte 4 keying the tracked (emoji) URL; assert the dispatched response carries client column 2.
+  2. `untracked_url_converts_against_disk` — `temp_workspace` file containing `🙂abc`, never opened; a SECOND unrelated document tracked (so the sole-doc heuristic cannot fire); request `hover` against the file's URL with the handler returning a range at byte 4; assert client column 2 in the response (params side: send client column 2, handler records byte 4).
+  3. `url_less_passes_through_without_sole_document` — zero and two tracked documents: response returns unconverted (UTF-8 as-is).
+- [ ] **Step 3: `document_changes` pin** — unit test in `src/requests/conversion.rs`'s test module (or sibling) covering `convert_workspace_edit`'s `DocumentChanges::Edits` branch: build a `WorkspaceEdit` with `document_changes: Some(DocumentChanges::Edits(vec![TextDocumentEdit { text_document: OptionalVersionedTextDocumentIdentifier { uri: emoji, version: None }, edits: vec![OneOf::Left(TextEdit { range: same_line(0, 4, 4), .. })] }]))`, convert Outgoing, assert column 2.
+- [ ] **Step 4: Full battery + dupes; report; owner commits.**
+
 ### Task 4: Folding / selection / linked editing / code lens
 
 **Files:**

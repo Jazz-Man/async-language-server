@@ -121,6 +121,29 @@ Methods with response conversion (most) keep their files and become
 method list in `server_trait` are deleted in favor of stamped output.
 Battery green after the retrofit proves the stamping is faithful.
 
+## Architecture 1.5 — Dispatch conversion fallbacks (owner decision 2026-09-02)
+
+`implement_method!` resolves a conversion document for every request, not
+only tracked-URL ones:
+
+- **Tracked URL** — the tracked snapshot, as before (staleness applies).
+- **Untracked file URL** — a per-request snapshot read from disk with
+  `std::fs` (best-effort; unreadable or non-file URLs fall back to
+  pass-through, the historical behavior). Both `modify_params` and
+  `modify_response` run against it; staleness does not (a disk snapshot
+  carries no version). The snapshot is not inserted into the document map —
+  convert and drop, mirroring the resolve family's per-request capture.
+- **URL-less request** — the sole tracked document when exactly one is
+  tracked, else none (the `implement_resolve_method!` heuristic). Only
+  `modify_response` matters for the current URL-less methods (their params
+  carry no positions), but the resolution is uniform.
+
+This closes the gap where a stamped `outgoing:` hook never ran in dispatch
+for URL-less requests (file-ops trio, workspace symbol), and the older
+pass-through for requests naming never-opened files (hover on a closed
+file). Invisible under UTF-8 negotiation; bites UTF-16/32 clients on
+multibyte lines.
+
 ## Architecture 2 — W0 conversion test harness
 
 `conversion_tests!` in `src/testing.rs` (exported `pub(crate) use`, edition
