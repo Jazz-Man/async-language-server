@@ -39,10 +39,6 @@ fingerprint = "6c4db5f43053b240"
 reason = "examples' server_capabilities builders (JsonServer, LongLineServer) are deliberately parallel so each example reads standalone"
 
 [[ignore]]
-fingerprint = "796b160440b3f2f3"
-reason = "named incoming/outgoing wrappers over the direction-generic convert_diagnostic (T20f); call sites read better than raw Direction arguments"
-
-[[ignore]]
 fingerprint = "85dca4caef4bd446"
 reason = "enable/disable_workspace_diagnostics mirror the same lsp_types capability-variant match with only the boolean flipped"
 

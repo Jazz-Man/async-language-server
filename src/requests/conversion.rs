@@ -4,9 +4,8 @@
 //! direction-parameterized (`Direction::Incoming` = client encoding to
 //! UTF-8, before the handler; `Direction::Outgoing` = UTF-8 to the client
 //! encoding, after), while the remaining `modify_*` helpers are
-//! fixed-direction entry points: those whose two directions share a shape
-//! delegate to a `convert_*` helper with the direction pinned, and the rest
-//! differ in more than the encoding pair.
+//! fixed-direction composites that mix per-document and per-URL conversion —
+//! no pure direction pins over a `convert_*` helper remain.
 
 use async_lsp::lsp_types::{
     CompletionTextEdit as LspCompletionTextEdit, Diagnostic as LspDiagnostic,
@@ -181,22 +180,6 @@ pub(crate) fn convert_diagnostic(
             convert_location(state, document, &mut info.location, direction);
         }
     }
-}
-
-pub(crate) fn modify_incoming_diagnostic(
-    state: &ServerState,
-    document: &Document,
-    diag: &mut LspDiagnostic,
-) {
-    convert_diagnostic(state, document, diag, Direction::Incoming);
-}
-
-pub(crate) fn modify_outgoing_diagnostic(
-    state: &ServerState,
-    document: &Document,
-    diag: &mut LspDiagnostic,
-) {
-    convert_diagnostic(state, document, diag, Direction::Outgoing);
 }
 
 pub(crate) fn modify_outgoing_diagnostic_at_url(

@@ -6,10 +6,7 @@ use crate::server::{Document, ServerState};
 
 use super::{
     Request,
-    conversion::{
-        Direction, convert_range, convert_workspace_edit, modify_incoming_diagnostic,
-        modify_outgoing_diagnostic,
-    },
+    conversion::{Direction, convert_diagnostic, convert_range, convert_workspace_edit},
 };
 
 pub struct CodeAction;
@@ -23,7 +20,7 @@ impl Request for CodeAction {
     fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
         convert_range(state, document, &mut params.range, Direction::Incoming);
         for diag in &mut params.context.diagnostics {
-            modify_incoming_diagnostic(state, document, diag);
+            convert_diagnostic(state, document, diag, Direction::Incoming);
         }
     }
 
@@ -33,7 +30,7 @@ impl Request for CodeAction {
                 if let LspCodeActionOrCommand::CodeAction(action) = action {
                     if let Some(diagnostics) = action.diagnostics.as_mut() {
                         for diag in diagnostics {
-                            modify_outgoing_diagnostic(state, document, diag);
+                            convert_diagnostic(state, document, diag, Direction::Outgoing);
                         }
                     }
                     if let Some(edit) = action.edit.as_mut() {

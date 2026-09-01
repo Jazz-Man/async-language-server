@@ -6,7 +6,7 @@ use crate::server::{Document, ServerState};
 
 use super::{
     Request,
-    conversion::{modify_outgoing_diagnostic, modify_outgoing_diagnostic_report_kind_at_url},
+    conversion::{Direction, convert_diagnostic, modify_outgoing_diagnostic_report_kind_at_url},
 };
 
 pub struct DocumentDiagnostics;
@@ -21,7 +21,7 @@ impl Request for DocumentDiagnostics {
         match response {
             DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(report)) => {
                 for diag in &mut report.full_document_diagnostic_report.items {
-                    modify_outgoing_diagnostic(state, document, diag);
+                    convert_diagnostic(state, document, diag, Direction::Outgoing);
                 }
                 if let Some(related) = report.related_documents.as_mut() {
                     for (uri, report) in related {
