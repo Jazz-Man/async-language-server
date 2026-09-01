@@ -9,9 +9,11 @@
 
 use async_lsp::lsp_types::{
     CompletionTextEdit as LspCompletionTextEdit, Diagnostic as LspDiagnostic,
-    DocumentDiagnosticReportKind, GotoDefinitionResponse as LspGotoDefinitionResponse,
+    DocumentDiagnosticReportKind, DocumentLink as LspDocumentLink,
+    GotoDefinitionResponse as LspGotoDefinitionResponse, Hover as LspHover,
     Location as LspLocation, LocationLink as LspLocationLink, OneOf, Position as LspPosition,
-    Range as LspRange, TextEdit as LspTextEdit, Url, WorkspaceEdit as LspWorkspaceEdit,
+    PrepareRenameResponse as LspPrepareRenameResponse, Range as LspRange, TextEdit as LspTextEdit,
+    Url, WorkspaceEdit as LspWorkspaceEdit,
 };
 
 use crate::{
@@ -257,6 +259,97 @@ pub(crate) fn modify_outgoing_goto_response(
                     modify_outgoing_location_link(state, document, link);
                 }
             }
+        }
+    }
+}
+
+/// Converts a hover's optional range from UTF-8 to the client encoding.
+pub(crate) fn modify_outgoing_hover(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<LspHover>,
+) {
+    if let Some(hover) = response
+        && let Some(range) = hover.range.as_mut()
+    {
+        convert_range(state, document, range, Direction::Outgoing);
+    }
+}
+
+/// Converts each location of a references response from UTF-8 to the
+/// client encoding.
+pub(crate) fn modify_outgoing_locations(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<Vec<LspLocation>>,
+) {
+    convert_optional_vec(
+        state,
+        document,
+        response,
+        Direction::Outgoing,
+        convert_location,
+    );
+}
+
+/// Converts each link's range of a documentLink response from UTF-8 to
+/// the client encoding.
+pub(crate) fn modify_outgoing_document_links(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<Vec<LspDocumentLink>>,
+) {
+    if let Some(links) = response {
+        for link in links {
+            convert_range(state, document, &mut link.range, Direction::Outgoing);
+        }
+    }
+}
+
+/// Converts each edit's range of a formatting-family response from UTF-8
+/// to the client encoding.
+pub(crate) fn modify_outgoing_text_edits(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<Vec<LspTextEdit>>,
+) {
+    convert_optional_vec(
+        state,
+        document,
+        response,
+        Direction::Outgoing,
+        convert_text_edit,
+    );
+}
+
+/// Converts a rename response's workspace edit from UTF-8 to the client
+/// encoding (per-URL against tracked documents, falling back to the
+/// request document).
+pub(crate) fn modify_outgoing_workspace_edit(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<LspWorkspaceEdit>,
+) {
+    if let Some(edit) = response {
+        convert_workspace_edit(state, document, edit, Direction::Outgoing);
+    }
+}
+
+/// Converts a prepareRename response's range from UTF-8 to the client
+/// encoding; the placeholder and default-behavior variants carry no
+/// positions.
+pub(crate) fn modify_outgoing_prepare_rename_response(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<LspPrepareRenameResponse>,
+) {
+    if let Some(response) = response {
+        match response {
+            LspPrepareRenameResponse::Range(range)
+            | LspPrepareRenameResponse::RangeWithPlaceholder { range, .. } => {
+                convert_range(state, document, range, Direction::Outgoing);
+            }
+            LspPrepareRenameResponse::DefaultBehavior { .. } => {}
         }
     }
 }

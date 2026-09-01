@@ -137,3 +137,7 @@ reason = "TextRangeMismatch convention pins in tree_sitter_tests.rs (sub_delimit
 [[ignore]]
 fingerprint = "4e6dfe148ea98fcc"
 reason = "link-resolve scenario-matrix pair in with_state/tests.rs (sole-doc conversion, no-sole pass-through): two rows over the shared drive_link_resolve driver; only inputs and expected columns differ"
+
+[[ignore]]
+fingerprint = "390d3562637a1839"
+reason = "outgoing references/formatting helpers (modify_outgoing_locations, modify_outgoing_text_edits): the registry mandates one named outgoing helper per response shape, each a one-line delegation to convert_optional_vec with only the item converter differing"

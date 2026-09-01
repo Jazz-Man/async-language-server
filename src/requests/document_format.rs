@@ -1,33 +1,3 @@
-use async_lsp::lsp_types::{
-    DocumentFormattingParams as LspDocumentFormattingParams, TextEdit as LspTextEdit,
-};
-
-use crate::server::{Document, ServerState};
-
-use super::{
-    Request,
-    conversion::{Direction, convert_optional_vec, convert_text_edit},
-};
-
-pub struct DocumentFormat;
-
-impl Request for DocumentFormat {
-    type Params = LspDocumentFormattingParams;
-    type Response = Option<Vec<LspTextEdit>>;
-
-    request_extract_url!(text_document);
-
-    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        convert_optional_vec(
-            state,
-            document,
-            response,
-            Direction::Outgoing,
-            convert_text_edit,
-        );
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -35,9 +5,8 @@ mod tests {
         WorkDoneProgressParams,
     };
 
+    use crate::requests::DocumentFormat;
     use crate::testing::{conversion_tests, line_position, same_line};
-
-    use super::DocumentFormat;
 
     conversion_tests! {
         document_format_edits_convert_outgoing: DocumentFormat {

@@ -1,37 +1,11 @@
-use async_lsp::lsp_types::{RenameParams as LspRenameParams, WorkspaceEdit as LspWorkspaceEdit};
-
-use crate::server::{Document, ServerState};
-
-use super::{
-    Request,
-    conversion::{Direction, convert_workspace_edit},
-};
-
-pub struct Rename;
-
-impl Request for Rename {
-    type Params = LspRenameParams;
-    type Response = Option<LspWorkspaceEdit>;
-
-    request_extract_url!(text_document_position.text_document);
-    request_modify_params_position!(text_document_position.position);
-
-    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        if let Some(response) = response.as_mut() {
-            convert_workspace_edit(state, document, response, Direction::Outgoing);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
     use async_lsp::lsp_types::{TextEdit, WorkspaceEdit};
 
+    use crate::requests::{Rename, Request};
     use crate::testing::{same_line, state_with_documents, url};
-
-    use super::{Rename, Request};
 
     #[test]
     fn workspace_edits_are_converted_using_their_own_document() {

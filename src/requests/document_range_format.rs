@@ -1,37 +1,3 @@
-use async_lsp::lsp_types::{
-    DocumentRangeFormattingParams as LspDocumentRangeFormattingParams, TextEdit as LspTextEdit,
-};
-
-use crate::server::{Document, ServerState};
-
-use super::{
-    Request,
-    conversion::{Direction, convert_optional_vec, convert_range, convert_text_edit},
-};
-
-pub struct DocumentRangeFormat;
-
-impl Request for DocumentRangeFormat {
-    type Params = LspDocumentRangeFormattingParams;
-    type Response = Option<Vec<LspTextEdit>>;
-
-    request_extract_url!(text_document);
-
-    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        convert_range(state, document, &mut params.range, Direction::Incoming);
-    }
-
-    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        convert_optional_vec(
-            state,
-            document,
-            response,
-            Direction::Outgoing,
-            convert_text_edit,
-        );
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -39,9 +5,8 @@ mod tests {
         WorkDoneProgressParams,
     };
 
+    use crate::requests::DocumentRangeFormat;
     use crate::testing::{conversion_tests, line_position, same_line};
-
-    use super::DocumentRangeFormat;
 
     conversion_tests! {
         document_range_format_round_trips_both_directions: DocumentRangeFormat {

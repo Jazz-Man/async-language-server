@@ -138,6 +138,39 @@ macro_rules! implement_resolve_method {
     };
 }
 
+/// Stamps dispatch entries for registry rows through the existing engine.
+macro_rules! registry_dispatch {
+    ( $(
+        $trait_name:ident : $alsp_name:ident @ $req:ident {
+            doc: $doc:literal,
+            params: $params:ty,
+            response: $response:ty,
+            $(document: $($dseg:ident).+,)?
+            $(incoming: position at $($pseg:ident).+,)?
+            $(incoming: range at $($rseg:ident).+,)?
+            $(outgoing: $outgoing:ident,)?
+        }
+    )*) => {
+        implement_methods!(
+            $( $alsp_name => $trait_name @ crate::requests::$req, )*
+        );
+    };
+}
+
+macro_rules! registry_dispatch_resolve {
+    ( $(
+        $trait_name:ident : $alsp_name:ident @ $req:ident {
+            doc: $doc:literal,
+            params: $params:ty,
+            response: $response:ty,
+        }
+    )*) => {
+        $(
+            implement_resolve_method!($alsp_name => $trait_name @ crate::requests::$req);
+        )*
+    };
+}
+
 /// The low-level language server implementation that automatically
 /// manages documents and forwards requests to the underlying server.
 ///
@@ -223,32 +256,12 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         ))
     }
 
-    // async-lsp method name => our method name @ request type definition
+    // async-lsp method name => our method name @ request type definition,
+    // stamped from the registry (src/requests/registry.rs)
 
-    implement_resolve_method!(
-        completion_item_resolve => completion_resolve @ crate::requests::CompletionResolve
-    );
-    implement_resolve_method!(
-        code_action_resolve => code_action_resolve @ crate::requests::CodeActionResolve
-    );
-    implement_resolve_method!(
-        document_link_resolve => link_resolve @ crate::requests::DocumentLinkResolve
-    );
-
-    implement_methods!(
-        hover                   => hover                 @ crate::requests::Hover,
-        completion              => completion            @ crate::requests::Completion,
-        code_action             => code_action           @ crate::requests::CodeAction,
-        document_link           => link                  @ crate::requests::DocumentLink,
-        declaration             => declaration           @ crate::requests::Declaration,
-        definition              => definition            @ crate::requests::Definition,
-        references              => references            @ crate::requests::References,
-        rename                  => rename                @ crate::requests::Rename,
-        prepare_rename          => rename_prepare        @ crate::requests::RenamePrepare,
-        formatting              => document_format       @ crate::requests::DocumentFormat,
-        range_formatting        => document_range_format @ crate::requests::DocumentRangeFormat,
-        document_diagnostic     => document_diagnostics  @ crate::requests::DocumentDiagnostics,
-    );
+    crate::requests::registry::generated_methods!(registry_dispatch);
+    crate::requests::registry::custom_methods!(registry_dispatch);
+    crate::requests::registry::resolve_methods!(registry_dispatch_resolve);
 }
 
 #[cfg(test)]
