@@ -133,3 +133,11 @@ reason = "position-encoding preference pair in with_state/tests.rs (prefers UTF-
 [[ignore]]
 fingerprint = "e90ca61b7ce32065"
 reason = "sub_delimited edge pair in lsp_tests.rs (delimiter at end, no delimiter): two rows of the same edge-case matrix with distinct expected sides"
+
+[[ignore]]
+fingerprint = "5ca4f3c71b23d3e0"
+reason = "TextRangeMismatch convention pins in tree_sitter_tests.rs (sub_delimited, split_at): the same error-convention check through a second entry point; split_at lacked its own direct pin"
+
+[[ignore]]
+fingerprint = "4e6dfe148ea98fcc"
+reason = "link-resolve scenario-matrix pair in with_state/tests.rs (sole-doc conversion, no-sole pass-through): two rows over the shared drive_link_resolve driver; only inputs and expected columns differ"

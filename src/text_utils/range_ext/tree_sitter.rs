@@ -39,9 +39,14 @@ impl super::RangeExt for TsRange {
             }
         }
 
-        // Handle end-of-text case if position wasn't found in loop
-        if !found && current_row == at.row && current_col == at.column {
-            at_byte = self.end_byte;
+        // Handle end-of-text case if position wasn't found in loop;
+        // a position that is nowhere in the text is out of range.
+        if !found {
+            if current_row == at.row && current_col == at.column {
+                at_byte = self.end_byte;
+            } else {
+                return Err(RangeError::PositionOutOfRange);
+            }
         }
 
         let left = TsRange {
@@ -151,12 +156,21 @@ impl super::RangeExt for TsRange {
             }
         }
 
-        // Handle end-of-text case for positions not found in loop
-        if !found_from && current_row == from.row && current_col == from.column {
-            from_byte = self.end_byte;
+        // Handle end-of-text cases for positions not found in loop;
+        // a position that is nowhere in the text is out of range.
+        if !found_from {
+            if current_row == from.row && current_col == from.column {
+                from_byte = self.end_byte;
+            } else {
+                return Err(RangeError::PositionOutOfRange);
+            }
         }
-        if !found_to && current_row == to.row && current_col == to.column {
-            to_byte = self.end_byte;
+        if !found_to {
+            if current_row == to.row && current_col == to.column {
+                to_byte = self.end_byte;
+            } else {
+                return Err(RangeError::PositionOutOfRange);
+            }
         }
 
         Ok(TsRange {

@@ -313,3 +313,52 @@ fn shrink_requires_a_single_line_range() {
         RangeError::NotSingleLine
     );
 }
+
+#[test]
+fn split_at_beyond_the_text_returns_position_out_of_range() {
+    let text = "hello";
+    assert_eq!(
+        r(0, p(0, 0), 5, p(0, 5))
+            .split_at(text, p(0, 9))
+            .unwrap_err(),
+        RangeError::PositionOutOfRange
+    );
+    // A row past the last line is equally out of range.
+    assert_eq!(
+        r(0, p(0, 0), 5, p(0, 5))
+            .split_at(text, p(2, 0))
+            .unwrap_err(),
+        RangeError::PositionOutOfRange
+    );
+}
+
+#[test]
+fn sub_positions_beyond_the_text_return_position_out_of_range() {
+    let text = "hello";
+    assert_eq!(
+        r(0, p(0, 0), 5, p(0, 5))
+            .sub(text, p(0, 1), p(0, 9))
+            .unwrap_err(),
+        RangeError::PositionOutOfRange
+    );
+    assert_eq!(
+        r(0, p(0, 0), 5, p(0, 5))
+            .sub(text, p(0, 9), p(0, 9))
+            .unwrap_err(),
+        RangeError::PositionOutOfRange
+    );
+}
+
+#[test]
+fn split_at_mismatched_text_length_returns_text_range_mismatch() {
+    let text = "short";
+    assert_eq!(
+        r(0, p(0, 0), 7, p(0, 7))
+            .split_at(text, p(0, 2))
+            .unwrap_err(),
+        RangeError::TextRangeMismatch {
+            text_len: 5,
+            range_len: 7
+        }
+    );
+}
