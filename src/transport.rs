@@ -29,6 +29,9 @@ use crate::error::{ServerError, ServerResult};
 /// ```
 #[derive(Debug, Default, Clone, Copy)]
 #[non_exhaustive]
+#[deprecated(
+    note = "sockets are being removed; see docs/superpowers/specs/2026-09-01-rm-socket-stage1-design.md"
+)]
 pub enum Transport {
     /// Connects to a TCP socket on the given port of `127.0.0.1`.
     Socket(u16),
@@ -86,6 +89,9 @@ impl fmt::Display for Transport {
 
 /// The read half of an LSP transport.
 #[derive(Debug)]
+#[deprecated(
+    note = "sockets are being removed; see docs/superpowers/specs/2026-09-01-rm-socket-stage1-design.md"
+)]
 pub enum LspTransportRead {
     /// Read half of a connected [`Transport::Socket`].
     Socket(OwnedReadHalf),
@@ -116,6 +122,9 @@ impl AsyncRead for LspTransportRead {
 
 /// The write half of an LSP transport.
 #[derive(Debug)]
+#[deprecated(
+    note = "sockets are being removed; see docs/superpowers/specs/2026-09-01-rm-socket-stage1-design.md"
+)]
 pub enum LspTransportWrite {
     /// Write half of a connected [`Transport::Socket`].
     Socket(OwnedWriteHalf),

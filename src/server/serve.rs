@@ -50,6 +50,9 @@ const MAX_CONCURRENT_REQUESTS: NonZeroUsize = match NonZeroUsize::new(8) {
 ///
 /// - If the transport uses a socket and it could not connect
 /// - If the server encounters an I/O error while running
+#[deprecated(
+    note = "sockets are being removed; see docs/superpowers/specs/2026-09-01-rm-socket-stage1-design.md"
+)]
 pub async fn serve<S>(transport: Transport, server: S) -> ServerResult<()>
 where
     S: Server + Clone,

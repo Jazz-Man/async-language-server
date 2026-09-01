@@ -82,6 +82,9 @@ pub enum QueryError {
 pub enum ServerError {
     /// Failed to connect a socket to the given TCP port.
     #[error("failed to connect to port {port}")]
+    #[deprecated(
+        note = "sockets are being removed; see docs/superpowers/specs/2026-09-01-rm-socket-stage1-design.md"
+    )]
     TcpConnect {
         /// The port that was being connected to.
         port: u16,
