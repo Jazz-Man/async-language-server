@@ -1,6 +1,12 @@
 use async_lsp::{
     ErrorCode,
-    lsp_types::{ClientCapabilities, ServerCapabilities, ServerInfo},
+    lsp_types::{
+        ClientCapabilities, CreateFilesParams, DeleteFilesParams, DidChangeConfigurationParams,
+        DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams,
+        DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+        RenameFilesParams, ServerCapabilities, ServerInfo, WillSaveTextDocumentParams,
+        WorkDoneProgressCancelParams,
+    },
 };
 
 use crate::{
@@ -102,6 +108,125 @@ pub trait Server {
     crate::requests::registry::generated_methods!(registry_trait_methods);
     crate::requests::registry::custom_methods!(registry_trait_methods);
     crate::requests::registry::resolve_methods!(registry_trait_resolve_methods);
+
+    // Notification hooks — called after each notification's internal
+    // handler, so they observe post-internal state.
+
+    /// Called after the internal handler processes a
+    /// `workspace/didChangeConfiguration` notification.
+    ///
+    /// Synchronous by protocol necessity — an async hook would require
+    /// spawning and break LSP message ordering — so hooks may not await
+    /// and must not panic. The default implementation does nothing.
+    fn did_change_configuration(
+        &self,
+        _state: &ServerState,
+        _params: &DidChangeConfigurationParams,
+    ) {
+    }
+
+    /// Called after the internal handler processes a
+    /// `workspace/didChangeWorkspaceFolders` notification.
+    ///
+    /// Synchronous by protocol necessity — an async hook would require
+    /// spawning and break LSP message ordering — so hooks may not await
+    /// and must not panic. The default implementation does nothing.
+    fn did_change_workspace_folders(
+        &self,
+        _state: &ServerState,
+        _params: &DidChangeWorkspaceFoldersParams,
+    ) {
+    }
+
+    /// Called after the internal handler processes a
+    /// `textDocument/didOpen` notification.
+    ///
+    /// Synchronous by protocol necessity — an async hook would require
+    /// spawning and break LSP message ordering — so hooks may not await
+    /// and must not panic. The default implementation does nothing.
+    fn did_open(&self, _state: &ServerState, _params: &DidOpenTextDocumentParams) {}
+
+    /// Called after the internal handler processes a
+    /// `textDocument/didClose` notification.
+    ///
+    /// Synchronous by protocol necessity — an async hook would require
+    /// spawning and break LSP message ordering — so hooks may not await
+    /// and must not panic. The default implementation does nothing.
+    fn did_close(&self, _state: &ServerState, _params: &DidCloseTextDocumentParams) {}
+
+    /// Called after the internal handler processes a
+    /// `textDocument/didChange` notification.
+    ///
+    /// Synchronous by protocol necessity — an async hook would require
+    /// spawning and break LSP message ordering — so hooks may not await
+    /// and must not panic. The default implementation does nothing.
+    fn did_change(&self, _state: &ServerState, _params: &DidChangeTextDocumentParams) {}
+
+    /// Called after the internal handler processes a
+    /// `textDocument/didSave` notification.
+    ///
+    /// Synchronous by protocol necessity — an async hook would require
+    /// spawning and break LSP message ordering — so hooks may not await
+    /// and must not panic. The default implementation does nothing.
+    fn did_save(&self, _state: &ServerState, _params: &DidSaveTextDocumentParams) {}
+
+    /// Called after the internal handler processes a
+    /// `textDocument/willSave` notification.
+    ///
+    /// Synchronous by protocol necessity — an async hook would require
+    /// spawning and break LSP message ordering — so hooks may not await
+    /// and must not panic. The default implementation does nothing.
+    fn will_save(&self, _state: &ServerState, _params: &WillSaveTextDocumentParams) {}
+
+    /// Called after the internal handler processes a
+    /// `workspace/didChangeWatchedFiles` notification.
+    ///
+    /// Synchronous by protocol necessity — an async hook would require
+    /// spawning and break LSP message ordering — so hooks may not await
+    /// and must not panic. The default implementation does nothing.
+    fn did_change_watched_files(
+        &self,
+        _state: &ServerState,
+        _params: &DidChangeWatchedFilesParams,
+    ) {
+    }
+
+    /// Called after the internal handler processes a
+    /// `workspace/didCreateFiles` notification.
+    ///
+    /// Synchronous by protocol necessity — an async hook would require
+    /// spawning and break LSP message ordering — so hooks may not await
+    /// and must not panic. The default implementation does nothing.
+    fn did_create_files(&self, _state: &ServerState, _params: &CreateFilesParams) {}
+
+    /// Called after the internal handler processes a
+    /// `workspace/didRenameFiles` notification.
+    ///
+    /// Synchronous by protocol necessity — an async hook would require
+    /// spawning and break LSP message ordering — so hooks may not await
+    /// and must not panic. The default implementation does nothing.
+    fn did_rename_files(&self, _state: &ServerState, _params: &RenameFilesParams) {}
+
+    /// Called after the internal handler processes a
+    /// `workspace/didDeleteFiles` notification.
+    ///
+    /// Synchronous by protocol necessity — an async hook would require
+    /// spawning and break LSP message ordering — so hooks may not await
+    /// and must not panic. The default implementation does nothing.
+    fn did_delete_files(&self, _state: &ServerState, _params: &DeleteFilesParams) {}
+
+    /// Called after the internal handler processes a
+    /// `window/workDoneProgress/cancel` notification.
+    ///
+    /// Synchronous by protocol necessity — an async hook would require
+    /// spawning and break LSP message ordering — so hooks may not await
+    /// and must not panic. The default implementation does nothing.
+    fn work_done_progress_cancel(
+        &self,
+        _state: &ServerState,
+        _params: &WorkDoneProgressCancelParams,
+    ) {
+    }
 }
 
 fn method_not_implemented<T>(name: &'static str) -> std::future::Ready<Result<T, ServerError>> {

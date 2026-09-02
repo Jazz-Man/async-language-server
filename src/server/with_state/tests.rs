@@ -9,15 +9,19 @@ use async_lsp::{
     ClientSocket, ErrorCode, LanguageServer,
     lsp_types::{
         ClientCapabilities, CodeLens, CompletionItem, CompletionTextEdit, CreateFilesParams,
-        DiagnosticOptions, DiagnosticServerCapabilities, DidChangeConfigurationParams,
-        DidChangeWorkspaceFoldersParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
-        DocumentDiagnosticReport, DocumentDiagnosticReportKind, DocumentDiagnosticReportResult,
-        DocumentLink, FileCreate, FullDocumentDiagnosticReport, GeneralClientCapabilities, Hover,
-        HoverContents, HoverParams, InitializeParams, InlayHint, InlayHintLabel,
-        InlayHintLabelPart, Location, MarkupContent, MarkupKind, OneOf, PartialResultParams,
-        Position, PositionEncodingKind, PreviousResultId, Range,
-        RelatedFullDocumentDiagnosticReport, ServerCapabilities, SymbolKind,
-        TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, TextEdit, Url,
+        DeleteFilesParams, DiagnosticOptions, DiagnosticServerCapabilities,
+        DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+        DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+        DidSaveTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
+        DocumentDiagnosticReportKind, DocumentDiagnosticReportResult, DocumentLink, FileChangeType,
+        FileCreate, FileDelete, FileEvent, FileRename, FullDocumentDiagnosticReport,
+        GeneralClientCapabilities, Hover, HoverContents, HoverParams, InitializeParams, InlayHint,
+        InlayHintLabel, InlayHintLabelPart, Location, MarkupContent, MarkupKind, NumberOrString,
+        OneOf, PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
+        RelatedFullDocumentDiagnosticReport, RenameFilesParams, ServerCapabilities, SymbolKind,
+        TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+        TextDocumentPositionParams, TextDocumentSaveReason, TextEdit, Url,
+        VersionedTextDocumentIdentifier, WillSaveTextDocumentParams, WorkDoneProgressCancelParams,
         WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
         WorkspaceDocumentDiagnosticReport, WorkspaceEdit, WorkspaceFoldersChangeEvent,
         WorkspaceLocation, WorkspaceSymbol, WorkspaceSymbolParams, WorkspaceSymbolResponse,
@@ -276,6 +280,91 @@ impl Server for ResolveCaptureServer {
     }
 }
 
+/// Records every notification hook fired, in order. The
+/// `did_change_watched_files` hook also captures the tracked document text
+/// it observes, pinning the after-the-internal-handler contract.
+struct HookRecordingServer {
+    hooks: Arc<Mutex<Vec<&'static str>>>,
+    watched_url: Url,
+    watched_text: Arc<Mutex<Option<String>>>,
+}
+
+impl HookRecordingServer {
+    /// Records one fired hook by name.
+    fn record(&self, hook: &'static str) {
+        self.hooks.lock().expect("hook record mutex").push(hook);
+    }
+}
+
+impl Server for HookRecordingServer {
+    fn server_document_matchers() -> Vec<DocumentMatcher> {
+        test_document_matchers()
+    }
+
+    fn did_change_configuration(
+        &self,
+        _state: &ServerState,
+        _params: &DidChangeConfigurationParams,
+    ) {
+        self.record("did_change_configuration");
+    }
+
+    fn did_change_workspace_folders(
+        &self,
+        _state: &ServerState,
+        _params: &DidChangeWorkspaceFoldersParams,
+    ) {
+        self.record("did_change_workspace_folders");
+    }
+
+    fn did_open(&self, _state: &ServerState, _params: &DidOpenTextDocumentParams) {
+        self.record("did_open");
+    }
+
+    fn did_close(&self, _state: &ServerState, _params: &DidCloseTextDocumentParams) {
+        self.record("did_close");
+    }
+
+    fn did_change(&self, _state: &ServerState, _params: &DidChangeTextDocumentParams) {
+        self.record("did_change");
+    }
+
+    fn did_save(&self, _state: &ServerState, _params: &DidSaveTextDocumentParams) {
+        self.record("did_save");
+    }
+
+    fn will_save(&self, _state: &ServerState, _params: &WillSaveTextDocumentParams) {
+        self.record("will_save");
+    }
+
+    fn did_change_watched_files(&self, state: &ServerState, _params: &DidChangeWatchedFilesParams) {
+        *self.watched_text.lock().expect("hook record mutex") = state
+            .document(&self.watched_url)
+            .map(|doc| doc.text_contents());
+        self.record("did_change_watched_files");
+    }
+
+    fn did_create_files(&self, _state: &ServerState, _params: &CreateFilesParams) {
+        self.record("did_create_files");
+    }
+
+    fn did_rename_files(&self, _state: &ServerState, _params: &RenameFilesParams) {
+        self.record("did_rename_files");
+    }
+
+    fn did_delete_files(&self, _state: &ServerState, _params: &DeleteFilesParams) {
+        self.record("did_delete_files");
+    }
+
+    fn work_done_progress_cancel(
+        &self,
+        _state: &ServerState,
+        _params: &WorkDoneProgressCancelParams,
+    ) {
+        self.record("work_done_progress_cancel");
+    }
+}
+
 /// Drives documentLink/resolve over real dispatch: opens `documents`,
 /// sends a link at UTF-16 position (0,2) with the given target, and returns
 /// (what the handler received, what the client got back).
@@ -436,6 +525,69 @@ fn drive_workspace_symbol_resolve(
         .clone()
         .expect("handler ran");
     (received.location, resolved.location)
+}
+
+/// Fires all twelve notifications at `server`, in dispatch order. The
+/// watched-files event assumes the disk file behind `watched_url` was
+/// already mutated before the call.
+fn drive_notifications(
+    server: &mut LanguageServerWithState<HookRecordingServer>,
+    watched_url: Url,
+) {
+    let doc = url("open.txt");
+    let _ = server.did_open(DidOpenTextDocumentParams {
+        text_document: TextDocumentItem::new(doc.clone(), "plaintext".into(), 1, "open".into()),
+    });
+    let _ = server.did_change(DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier::new(doc.clone(), 2),
+        content_changes: vec![TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "edited".into(),
+        }],
+    });
+    let _ = server.will_save(WillSaveTextDocumentParams {
+        text_document: TextDocumentIdentifier::new(doc.clone()),
+        reason: TextDocumentSaveReason::MANUAL,
+    });
+    let _ = server.did_save(DidSaveTextDocumentParams {
+        text_document: TextDocumentIdentifier::new(doc.clone()),
+        text: Some("saved".into()),
+    });
+    let _ = server.did_close(DidCloseTextDocumentParams {
+        text_document: TextDocumentIdentifier::new(doc.clone()),
+    });
+    let _ = server.did_change_watched_files(DidChangeWatchedFilesParams {
+        changes: vec![FileEvent::new(watched_url, FileChangeType::CHANGED)],
+    });
+    let _ = server.did_create_files(CreateFilesParams {
+        files: vec![FileCreate {
+            uri: url("created.txt").to_string(),
+        }],
+    });
+    let _ = server.did_rename_files(RenameFilesParams {
+        files: vec![FileRename {
+            old_uri: url("created.txt").to_string(),
+            new_uri: url("renamed.txt").to_string(),
+        }],
+    });
+    let _ = server.did_delete_files(DeleteFilesParams {
+        files: vec![FileDelete {
+            uri: url("renamed.txt").to_string(),
+        }],
+    });
+    let _ = server.work_done_progress_cancel(WorkDoneProgressCancelParams {
+        token: NumberOrString::String("progress".into()),
+    });
+    let _ = server.did_change_configuration(DidChangeConfigurationParams {
+        settings: serde_json::json!({}),
+    });
+    let _ = server.did_change_workspace_folders(DidChangeWorkspaceFoldersParams {
+        event: WorkspaceFoldersChangeEvent {
+            added: vec![],
+            removed: vec![],
+        },
+    });
 }
 
 fn test_capabilities() -> Option<ServerCapabilities> {
@@ -1251,6 +1403,74 @@ fn untracked_url_converts_against_disk() {
     // ...and the response came back in the client's UTF-16 columns.
     let hover = hover.expect("hover present");
     assert_eq!(hover.range.expect("range present"), same_line(0, 2, 2));
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+#[test]
+fn notification_hooks_run_after_the_internal_handlers() {
+    // The watched file loads as a Workspace document through the real
+    // workspace path, so the did_change_watched_files hook can observe the
+    // already-refreshed snapshot.
+    let root = temp_workspace("with_state", "hooks");
+    let watched = root.join("watched.test");
+    fs::write(&watched, "before").expect("test file can be written");
+    let watched = fs::canonicalize(watched).expect("test file can be canonicalized");
+    let watched_url = Url::from_file_path(&watched).expect("path can be converted to a URL");
+
+    let hooks = Arc::new(Mutex::new(Vec::new()));
+    let watched_text = Arc::new(Mutex::new(None));
+    let mut server = LanguageServerWithState::new(
+        ClientSocket::new_closed(),
+        HookRecordingServer {
+            hooks: Arc::clone(&hooks),
+            watched_url: watched_url.clone(),
+            watched_text: Arc::clone(&watched_text),
+        },
+    );
+    server
+        .state
+        .set_workspace_folders([workspace_folder(&root)]);
+    server
+        .state
+        .refresh_workspace_documents()
+        .expect("workspace documents can be refreshed");
+    assert_eq!(
+        server
+            .state
+            .document(&watched_url)
+            .expect("watched document is tracked")
+            .text_contents(),
+        "before"
+    );
+
+    // Mutate between the snapshot and the event: the hook must see the
+    // text the internal handler already refreshed, not the stale one.
+    fs::write(&watched, "after").expect("test file can be written");
+    drive_notifications(&mut server, watched_url);
+
+    assert_eq!(
+        *hooks.lock().expect("hook record mutex"),
+        [
+            "did_open",
+            "did_change",
+            "will_save",
+            "did_save",
+            "did_close",
+            "did_change_watched_files",
+            "did_create_files",
+            "did_rename_files",
+            "did_delete_files",
+            "work_done_progress_cancel",
+            "did_change_configuration",
+            "did_change_workspace_folders",
+        ]
+    );
+    assert_eq!(
+        *watched_text.lock().expect("hook record mutex"),
+        Some("after".into()),
+        "the watched-files hook observes the already-refreshed document"
+    );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }

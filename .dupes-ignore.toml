@@ -15,8 +15,8 @@ fingerprint = "1eb0db22997f837e"
 reason = "spec-matrix test fixtures (TestServer/DisabledServer/ConfigurableServer document_diagnostics) in the #[cfg(test)] sibling module with_state/tests.rs"
 
 [[ignore]]
-fingerprint = "e21d8c00487b7815"
-reason = "async-lsp LanguageServer notification forwards (did_open/did_close/did_save): tracing line plus delegation to the state handler; the trait mandates one method per notification"
+fingerprint = "1db0efb96bb722aa"
+reason = "async-lsp LanguageServer notification forwards (did_open/did_close/did_save): tracing line, state-handler delegation, then the Server hook call; the trait mandates one method per notification, and the hook must run after the internal handler"
 
 [[ignore]]
 fingerprint = "e2c7af90d4455197"
@@ -175,8 +175,16 @@ fingerprint = "31b0389d7206c403"
 reason = "workspace-symbol resolve twins: modify_params/modify_response delegate to the one document-free per-URL converter with only Direction flipped; the converter resolves each location against its own document, so the sole-document anchor plays no part (family of the d9a381ff3f5dca75 resolve twins)"
 
 [[ignore]]
-fingerprint = "73e75a2ee1f1fd64"
-reason = "async-lsp LanguageServer notification forwards (did_change_watched_files, did_rename_files, did_delete_files): tracing line plus delegation to the state handler; the trait mandates one method per notification (family of e21d8c00487b7815)"
+fingerprint = "958b58d9ab7eb467"
+reason = "async-lsp LanguageServer notification forwards (did_change_watched_files, did_rename_files, did_delete_files): tracing line, state-handler delegation on the cloned params field, then the Server hook call; the trait mandates one method per notification and the hook must run after the internal handler (family of 1db0efb96bb722aa)"
+
+[[ignore]]
+fingerprint = "f7bd80e042774247"
+reason = "async-lsp LanguageServer notification forwards without a tracing line (did_change_workspace_folders, did_change): state-handler delegation then the Server hook call; the trait mandates one method per notification, and the hook must run after the internal handler (family of 1db0efb96bb722aa)"
+
+[[ignore]]
+fingerprint = "0816e92c8d5f3c27"
+reason = "HookRecordingServer hook impls in with_state/tests.rs (11 members): trait-mandated per-notification Server hook overrides sharing the one-line record-call shape, so the wiring test can pin that every hook fires (family of the f83853ca365213c9 capture-server bodies)"
 
 [[ignore]]
 fingerprint = "b89ab176db6368aa"
