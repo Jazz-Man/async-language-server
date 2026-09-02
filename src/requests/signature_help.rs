@@ -1,9 +1,52 @@
+use async_lsp::lsp_types::{
+    SignatureHelp as LspSignatureHelp, SignatureHelpParams as LspSignatureHelpParams,
+};
+
+use crate::server::{Document, ServerState};
+
+use super::{
+    Request,
+    conversion::{
+        Direction, convert_position, convert_signature_help_label_offsets,
+        modify_outgoing_signature_help,
+    },
+};
+
+pub struct SignatureHelp;
+
+impl Request for SignatureHelp {
+    type Params = LspSignatureHelpParams;
+    type Response = Option<LspSignatureHelp>;
+
+    request_extract_url!(text_document_position_params.text_document);
+
+    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
+        convert_position(
+            state,
+            document,
+            &mut params.text_document_position_params.position,
+            Direction::Incoming,
+        );
+        if let Some(help) = params
+            .context
+            .as_mut()
+            .and_then(|context| context.active_signature_help.as_mut())
+        {
+            convert_signature_help_label_offsets(state, document, help, Direction::Incoming);
+        }
+    }
+
+    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
+        modify_outgoing_signature_help(state, document, response);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
         ParameterInformation, ParameterLabel, SignatureHelp as LspSignatureHelp,
-        SignatureHelpParams, SignatureInformation, TextDocumentIdentifier,
-        TextDocumentPositionParams, WorkDoneProgressParams,
+        SignatureHelpContext, SignatureHelpParams, SignatureHelpTriggerKind, SignatureInformation,
+        TextDocumentIdentifier, TextDocumentPositionParams, WorkDoneProgressParams,
     };
 
     use crate::requests::{Request, SignatureHelp as SignatureHelpRequest};
@@ -62,5 +105,59 @@ mod tests {
         // (the `f`) become units 2..3, with no document consulted.
         assert_eq!(parameters[0].label, ParameterLabel::LabelOffsets([2, 3]));
         assert_eq!(parameters[1].label, ParameterLabel::Simple("a".into()));
+    }
+
+    #[test]
+    fn signature_help_context_label_offsets_convert_incoming() {
+        let (state, _plain, emoji) = state_with_documents();
+        let document = state.document(&emoji).expect("emoji document is tracked");
+        let mut params = SignatureHelpParams {
+            context: Some(SignatureHelpContext {
+                trigger_kind: SignatureHelpTriggerKind::INVOKED,
+                trigger_character: None,
+                is_retrigger: false,
+                active_signature_help: Some(LspSignatureHelp {
+                    signatures: vec![SignatureInformation {
+                        // Client UTF-16 units: 🙂 = 0..2, f = 2, ( = 3, a = 4, ) = 5;
+                        // UTF-8 bytes: 🙂 = 0..4, f = 4, ( = 5, a = 6, ) = 7.
+                        label: "🙂f(a)".into(),
+                        documentation: None,
+                        parameters: Some(vec![ParameterInformation {
+                            label: ParameterLabel::LabelOffsets([2, 3]),
+                            documentation: None,
+                        }]),
+                        active_parameter: None,
+                    }],
+                    active_signature: None,
+                    active_parameter: None,
+                }),
+            }),
+            text_document_position_params: TextDocumentPositionParams::new(
+                TextDocumentIdentifier::new(emoji),
+                line_position(0, 2),
+            ),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+
+        <SignatureHelpRequest as Request>::modify_params(&state, &document, &mut params);
+
+        assert_eq!(
+            params.text_document_position_params.position,
+            line_position(0, 4)
+        );
+        let mut help = params
+            .context
+            .expect("context present")
+            .active_signature_help
+            .expect("help present");
+        let parameters = help
+            .signatures
+            .remove(0)
+            .parameters
+            .expect("parameters present");
+        // The echoed help's offsets count units of the label string itself:
+        // UTF-16 units 2..3 (the `f`) become bytes 4..5, with no document
+        // consulted.
+        assert_eq!(parameters[0].label, ParameterLabel::LabelOffsets([4, 5]));
     }
 }

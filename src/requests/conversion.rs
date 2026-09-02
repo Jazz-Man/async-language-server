@@ -655,25 +655,39 @@ pub(crate) fn modify_outgoing_document_symbols(
 }
 
 /// Converts a signature help response's parameter label offsets from UTF-8
-/// to the client encoding, recounting them against the containing signature
+/// to the client encoding.
+pub(crate) fn modify_outgoing_signature_help(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<LspSignatureHelp>,
+) {
+    let Some(help) = response else { return };
+    convert_signature_help_label_offsets(state, document, help, Direction::Outgoing);
+}
+
+/// Converts a signature help's parameter label offsets between the client
+/// encoding and UTF-8, recounting them against the containing signature
 /// label string. `Simple` labels are substrings of the label and carry no
 /// offsets.
-pub(crate) fn modify_outgoing_signature_help(
+pub(crate) fn convert_signature_help_label_offsets(
     state: &ServerState,
     // Label offsets count code units of the label string itself, so no
     // document snapshot takes part in the conversion.
     _document: &Document,
-    response: &mut Option<LspSignatureHelp>,
+    help: &mut LspSignatureHelp,
+    direction: Direction,
 ) {
-    let Some(help) = response else { return };
-    let encoding = state.get_position_encoding();
+    let (from, to) = match direction {
+        Direction::Incoming => (state.get_position_encoding(), Encoding::UTF8),
+        Direction::Outgoing => (Encoding::UTF8, state.get_position_encoding()),
+    };
     for signature in &mut help.signatures {
         let Some(parameters) = signature.parameters.as_mut() else {
             continue;
         };
         for parameter in parameters {
             if let LspParameterLabel::LabelOffsets(offsets) = &mut parameter.label {
-                convert_label_offsets(&signature.label, offsets, Encoding::UTF8, encoding);
+                convert_label_offsets(&signature.label, offsets, from, to);
             }
         }
     }

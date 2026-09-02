@@ -155,6 +155,7 @@ pub(crate) use inlay_hint_resolve::InlayHintResolve;
 pub(crate) use inline_value::InlineValue;
 pub(crate) use outgoing_calls::OutgoingCalls;
 pub(crate) use selection_range::SelectionRange;
+pub(crate) use signature_help::SignatureHelp;
 pub(crate) use subtypes::Subtypes;
 pub(crate) use supertypes::Supertypes;
 pub(crate) use symbol::Symbol;

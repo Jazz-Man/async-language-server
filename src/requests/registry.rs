@@ -214,14 +214,6 @@ macro_rules! generated_methods {
                 incoming: range at range,
                 outgoing: modify_outgoing_inlay_hints,
             }
-            signature_help: signature_help @ SignatureHelp {
-                doc: "Handles `textDocument/signatureHelp` requests from the client.\n\nReturns signature help at the position in `params`, or `None`. Requires a signature help provider in [`Server::server_capabilities`]. Parameter label offsets are recounted between UTF-8 and the negotiated encoding against the label string itself.",
-                params: async_lsp::lsp_types::SignatureHelpParams,
-                response: Option<async_lsp::lsp_types::SignatureHelp>,
-                document: text_document_position_params.text_document,
-                incoming: position at text_document_position_params.position,
-                outgoing: modify_outgoing_signature_help,
-            }
             document_symbol: document_symbol @ DocumentSymbol {
                 doc: "Handles `textDocument/documentSymbol` requests from the client.\n\nReturns the symbol tree of the document in `params` (nested when the client supports it, flat otherwise), or `None`. Requires a document symbol provider in [`Server::server_capabilities`].",
                 params: async_lsp::lsp_types::DocumentSymbolParams,
@@ -313,6 +305,11 @@ macro_rules! custom_methods {
                 doc: "Handles `workspace/symbol` requests from the client.\n\nReturns the workspace-wide symbols matching the query, or `None`. Requires a workspace symbol provider in [`Server::server_capabilities`]. Symbol locations convert against their own document when tracked; untracked files are read from disk once per request (cached); unreadable locations pass through unchanged.",
                 params: async_lsp::lsp_types::WorkspaceSymbolParams,
                 response: Option<async_lsp::lsp_types::WorkspaceSymbolResponse>,
+            }
+            signature_help: signature_help @ SignatureHelp {
+                doc: "Handles `textDocument/signatureHelp` requests from the client.\n\nReturns signature help at the position in `params`, or `None`. Requires a signature help provider in [`Server::server_capabilities`]. The position AND the label offsets of an echoed `context.active_signature_help` are converted to UTF-8 before the handler runs; label offsets are recounted against the label string itself.",
+                params: async_lsp::lsp_types::SignatureHelpParams,
+                response: Option<async_lsp::lsp_types::SignatureHelp>,
             }
         }
     };
