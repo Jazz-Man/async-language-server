@@ -3,9 +3,11 @@ use std::{ops::ControlFlow, sync::Arc};
 use async_lsp::{
     ClientSocket, ErrorCode, LanguageServer, ResponseError, Result,
     lsp_types::{
-        DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWorkspaceFoldersParams,
+        CreateFilesParams, DeleteFilesParams, DidChangeConfigurationParams,
+        DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams,
         DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-        InitializeParams, InitializeResult, InitializedParams, Url, WorkspaceDiagnosticParams,
+        InitializeParams, InitializeResult, InitializedParams, RenameFilesParams, Url,
+        WillSaveTextDocumentParams, WorkDoneProgressCancelParams, WorkspaceDiagnosticParams,
         WorkspaceDiagnosticReportResult,
     },
 };
@@ -300,6 +302,54 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         #[cfg(feature = "tracing")]
         debug!("did_save: {}", params.text_document.uri);
         self.state.handle_document_save(params)
+    }
+
+    fn will_save(&mut self, params: WillSaveTextDocumentParams) -> ControlFlow<Result<()>> {
+        #[cfg(feature = "tracing")]
+        debug!("will_save: {}", params.text_document.uri);
+        #[cfg(not(feature = "tracing"))]
+        drop(params);
+        ControlFlow::Continue(())
+    }
+
+    fn did_change_watched_files(
+        &mut self,
+        params: DidChangeWatchedFilesParams,
+    ) -> ControlFlow<Result<()>> {
+        #[cfg(feature = "tracing")]
+        debug!("did_change_watched_files: {} events", params.changes.len());
+        self.state.handle_watched_files_change(params.changes)
+    }
+
+    fn did_create_files(&mut self, params: CreateFilesParams) -> ControlFlow<Result<()>> {
+        #[cfg(feature = "tracing")]
+        debug!("did_create_files: {} files", params.files.len());
+        #[cfg(not(feature = "tracing"))]
+        drop(params);
+        ControlFlow::Continue(())
+    }
+
+    fn did_rename_files(&mut self, params: RenameFilesParams) -> ControlFlow<Result<()>> {
+        #[cfg(feature = "tracing")]
+        debug!("did_rename_files: {} files", params.files.len());
+        self.state.handle_files_renamed(params.files)
+    }
+
+    fn did_delete_files(&mut self, params: DeleteFilesParams) -> ControlFlow<Result<()>> {
+        #[cfg(feature = "tracing")]
+        debug!("did_delete_files: {} files", params.files.len());
+        self.state.handle_files_deleted(params.files)
+    }
+
+    fn work_done_progress_cancel(
+        &mut self,
+        params: WorkDoneProgressCancelParams,
+    ) -> ControlFlow<Result<()>> {
+        #[cfg(feature = "tracing")]
+        debug!("work_done_progress_cancel: {:?}", params.token);
+        #[cfg(not(feature = "tracing"))]
+        drop(params);
+        ControlFlow::Continue(())
     }
 
     fn workspace_diagnostic(

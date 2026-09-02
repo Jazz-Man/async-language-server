@@ -173,3 +173,11 @@ reason = "resolve capture trio in with_state/tests.rs (code_lens, inlay_hint, wo
 [[ignore]]
 fingerprint = "31b0389d7206c403"
 reason = "workspace-symbol resolve twins: modify_params/modify_response delegate to the one document-free per-URL converter with only Direction flipped; the converter resolves each location against its own document, so the sole-document anchor plays no part (family of the d9a381ff3f5dca75 resolve twins)"
+
+[[ignore]]
+fingerprint = "73e75a2ee1f1fd64"
+reason = "async-lsp LanguageServer notification forwards (did_change_watched_files, did_rename_files, did_delete_files): tracing line plus delegation to the state handler; the trait mandates one method per notification (family of e21d8c00487b7815)"
+
+[[ignore]]
+fingerprint = "b89ab176db6368aa"
+reason = "file-operations state handlers (handle_files_renamed, handle_files_deleted): a loop forwarding each entry's URI string to the shared remove_workspace_document_by_uri_string; FileRename/FileDelete are distinct foreign types with differently-named URI fields, so the mandated per-notification handlers mirror by design"

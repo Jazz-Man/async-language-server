@@ -4,7 +4,7 @@ use async_lsp::{
     Result,
     lsp_types::{
         DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-        DidSaveTextDocumentParams, Range, Url,
+        DidSaveTextDocumentParams, FileChangeType, FileDelete, FileEvent, FileRename, Range, Url,
     },
 };
 use ropey::Rope;
@@ -315,6 +315,83 @@ impl ServerState {
         }
 
         ControlFlow::Continue(())
+    }
+
+    pub(crate) fn handle_watched_files_change(
+        &self,
+        changes: Vec<FileEvent>,
+    ) -> ControlFlow<Result<()>> {
+        for event in changes {
+            let Some(entry) = self.documents.get(&event.uri) else {
+                // Untracked URIs are not loaded here - the next workspace
+                // scan picks up new files instead.
+                continue;
+            };
+            if entry.origin == DocumentOrigin::Open {
+                // The editor owns open documents; disk events never touch them.
+                continue;
+            }
+
+            if event.typ == FileChangeType::DELETED {
+                drop(entry);
+                self.documents.remove_if(&event.uri, |_, entry| {
+                    entry.origin == DocumentOrigin::Workspace
+                });
+                continue;
+            }
+
+            // Created/Changed: replace the tracked snapshot with a fresh read
+            // of the file. NOTE: we must read the contents of the file
+            // synchronously, since notification handlers are actually
+            // synchronous both according to LSP spec and the async-lsp crate.
+            let language = entry.document.language.clone();
+            drop(entry);
+            // arch-lint: allow(no-sync-io) reason="LSP notification handlers must stay synchronous per the spec; the watched-files refresh re-reads via std::fs"
+            if let Ok(text) = std::fs::read_to_string(event.uri.path()) {
+                self.insert_document(event.uri, text, 0, language, DocumentOrigin::Workspace);
+            } else {
+                // Keep the old snapshot: a stale tracked document beats
+                // dropping one that handlers may still be resolving.
+                #[cfg(feature = "tracing")]
+                tracing::warn!(
+                    "did_change_watched_files: '{}' could not be re-read; keeping last-known snapshot",
+                    event.uri
+                );
+            }
+        }
+
+        ControlFlow::Continue(())
+    }
+
+    pub(crate) fn handle_files_renamed(&self, files: Vec<FileRename>) -> ControlFlow<Result<()>> {
+        for file in files {
+            self.remove_workspace_document_by_uri_string(&file.old_uri);
+        }
+
+        ControlFlow::Continue(())
+    }
+
+    pub(crate) fn handle_files_deleted(&self, files: Vec<FileDelete>) -> ControlFlow<Result<()>> {
+        for file in files {
+            self.remove_workspace_document_by_uri_string(&file.uri);
+        }
+
+        ControlFlow::Continue(())
+    }
+
+    /// Drops the tracked Workspace-origin snapshot for a URI supplied as a
+    /// client string: unparseable URIs are traced and skipped, and open
+    /// documents are never touched (the next workspace scan re-adds what
+    /// still exists on disk).
+    fn remove_workspace_document_by_uri_string(&self, raw_uri: &str) {
+        let Ok(url) = Url::parse(raw_uri) else {
+            #[cfg(feature = "tracing")]
+            tracing::warn!("file operation: unparseable URI '{raw_uri}' skipped");
+            return;
+        };
+
+        self.documents
+            .remove_if(&url, |_, entry| entry.origin == DocumentOrigin::Workspace);
     }
 }
 
