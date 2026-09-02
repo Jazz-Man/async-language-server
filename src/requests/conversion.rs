@@ -571,6 +571,30 @@ pub(crate) fn modify_outgoing_prepare_rename_response(
     }
 }
 
+/// Converts an inlay hint's position and text-edit ranges between the
+/// client encoding and UTF-8 against the given document snapshot, and each
+/// label-part location against the document its URL points at.
+pub(crate) fn convert_inlay_hint(
+    state: &ServerState,
+    document: &Document,
+    hint: &mut LspInlayHint,
+    direction: Direction,
+) {
+    convert_position(state, document, &mut hint.position, direction);
+    if let Some(edits) = hint.text_edits.as_mut() {
+        for edit in edits {
+            convert_text_edit(state, document, edit, direction);
+        }
+    }
+    if let LspInlayHintLabel::LabelParts(parts) = &mut hint.label {
+        for part in parts {
+            if let Some(location) = part.location.as_mut() {
+                convert_location(state, document, location, direction);
+            }
+        }
+    }
+}
+
 /// Converts each inlay hint's position and text-edit ranges from UTF-8 to
 /// the client encoding against the request document, and each label-part
 /// location against the document its URL points at.
@@ -581,19 +605,7 @@ pub(crate) fn modify_outgoing_inlay_hints(
 ) {
     let Some(hints) = response else { return };
     for hint in hints {
-        convert_position(state, document, &mut hint.position, Direction::Outgoing);
-        if let Some(edits) = hint.text_edits.as_mut() {
-            for edit in edits {
-                convert_text_edit(state, document, edit, Direction::Outgoing);
-            }
-        }
-        if let LspInlayHintLabel::LabelParts(parts) = &mut hint.label {
-            for part in parts {
-                if let Some(location) = part.location.as_mut() {
-                    convert_location(state, document, location, Direction::Outgoing);
-                }
-            }
-        }
+        convert_inlay_hint(state, document, hint, Direction::Outgoing);
     }
 }
 

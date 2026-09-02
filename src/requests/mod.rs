@@ -95,6 +95,7 @@ macro_rules! registry_request_impls {
 mod code_action;
 mod code_action_resolve;
 mod code_lens;
+mod code_lens_resolve;
 mod color_presentation;
 mod completion;
 mod completion_resolve;
@@ -114,6 +115,7 @@ mod hover;
 mod implementation;
 mod incoming_calls;
 mod inlay_hint;
+mod inlay_hint_resolve;
 mod inline_value;
 mod linked_editing_range;
 mod moniker;
@@ -138,21 +140,25 @@ mod will_create_files;
 mod will_delete_files;
 mod will_rename_files;
 mod will_save_wait_until;
+mod workspace_symbol_resolve;
 
 pub(crate) use code_action::CodeAction;
 pub(crate) use code_action_resolve::CodeActionResolve;
+pub(crate) use code_lens_resolve::CodeLensResolve;
 pub(crate) use completion::Completion;
 pub(crate) use completion_resolve::CompletionResolve;
 pub(crate) use conversion::{Direction, convert_resolve_item};
 pub(crate) use document_diagnostics::DocumentDiagnostics;
 pub(crate) use document_link_resolve::DocumentLinkResolve;
 pub(crate) use incoming_calls::IncomingCalls;
+pub(crate) use inlay_hint_resolve::InlayHintResolve;
 pub(crate) use inline_value::InlineValue;
 pub(crate) use outgoing_calls::OutgoingCalls;
 pub(crate) use selection_range::SelectionRange;
 pub(crate) use subtypes::Subtypes;
 pub(crate) use supertypes::Supertypes;
 pub(crate) use symbol::Symbol;
+pub(crate) use workspace_symbol_resolve::WorkspaceSymbolResolve;
 
 crate::requests::registry::generated_methods!(registry_request_impls);
 

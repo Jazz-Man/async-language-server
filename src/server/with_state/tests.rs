@@ -8,18 +8,19 @@ use std::{
 use async_lsp::{
     ClientSocket, ErrorCode, LanguageServer,
     lsp_types::{
-        ClientCapabilities, CompletionItem, CompletionTextEdit, CreateFilesParams,
+        ClientCapabilities, CodeLens, CompletionItem, CompletionTextEdit, CreateFilesParams,
         DiagnosticOptions, DiagnosticServerCapabilities, DidChangeConfigurationParams,
         DidChangeWorkspaceFoldersParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
         DocumentDiagnosticReport, DocumentDiagnosticReportKind, DocumentDiagnosticReportResult,
         DocumentLink, FileCreate, FullDocumentDiagnosticReport, GeneralClientCapabilities, Hover,
-        HoverContents, HoverParams, InitializeParams, Location, MarkupContent, MarkupKind, OneOf,
-        PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
+        HoverContents, HoverParams, InitializeParams, InlayHint, InlayHintLabel,
+        InlayHintLabelPart, Location, MarkupContent, MarkupKind, OneOf, PartialResultParams,
+        Position, PositionEncodingKind, PreviousResultId, Range,
         RelatedFullDocumentDiagnosticReport, ServerCapabilities, SymbolKind,
         TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, TextEdit, Url,
         WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
         WorkspaceDocumentDiagnosticReport, WorkspaceEdit, WorkspaceFoldersChangeEvent,
-        WorkspaceSymbol, WorkspaceSymbolParams, WorkspaceSymbolResponse,
+        WorkspaceLocation, WorkspaceSymbol, WorkspaceSymbolParams, WorkspaceSymbolResponse,
     },
 };
 
@@ -222,6 +223,59 @@ impl Server for SymbolServer {
     }
 }
 
+/// Echoes each resolve item back, capturing what its handler received so
+/// the resolve dispatch tests can pin the handler-side columns.
+struct ResolveCaptureServer {
+    code_lens: Arc<Mutex<Option<CodeLens>>>,
+    inlay_hint: Arc<Mutex<Option<InlayHint>>>,
+    workspace_symbol: Arc<Mutex<Option<WorkspaceSymbol>>>,
+}
+
+impl ResolveCaptureServer {
+    /// Stores the received item in its capture slot.
+    fn store<T: Clone>(slot: &Mutex<Option<T>>, item: &T) {
+        *slot.lock().expect("capture mutex") = Some(item.clone());
+    }
+}
+
+impl Server for ResolveCaptureServer {
+    fn code_lens_resolve(
+        &self,
+        _state: ServerState,
+        lens: CodeLens,
+    ) -> impl std::future::Future<Output = ServerResult<CodeLens>> + Send {
+        let received = Arc::clone(&self.code_lens);
+        async move {
+            Self::store(&received, &lens);
+            Ok(lens)
+        }
+    }
+
+    fn inlay_hint_resolve(
+        &self,
+        _state: ServerState,
+        hint: InlayHint,
+    ) -> impl std::future::Future<Output = ServerResult<InlayHint>> + Send {
+        let received = Arc::clone(&self.inlay_hint);
+        async move {
+            Self::store(&received, &hint);
+            Ok(hint)
+        }
+    }
+
+    fn workspace_symbol_resolve(
+        &self,
+        _state: ServerState,
+        symbol: WorkspaceSymbol,
+    ) -> impl std::future::Future<Output = ServerResult<WorkspaceSymbol>> + Send {
+        let received = Arc::clone(&self.workspace_symbol);
+        async move {
+            Self::store(&received, &symbol);
+            Ok(symbol)
+        }
+    }
+}
+
 /// Drives documentLink/resolve over real dispatch: opens `documents`,
 /// sends a link at UTF-16 position (0,2) with the given target, and returns
 /// (what the handler received, what the client got back).
@@ -322,6 +376,66 @@ fn drive_workspace_symbol(documents: &[(&str, &str)], second_uri: Url) -> Vec<(U
             OneOf::Right(_) => panic!("expected a ranged location"),
         })
         .collect()
+}
+
+/// Builds a UTF-16 server tracking `documents` behind
+/// [`ResolveCaptureServer`]; returns the server and the capture handles
+/// its handlers write.
+fn resolve_capture_server(
+    documents: &[(&str, &str)],
+) -> (
+    LanguageServerWithState<ResolveCaptureServer>,
+    ResolveCaptureServer,
+) {
+    let captures = ResolveCaptureServer {
+        code_lens: Arc::new(Mutex::new(None)),
+        inlay_hint: Arc::new(Mutex::new(None)),
+        workspace_symbol: Arc::new(Mutex::new(None)),
+    };
+    let mut server = LanguageServerWithState::new(
+        ClientSocket::new_closed(),
+        ResolveCaptureServer {
+            code_lens: Arc::clone(&captures.code_lens),
+            inlay_hint: Arc::clone(&captures.inlay_hint),
+            workspace_symbol: Arc::clone(&captures.workspace_symbol),
+        },
+    );
+    server.state.set_position_encoding(Encoding::UTF16);
+    for (name, text) in documents {
+        let _ = server.did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(url(name), "plaintext".into(), 0, (*text).into()),
+        });
+    }
+    (server, captures)
+}
+
+/// Drives one workspaceSymbol/resolve round trip over the capture server;
+/// returns (the location the handler received, the location the client got
+/// back).
+fn drive_workspace_symbol_resolve(
+    server: &mut LanguageServerWithState<ResolveCaptureServer>,
+    captures: &ResolveCaptureServer,
+    location: OneOf<Location, WorkspaceLocation>,
+) -> (
+    OneOf<Location, WorkspaceLocation>,
+    OneOf<Location, WorkspaceLocation>,
+) {
+    let resolved = futures::executor::block_on(server.workspace_symbol_resolve(WorkspaceSymbol {
+        name: "s".into(),
+        kind: SymbolKind::FUNCTION,
+        tags: None,
+        container_name: None,
+        location,
+        data: None,
+    }))
+    .expect("symbol resolves");
+    let received = captures
+        .workspace_symbol
+        .lock()
+        .expect("capture mutex")
+        .clone()
+        .expect("handler ran");
+    (received.location, resolved.location)
 }
 
 fn test_capabilities() -> Option<ServerCapabilities> {
@@ -898,6 +1012,144 @@ fn link_resolve_skips_conversion_without_a_sole_document() {
 
     assert_eq!(received, Some(same_line(0, 2, 2)));
     assert_eq!(returned, same_line(0, 2, 2));
+}
+
+#[test]
+fn code_lens_resolve_round_trips_through_the_sole_document() {
+    // One tracked document ("🙂abc": byte 4 == UTF-16 unit 2): the handler
+    // sees UTF-8, the client its UTF-16 columns back.
+    let (mut server, captures) = resolve_capture_server(&[("only.txt", "🙂abc")]);
+
+    let resolved = futures::executor::block_on(server.code_lens_resolve(CodeLens {
+        range: same_line(0, 2, 3),
+        command: None,
+        data: None,
+    }))
+    .expect("code lens resolves");
+
+    let received = captures
+        .code_lens
+        .lock()
+        .expect("capture mutex")
+        .clone()
+        .expect("handler ran");
+    assert_eq!(received.range, same_line(0, 4, 5));
+    assert_eq!(resolved.range, same_line(0, 2, 3));
+}
+
+#[test]
+fn inlay_hint_resolve_round_trips_through_the_sole_document() {
+    // One tracked document ("🙂abc"): position, text edits, and the
+    // label-part location (keyed at that same document) all convert — the
+    // handler sees UTF-8 everywhere, the client its UTF-16 columns.
+    let (mut server, captures) = resolve_capture_server(&[("only.txt", "🙂abc")]);
+
+    let resolved = futures::executor::block_on(server.inlay_hint_resolve(InlayHint {
+        position: line_position(0, 2),
+        label: InlayHintLabel::LabelParts(vec![InlayHintLabelPart {
+            value: "x".into(),
+            tooltip: None,
+            location: Some(Location::new(url("only.txt"), same_line(0, 2, 3))),
+            command: None,
+        }]),
+        kind: None,
+        text_edits: Some(vec![TextEdit {
+            range: same_line(0, 2, 3),
+            new_text: "x".into(),
+        }]),
+        tooltip: None,
+        padding_left: None,
+        padding_right: None,
+        data: None,
+    }))
+    .expect("inlay hint resolves");
+
+    let received = captures
+        .inlay_hint
+        .lock()
+        .expect("capture mutex")
+        .clone()
+        .expect("handler ran");
+    assert_eq!(received.position, line_position(0, 4));
+    let edits = received.text_edits.expect("edits present");
+    assert_eq!(edits[0].range, same_line(0, 4, 5));
+    let InlayHintLabel::LabelParts(parts) = &received.label else {
+        panic!("label parts present");
+    };
+    let location = parts[0].location.as_ref().expect("location present");
+    assert_eq!(location.range, same_line(0, 4, 5));
+
+    assert_eq!(resolved.position, line_position(0, 2));
+}
+
+#[test]
+fn workspace_symbol_resolve_converts_per_url_and_passes_right_through() {
+    // Sole tracked document "🙂abc"; the symbol's location resolves against
+    // ITS OWN document — the tracked snapshot when the URL is tracked, a
+    // disk read when it only exists on disk ("x🙂🙂": byte 1 == UTF-16 unit
+    // 1, byte 9 == unit 5; the sole anchor would move these columns
+    // differently) — and the range-less Right variant passes through.
+    let root = temp_workspace("with_state", "symbol-resolve");
+    let on_disk = root.join("sym.txt");
+    fs::write(&on_disk, "x🙂🙂").expect("test file can be written");
+    let on_disk = fs::canonicalize(on_disk).expect("test file can be canonicalized");
+    let disk_url = Url::from_file_path(on_disk).expect("path can be converted to a URL");
+
+    let (mut server, captures) = resolve_capture_server(&[("only.txt", "🙂abc")]);
+
+    // Tracked URL: converts against the tracked snapshot, both directions.
+    let (received, returned) = drive_workspace_symbol_resolve(
+        &mut server,
+        &captures,
+        OneOf::Left(Location {
+            uri: url("only.txt"),
+            range: same_line(0, 2, 3),
+        }),
+    );
+    let OneOf::Left(received_location) = received else {
+        panic!("expected a ranged location");
+    };
+    let OneOf::Left(returned_location) = returned else {
+        panic!("expected a ranged location");
+    };
+    assert_eq!(received_location.range, same_line(0, 4, 5));
+    assert_eq!(returned_location.range, same_line(0, 2, 3));
+
+    // Untracked but on disk: the disk fallback reads the file, both
+    // directions.
+    let (received, returned) = drive_workspace_symbol_resolve(
+        &mut server,
+        &captures,
+        OneOf::Left(Location {
+            uri: disk_url,
+            range: same_line(0, 1, 5),
+        }),
+    );
+    let OneOf::Left(received_location) = received else {
+        panic!("expected a ranged location");
+    };
+    let OneOf::Left(returned_location) = returned else {
+        panic!("expected a ranged location");
+    };
+    assert_eq!(received_location.range, same_line(0, 1, 9));
+    assert_eq!(returned_location.range, same_line(0, 1, 5));
+
+    // Right variant: carries no range, passes through unchanged in both
+    // directions.
+    let expected_right = OneOf::Right(WorkspaceLocation {
+        uri: url("only.txt"),
+    });
+    let (received, returned) = drive_workspace_symbol_resolve(
+        &mut server,
+        &captures,
+        OneOf::Right(WorkspaceLocation {
+            uri: url("only.txt"),
+        }),
+    );
+    assert_eq!(received, expected_right);
+    assert_eq!(returned, expected_right);
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
 #[test]

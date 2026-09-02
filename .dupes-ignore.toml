@@ -165,3 +165,11 @@ reason = "supertypes/subtypes hand-written conversion pins: mirror requests over
 [[ignore]]
 fingerprint = "3ca1c2536ff13cb7"
 reason = "convert_call_hierarchy_item/convert_type_hierarchy_item: the two lsp-types item structs share their field shapes but are distinct foreign types; unifying them would need a private access trait whose only value is dedup (ceremony per the crate's typing criterion), so the mirror pair stays"
+
+[[ignore]]
+fingerprint = "bf14980c7647a2e3"
+reason = "resolve capture trio in with_state/tests.rs (code_lens, inlay_hint, workspace_symbol): trait-mandated per-method Server impls sharing the capture-and-echo shape over the common store helper — each dispatch test needs its own echo handler for its method (family of the f83853ca365213c9 capture-server bodies)"
+
+[[ignore]]
+fingerprint = "31b0389d7206c403"
+reason = "workspace-symbol resolve twins: modify_params/modify_response delegate to the one document-free per-URL converter with only Direction flipped; the converter resolves each location against its own document, so the sole-document anchor plays no part (family of the d9a381ff3f5dca75 resolve twins)"

@@ -337,6 +337,21 @@ macro_rules! resolve_methods {
                 params: async_lsp::lsp_types::DocumentLink,
                 response: async_lsp::lsp_types::DocumentLink,
             }
+            code_lens_resolve: code_lens_resolve @ CodeLensResolve {
+                doc: "Handles `codeLens/resolve` requests from the client.\n\nFills in the command of a lens previously returned by [`Server::code_lens`]. The default implementation resolves the lens unchanged. Requires a code lens provider with `resolve_provider` enabled. The lens's range is converted to UTF-8 before the handler runs and back to the negotiated encoding afterwards — both against the sole tracked document, when exactly one document is tracked; otherwise it passes through unchanged.",
+                params: async_lsp::lsp_types::CodeLens,
+                response: async_lsp::lsp_types::CodeLens,
+            }
+            inlay_hint_resolve: inlay_hint_resolve @ InlayHintResolve {
+                doc: "Handles `inlayHint/resolve` requests from the client.\n\nFills in additional detail on a hint previously returned by [`Server::inlay_hint`]. The default implementation resolves the hint unchanged. Requires an inlay hint provider with `resolve_provider` enabled. The hint's position, edits, and label-part locations are converted to UTF-8 before the handler runs and back to the negotiated encoding afterwards — both against the sole tracked document, when exactly one document is tracked; otherwise they pass through unchanged.",
+                params: async_lsp::lsp_types::InlayHint,
+                response: async_lsp::lsp_types::InlayHint,
+            }
+            workspace_symbol_resolve: workspace_symbol_resolve @ WorkspaceSymbolResolve {
+                doc: "Handles `workspaceSymbol/resolve` requests from the client.\n\nFills in the location range of a symbol previously returned by [`Server::symbol`] without one. The default implementation resolves the symbol unchanged. Requires a workspace symbol provider with `resolve_provider` enabled. The symbol's location is converted to UTF-8 before the handler runs and back to the negotiated encoding afterwards — against the location's own document when tracked, reading from disk otherwise; a location without a range passes through unchanged.",
+                params: async_lsp::lsp_types::WorkspaceSymbol,
+                response: async_lsp::lsp_types::WorkspaceSymbol,
+            }
         }
     };
 }
