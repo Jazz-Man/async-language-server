@@ -21,13 +21,17 @@ use async_lsp::lsp_types::{
     LinkedEditingRanges as LspLinkedEditingRanges, Location as LspLocation,
     LocationLink as LspLocationLink, OneOf, ParameterLabel as LspParameterLabel,
     Position as LspPosition, PrepareRenameResponse as LspPrepareRenameResponse, Range as LspRange,
-    SemanticToken as LspSemanticToken, SemanticTokensResult as LspSemanticTokensResult,
-    SignatureHelp as LspSignatureHelp, TextEdit as LspTextEdit,
-    TypeHierarchyItem as LspTypeHierarchyItem, Url, WorkspaceEdit as LspWorkspaceEdit,
+    SemanticToken as LspSemanticToken, SemanticTokens as LspSemanticTokens,
+    SemanticTokensEdit as LspSemanticTokensEdit,
+    SemanticTokensFullDeltaResult as LspSemanticTokensFullDeltaResult,
+    SemanticTokensRangeResult as LspSemanticTokensRangeResult,
+    SemanticTokensResult as LspSemanticTokensResult, SignatureHelp as LspSignatureHelp,
+    TextEdit as LspTextEdit, TypeHierarchyItem as LspTypeHierarchyItem, Url,
+    WorkspaceEdit as LspWorkspaceEdit,
 };
 
 use crate::{
-    server::{Document, ServerState},
+    server::{CachedSemanticTokens, Document, ServerState},
     text_utils::{Encoding, position_to_encoding},
 };
 
@@ -702,12 +706,46 @@ fn convert_label_offsets(label: &str, offsets: &mut [u32; 2], from: Encoding, to
 /// start on the same line, or from 0 on a new line. The walk reconstructs
 /// each token's absolute source-encoding position, converts it (and the
 /// position after the token's length) through the document rope, and
-/// re-relativizes against the previous CONVERTED token.
+/// re-relativizes against the previous CONVERTED token, starting from the
+/// document origin.
 pub(crate) fn convert_semantic_tokens_data(
     state: &ServerState,
     document: &Document,
     data: &mut [LspSemanticToken],
     direction: Direction,
+) {
+    convert_seeded_token_stream(
+        state,
+        document,
+        data,
+        direction,
+        LspPosition {
+            line: 0,
+            character: 0,
+        },
+        LspPosition {
+            line: 0,
+            character: 0,
+        },
+    );
+}
+
+/// The seeded variant of [`convert_semantic_tokens_data`]: `previous_source`
+/// is the absolute position the first token's deltas are relative to in the
+/// source encoding, `previous_target` the same anchor in the target encoding
+/// (both the document origin for an unseeded stream).
+///
+/// Token deltas — including client-supplied incoming ones — are untrusted:
+/// every reconstruction and re-relativization saturates, so no input can
+/// panic or wrap the walk, even where `position_to_encoding` clamps
+/// out-of-range positions against the document.
+fn convert_seeded_token_stream(
+    state: &ServerState,
+    document: &Document,
+    data: &mut [LspSemanticToken],
+    direction: Direction,
+    mut previous_source: LspPosition,
+    mut previous_target: LspPosition,
 ) {
     let (source, target) = match direction {
         Direction::Incoming => (state.get_position_encoding(), Encoding::UTF8),
@@ -716,34 +754,28 @@ pub(crate) fn convert_semantic_tokens_data(
     if source == target {
         return;
     }
-    let mut previous_source = LspPosition {
-        line: 0,
-        character: 0,
-    };
-    let mut previous_target = LspPosition {
-        line: 0,
-        character: 0,
-    };
     for token in data.iter_mut() {
         let absolute_source = LspPosition {
-            line: previous_source.line + token.delta_line,
+            line: previous_source.line.saturating_add(token.delta_line),
             character: if token.delta_line == 0 {
-                previous_source.character + token.delta_start
+                previous_source.character.saturating_add(token.delta_start)
             } else {
                 token.delta_start
             },
         };
         let absolute_end_source = LspPosition {
             line: absolute_source.line,
-            character: absolute_source.character + token.length,
+            character: absolute_source.character.saturating_add(token.length),
         };
         let absolute_target = position_to_encoding(&document.text, absolute_source, source, target);
         let absolute_end_target =
             position_to_encoding(&document.text, absolute_end_source, source, target);
 
-        token.delta_line = absolute_target.line - previous_target.line;
+        token.delta_line = absolute_target.line.saturating_sub(previous_target.line);
         token.delta_start = if absolute_target.line == previous_target.line {
-            absolute_target.character - previous_target.character
+            absolute_target
+                .character
+                .saturating_sub(previous_target.character)
         } else {
             absolute_target.character
         };
@@ -759,9 +791,35 @@ pub(crate) fn convert_semantic_tokens_data(
     }
 }
 
-/// Converts a semanticTokens/full response's token stream from UTF-8 to
-/// the client encoding, covering both the full and the partial-result
-/// shape.
+/// Stores a full token stream's UTF-8 data under its `result_id` and
+/// converts it to the client encoding in place. Shared by
+/// semanticTokens/full and the full-stream branch of
+/// semanticTokens/full/delta. The stream is stored BEFORE the conversion —
+/// the cache holds the server's UTF-8 columns, never the client's.
+fn convert_and_cache_full_stream(
+    state: &ServerState,
+    url: &Url,
+    document: &Document,
+    tokens: &mut LspSemanticTokens,
+) {
+    if let Some(result_id) = tokens.result_id.clone() {
+        state.store_semantic_tokens(
+            url,
+            CachedSemanticTokens {
+                result_id,
+                data: tokens.data.clone(),
+            },
+        );
+    }
+    convert_semantic_tokens_data(state, document, &mut tokens.data, Direction::Outgoing);
+}
+
+/// Caches a semanticTokens/full response's UTF-8 token stream for later
+/// delta requests and converts it from UTF-8 to the client encoding,
+/// covering both the full and the partial-result shape.
+///
+/// Only the full shape carries a `result_id` to cache under; partial
+/// results convert without touching the cache.
 pub(crate) fn modify_outgoing_semantic_tokens_result(
     state: &ServerState,
     document: &Document,
@@ -770,12 +828,218 @@ pub(crate) fn modify_outgoing_semantic_tokens_result(
     let Some(result) = response else { return };
     match result {
         LspSemanticTokensResult::Tokens(tokens) => {
-            convert_semantic_tokens_data(state, document, &mut tokens.data, Direction::Outgoing);
+            convert_and_cache_full_stream(state, document.url(), document, tokens);
         }
         LspSemanticTokensResult::Partial(partial) => {
             convert_semantic_tokens_data(state, document, &mut partial.data, Direction::Outgoing);
         }
     }
+}
+
+/// Converts a semanticTokens/range response to the client encoding.
+///
+/// Range responses never seed the delta cache — only full and delta
+/// responses do.
+pub(crate) fn modify_outgoing_semantic_tokens_range_result(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<LspSemanticTokensRangeResult>,
+) {
+    let Some(result) = response else { return };
+    match result {
+        LspSemanticTokensRangeResult::Tokens(tokens) => {
+            convert_semantic_tokens_data(state, document, &mut tokens.data, Direction::Outgoing);
+        }
+        LspSemanticTokensRangeResult::Partial(partial) => {
+            convert_semantic_tokens_data(state, document, &mut partial.data, Direction::Outgoing);
+        }
+    }
+}
+
+/// Converts a semanticTokens/full/delta response to the client encoding.
+///
+/// Edit `start`/`delete_count` index the flat number array and pass
+/// through untouched. Each edit's inserted tokens are relative to the
+/// token preceding the edit region in the SERVER's UTF-8 stream — the
+/// cached previous result — so conversion seeds its walk from there, in
+/// both the UTF-8 frame (source) and the client-encoding frame (target).
+/// On a cache miss the edits pass through unconverted (traced under the
+/// `tracing` feature). A full-stream response caches like
+/// semanticTokens/full; a delta response splices the cache with the edits'
+/// ORIGINAL UTF-8 values — never the client columns the response was
+/// converted to — keeping it equal to what the server's next delta is
+/// computed against. A delta without its own `result_id` continues the
+/// cached result, so the splice keeps the cached id.
+pub(crate) fn modify_outgoing_semantic_tokens_delta_result(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<LspSemanticTokensFullDeltaResult>,
+) {
+    let Some(result) = response else { return };
+    let url = document.url();
+    let cached = state.cached_semantic_tokens(url);
+    match result {
+        LspSemanticTokensFullDeltaResult::Tokens(tokens) => {
+            convert_and_cache_full_stream(state, url, document, tokens);
+        }
+        LspSemanticTokensFullDeltaResult::TokensDelta(delta) => {
+            // Snapshot the edits BEFORE converting them: the cache splice
+            // must apply the server's UTF-8 values, not the client columns
+            // `convert_semantic_tokens_edits` rewrites them to.
+            let original = delta.edits.clone();
+            convert_semantic_tokens_edits(state, document, cached.as_ref(), &mut delta.edits);
+            // A delta without its own result_id continues the cached
+            // result — the client keeps the previous one — so the splice
+            // stores back under the cached id.
+            let result_id = delta
+                .result_id
+                .clone()
+                .or_else(|| cached.as_ref().map(|cached| cached.result_id.clone()));
+            if let Some(result_id) = result_id {
+                splice_semantic_tokens_cache(state, url, cached.as_ref(), &original, result_id);
+            }
+        }
+        LspSemanticTokensFullDeltaResult::PartialTokensDelta { edits } => {
+            // Partial results carry no result_id, so there is nothing to
+            // splice the cache with.
+            convert_semantic_tokens_edits(state, document, cached.as_ref(), edits);
+        }
+    }
+}
+
+/// Converts each edit's inserted tokens from UTF-8 to the client encoding,
+/// seeded from the cached UTF-8 stream: the token preceding the edit region
+/// provides the relative origin in both frames. Edits assume token-aligned
+/// `start` values (the vscode-sample shape); a mid-token start seeds from
+/// the last fully preceding token, and a start past the stream clamps to
+/// its end. An edit at the stream's start seeds from the origin, which is
+/// the fold of an empty prefix. On a cache miss nothing converts.
+fn convert_semantic_tokens_edits(
+    state: &ServerState,
+    document: &Document,
+    cached: Option<&CachedSemanticTokens>,
+    edits: &mut [LspSemanticTokensEdit],
+) {
+    let Some(cached) = cached else {
+        #[cfg(feature = "tracing")]
+        tracing::debug!("semantic tokens delta without a cached previous result");
+        return;
+    };
+    for edit in edits {
+        let Some(inserted) = edit.data.as_mut() else {
+            continue;
+        };
+        // Flat-array index -> token index: the inserted stream's first
+        // token is encoded relative to the token preceding the edit region,
+        // so folding the cached prefix up to that token yields the anchor
+        // in the UTF-8 frame; converting the anchor yields it in the
+        // client frame. Client edits are untrusted: clamp, never panic.
+        let anchor = (edit.start as usize)
+            .div_euclid(SEMANTIC_TOKEN_WIDTH)
+            .min(cached.data.len());
+        let seed_source = absolute_position(&cached.data[..anchor]);
+        let seed_target = position_to_encoding(
+            &document.text,
+            seed_source,
+            Encoding::UTF8,
+            state.get_position_encoding(),
+        );
+        convert_seeded_token_stream(
+            state,
+            document,
+            inserted,
+            Direction::Outgoing,
+            seed_source,
+            seed_target,
+        );
+    }
+}
+
+/// Folds a token prefix's deltas into the absolute position the walk
+/// continues from — the start of the prefix's last token, or the document
+/// origin for an empty prefix.
+fn absolute_position(prefix: &[LspSemanticToken]) -> LspPosition {
+    let mut position = LspPosition {
+        line: 0,
+        character: 0,
+    };
+    for token in prefix {
+        position.line = position.line.saturating_add(token.delta_line);
+        position.character = if token.delta_line == 0 {
+            position.character.saturating_add(token.delta_start)
+        } else {
+            token.delta_start
+        };
+    }
+    position
+}
+
+/// Numbers per token in the wire's flat semantic-token array.
+const SEMANTIC_TOKEN_WIDTH: usize = 5;
+
+/// Flattens a token stream into the wire's five-numbers-per-token array.
+fn semantic_tokens_to_flat(data: &[LspSemanticToken]) -> Vec<u32> {
+    data.iter()
+        .flat_map(|token| {
+            [
+                token.delta_line,
+                token.delta_start,
+                token.length,
+                token.token_type,
+                token.token_modifiers_bitset,
+            ]
+        })
+        .collect()
+}
+
+/// Applies the edits to the cached UTF-8 stream with the ORIGINAL
+/// (unconverted) inserted values, storing the result under `result_id`.
+fn splice_semantic_tokens_cache(
+    state: &ServerState,
+    url: &Url,
+    cached: Option<&CachedSemanticTokens>,
+    edits: &[LspSemanticTokensEdit],
+    result_id: String,
+) {
+    let Some(cached) = cached else { return };
+    let mut flat = semantic_tokens_to_flat(&cached.data);
+    // Edits are relative to the same state; apply back-to-front so
+    // indices stay valid (the spec's client-side algorithm).
+    let mut sorted: Vec<&LspSemanticTokensEdit> = edits.iter().collect();
+    sorted.sort_by_key(|edit| edit.start);
+    for edit in sorted.iter().rev() {
+        let start = (edit.start as usize).min(flat.len());
+        let end = (start + edit.delete_count as usize).min(flat.len());
+        let inserted = edit
+            .data
+            .as_deref()
+            .map(semantic_tokens_to_flat)
+            .unwrap_or_default();
+        flat.splice(start..end, inserted);
+    }
+    let data = flat
+        .as_chunks::<SEMANTIC_TOKEN_WIDTH>()
+        .0
+        .iter()
+        .map(
+            |&[
+                delta_line,
+                delta_start,
+                length,
+                token_type,
+                token_modifiers_bitset,
+            ]| {
+                LspSemanticToken {
+                    delta_line,
+                    delta_start,
+                    length,
+                    token_type,
+                    token_modifiers_bitset,
+                }
+            },
+        )
+        .collect();
+    state.store_semantic_tokens(url, CachedSemanticTokens { result_id, data });
 }
 
 pub(crate) fn convert_workspace_edit(

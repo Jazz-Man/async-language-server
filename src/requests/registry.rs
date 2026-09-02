@@ -241,6 +241,21 @@ macro_rules! generated_methods {
                 document: text_document,
                 outgoing: modify_outgoing_semantic_tokens_result,
             }
+            semantic_tokens_range: semantic_tokens_range @ SemanticTokensRange {
+                doc: "Handles `textDocument/semanticTokens/range` requests from the client.\n\nReturns the semantic token stream for the range in `params`, or `None`. Token columns and lengths are UTF-8 here and converted on the wire. Requires a semantic tokens provider with `range` support in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::SemanticTokensRangeParams,
+                response: Option<async_lsp::lsp_types::SemanticTokensRangeResult>,
+                document: text_document,
+                incoming: range at range,
+                outgoing: modify_outgoing_semantic_tokens_range_result,
+            }
+            semantic_tokens_full_delta: semantic_tokens_full_delta @ SemanticTokensFullDelta {
+                doc: "Handles `textDocument/semanticTokens/full/delta` requests from the client.\n\nReturns edits transforming the previous token stream (identified by `params.previous_result_id`) into the current one, or a full stream when a delta is not practical. Token columns and lengths are UTF-8 here; edits' inserted tokens are converted seeded against the cached previous UTF-8 stream, and flat-array indices pass through unchanged. Requires a semantic tokens provider with `full.delta` support in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::SemanticTokensDeltaParams,
+                response: Option<async_lsp::lsp_types::SemanticTokensFullDeltaResult>,
+                document: text_document,
+                outgoing: modify_outgoing_semantic_tokens_delta_result,
+            }
         }
     };
 }

@@ -31,8 +31,8 @@ use std::{
 use async_lsp::{
     ClientSocket,
     lsp_types::{
-        Diagnostic, DidOpenTextDocumentParams, Position, Range, TextDocumentItem, Url,
-        WorkspaceFolder,
+        Diagnostic, DidOpenTextDocumentParams, Position, Range, SemanticToken, TextDocumentItem,
+        Url, WorkspaceFolder,
     },
 };
 
@@ -55,6 +55,18 @@ pub(crate) const fn line_range(start: Position, end: Position) -> Range {
 /// Builds an LSP [`Range`] between two columns of a single line.
 pub(crate) const fn same_line(line: u32, start: u32, end: u32) -> Range {
     line_range(line_position(line, start), line_position(line, end))
+}
+
+/// Builds a `SemanticToken` with the given relative columns and length
+/// (type and modifiers zero).
+pub(crate) const fn token(delta_line: u32, delta_start: u32, length: u32) -> SemanticToken {
+    SemanticToken {
+        delta_line,
+        delta_start,
+        length,
+        token_type: 0,
+        token_modifiers_bitset: 0,
+    }
 }
 
 /// Builds a `file:///tmp/{path}` document URL.

@@ -26,6 +26,7 @@ pub use self::options::{
 };
 pub use self::serve::serve;
 pub use self::server_trait::Server;
+pub(crate) use self::state::CachedSemanticTokens;
 pub use self::state::ServerState;
 pub use crate::documents::DocumentMatcher;
 pub use crate::documents::{Document, DocumentReader};

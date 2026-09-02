@@ -1,6 +1,9 @@
 use std::{path::PathBuf, sync::Arc};
 
-use async_lsp::{ClientSocket, lsp_types::Url};
+use async_lsp::{
+    ClientSocket,
+    lsp_types::{SemanticToken as LspSemanticToken, Url},
+};
 use dashmap::DashMap;
 
 use crate::{
@@ -25,6 +28,7 @@ pub struct ServerState {
     workspace_diagnostics: WorkspaceDiagnosticsState,
     matchers: DocumentMatchers,
     encoding: Arc<Encoding>,
+    semantic_tokens_cache: Arc<DashMap<Url, CachedSemanticTokens>>,
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +41,15 @@ struct DocumentEntry {
 enum DocumentOrigin {
     Open,
     Workspace,
+}
+
+/// A semantic tokens result cached for delta requests: the document's full
+/// token stream in the server's UTF-8 encoding — what the server's next
+/// delta is computed against — identified by its `result_id`.
+#[derive(Debug, Clone)]
+pub(crate) struct CachedSemanticTokens {
+    pub(crate) result_id: String,
+    pub(crate) data: Vec<LspSemanticToken>,
 }
 
 impl ServerState {
@@ -84,6 +97,7 @@ impl ServerState {
         let workspace_diagnostics = WorkspaceDiagnosticsState::new(options);
         let matchers = DocumentMatchers::new(T::server_document_matchers());
         let encoding = Arc::new(Encoding::default());
+        let semantic_tokens_cache = Arc::new(DashMap::new());
         Self {
             client,
             documents,
@@ -91,6 +105,7 @@ impl ServerState {
             workspace_diagnostics,
             matchers,
             encoding,
+            semantic_tokens_cache,
         }
     }
 
@@ -108,6 +123,25 @@ impl ServerState {
 
     pub(crate) fn get_position_encoding(&self) -> Encoding {
         *self.encoding
+    }
+
+    /// Gets the semantic tokens result cached for a document, if one was
+    /// stored for its URL.
+    ///
+    /// The cached stream is the server's UTF-8 data — the state the
+    /// client's `previous_result_id` refers to — never the client-encoded
+    /// columns a response was converted to.
+    #[must_use]
+    pub(crate) fn cached_semantic_tokens(&self, url: &Url) -> Option<CachedSemanticTokens> {
+        self.semantic_tokens_cache
+            .get(url)
+            .map(|entry| entry.value().clone())
+    }
+
+    /// Stores a semantic tokens result for a document, replacing any
+    /// previous one stored for its URL.
+    pub(crate) fn store_semantic_tokens(&self, url: &Url, cached: CachedSemanticTokens) {
+        self.semantic_tokens_cache.insert(url.clone(), cached);
     }
 
     pub(crate) fn set_position_encoding(&mut self, kind: impl Into<Encoding>) {
