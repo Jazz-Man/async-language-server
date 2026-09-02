@@ -50,6 +50,12 @@ its own file with a `Request` impl providing three hooks:
 - `modify_params` — client encoding → UTF-8, before the handler runs.
 - `modify_response` — UTF-8 → client encoding, after.
 
+State-driven conversions that resolve each position against their own
+document — no single anchor (the workspace-symbol shape) — override
+`modify_response_standalone` instead; the engine calls it when no conversion
+document resolves, and `modify_response`'s default delegates to it so the
+override runs in every dispatch state.
+
 Implement these with the existing `modify_incoming_*` / `modify_outgoing_*`
 helpers in `src/requests/conversion.rs` (positions, ranges, locations,
 diagnostics, text edits) rather than calling `position_to_encoding`
