@@ -14,7 +14,8 @@ use async_lsp::lsp_types::{
     ColorInformation as LspColorInformation, ColorPresentation as LspColorPresentation,
     CompletionTextEdit as LspCompletionTextEdit, Diagnostic as LspDiagnostic,
     DocumentDiagnosticReportKind, DocumentHighlight as LspDocumentHighlight,
-    DocumentLink as LspDocumentLink, FoldingRange as LspFoldingRange,
+    DocumentLink as LspDocumentLink, DocumentSymbol as LspDocumentSymbol,
+    DocumentSymbolResponse as LspDocumentSymbolResponse, FoldingRange as LspFoldingRange,
     GotoDefinitionResponse as LspGotoDefinitionResponse, Hover as LspHover,
     InlayHint as LspInlayHint, InlayHintLabel as LspInlayHintLabel,
     LinkedEditingRanges as LspLinkedEditingRanges, Location as LspLocation,
@@ -586,6 +587,51 @@ pub(crate) fn modify_outgoing_inlay_hints(
                 if let Some(location) = part.location.as_mut() {
                     convert_location(state, document, location, Direction::Outgoing);
                 }
+            }
+        }
+    }
+}
+
+/// Converts a nested document-symbol tree's ranges from UTF-8 to the
+/// client encoding.
+fn convert_document_symbol(
+    state: &ServerState,
+    document: &Document,
+    symbol: &mut LspDocumentSymbol,
+) {
+    convert_range(state, document, &mut symbol.range, Direction::Outgoing);
+    convert_range(
+        state,
+        document,
+        &mut symbol.selection_range,
+        Direction::Outgoing,
+    );
+    if let Some(children) = symbol.children.as_mut() {
+        for child in children {
+            convert_document_symbol(state, document, child);
+        }
+    }
+}
+
+/// Converts a documentSymbol response from UTF-8 to the client encoding:
+/// flat `SymbolInformation` locations against the document their URL points
+/// at (falling back to the request document), nested `DocumentSymbol` trees
+/// against the request document (the tree describes it).
+pub(crate) fn modify_outgoing_document_symbols(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<LspDocumentSymbolResponse>,
+) {
+    let Some(response) = response else { return };
+    match response {
+        LspDocumentSymbolResponse::Flat(symbols) => {
+            for symbol in symbols {
+                convert_location(state, document, &mut symbol.location, Direction::Outgoing);
+            }
+        }
+        LspDocumentSymbolResponse::Nested(symbols) => {
+            for symbol in symbols {
+                convert_document_symbol(state, document, symbol);
             }
         }
     }

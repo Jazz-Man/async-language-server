@@ -91,13 +91,23 @@ macro_rules! implement_method {
                 }
 
                 // 6. Run the final "modify response" callback against a freshly
-                //    resolved conversion document
-                if let Some(doc) = conversion_document(&state, url.as_ref()) {
-                    <$request_type as crate::requests::Request>::modify_response(
-                        &state,
-                        &doc,
-                        &mut result,
-                    );
+                //    resolved conversion document; when none resolves, the
+                //    standalone hook runs state-driven conversions instead of
+                //    skipping them.
+                match conversion_document(&state, url.as_ref()) {
+                    Some(doc) => {
+                        <$request_type as crate::requests::Request>::modify_response(
+                            &state,
+                            &doc,
+                            &mut result,
+                        );
+                    }
+                    None => {
+                        <$request_type as crate::requests::Request>::modify_response_standalone(
+                            &state,
+                            &mut result,
+                        );
+                    }
                 }
 
                 Ok(result)
@@ -123,7 +133,7 @@ fn conversion_document(state: &ServerState, url: Option<&Url>) -> Option<Documen
 /// Reads a per-request document snapshot from a file URL. Blocking by
 /// design, matching the crate's other disk reads; never panics on
 /// external input — failures return `None` and conversion is skipped.
-fn read_document_from_disk(url: &Url) -> Option<Document> {
+pub(crate) fn read_document_from_disk(url: &Url) -> Option<Document> {
     if url.scheme() != "file" {
         return None;
     }

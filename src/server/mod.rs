@@ -35,3 +35,4 @@ pub use crate::error::{RangeError, ServerError, ServerErrorCode, ServerResult};
 pub use crate::documents::DocumentQueryCapture;
 
 pub(crate) use self::with_state::LanguageServerWithState;
+pub(crate) use self::with_state::read_document_from_disk;

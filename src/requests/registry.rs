@@ -222,6 +222,18 @@ macro_rules! generated_methods {
                 incoming: position at text_document_position_params.position,
                 outgoing: modify_outgoing_signature_help,
             }
+            document_symbol: document_symbol @ DocumentSymbol {
+                doc: "Handles `textDocument/documentSymbol` requests from the client.\n\nReturns the symbol tree of the document in `params` (nested when the client supports it, flat otherwise), or `None`. Requires a document symbol provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::DocumentSymbolParams,
+                response: Option<async_lsp::lsp_types::DocumentSymbolResponse>,
+                document: text_document,
+                outgoing: modify_outgoing_document_symbols,
+            }
+            execute_command: execute_command @ ExecuteCommand {
+                doc: "Handles `workspace/executeCommand` requests from the client.\n\nExecutes the command in `params` and returns an opaque result. Requires an execute command provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::ExecuteCommandParams,
+                response: Option<async_lsp::lsp_types::LSPAny>,
+            }
         }
     };
 }
@@ -274,6 +286,11 @@ macro_rules! custom_methods {
                 doc: "Handles `textDocument/inlineValue` requests from the client.\n\nReturns a single inline value computed for the range in `params`, or `None`. Requires an inline value provider in [`Server::server_capabilities`].",
                 params: async_lsp::lsp_types::InlineValueParams,
                 response: Option<async_lsp::lsp_types::InlineValue>,
+            }
+            symbol: symbol @ Symbol {
+                doc: "Handles `workspace/symbol` requests from the client.\n\nReturns the workspace-wide symbols matching the query, or `None`. Requires a workspace symbol provider in [`Server::server_capabilities`]. Symbol locations convert against their own document when tracked; untracked files are read from disk once per request (cached); unreadable locations pass through unchanged.",
+                params: async_lsp::lsp_types::WorkspaceSymbolParams,
+                response: Option<async_lsp::lsp_types::WorkspaceSymbolResponse>,
             }
         }
     };

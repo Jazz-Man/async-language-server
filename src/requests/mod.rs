@@ -108,6 +108,7 @@ mod document_highlight;
 mod document_link;
 mod document_link_resolve;
 mod document_range_format;
+mod document_symbol;
 mod folding_range;
 mod hover;
 mod implementation;
@@ -128,6 +129,7 @@ mod selection_range;
 mod signature_help;
 mod subtypes;
 mod supertypes;
+mod symbol;
 mod type_definition;
 mod will_create_files;
 mod will_delete_files;
@@ -147,6 +149,7 @@ pub(crate) use outgoing_calls::OutgoingCalls;
 pub(crate) use selection_range::SelectionRange;
 pub(crate) use subtypes::Subtypes;
 pub(crate) use supertypes::Supertypes;
+pub(crate) use symbol::Symbol;
 
 crate::requests::registry::generated_methods!(registry_request_impls);
 
@@ -159,6 +162,22 @@ pub trait Request {
     }
 
     fn modify_params(_state: &ServerState, _document: &Document, _params: &mut Self::Params) {}
-    fn modify_response(_state: &ServerState, _document: &Document, _response: &mut Self::Response) {
+
+    // Delegation, not a no-op: a request that overrides only the standalone
+    // hook must run it here too, or the engine's sole-document fallback for
+    // URL-less requests would skip its state-driven conversion in exactly
+    // that state.
+    fn modify_response(state: &ServerState, _document: &Document, response: &mut Self::Response) {
+        Self::modify_response_standalone(state, response);
     }
+
+    /// Response conversion for requests with no document anchor.
+    ///
+    /// The dispatch engine calls this instead of [`Request::modify_response`]
+    /// when it cannot resolve a single conversion document (URL-less
+    /// requests in a zero- or multi-document state). Override it for
+    /// state-driven conversions that resolve each position against its own
+    /// document — the workspace-symbol shape; the default no-op passes the
+    /// response through unchanged.
+    fn modify_response_standalone(_state: &ServerState, _response: &mut Self::Response) {}
 }

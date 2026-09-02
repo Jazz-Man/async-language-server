@@ -13,12 +13,13 @@ use async_lsp::{
         DidChangeWorkspaceFoldersParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
         DocumentDiagnosticReport, DocumentDiagnosticReportKind, DocumentDiagnosticReportResult,
         DocumentLink, FileCreate, FullDocumentDiagnosticReport, GeneralClientCapabilities, Hover,
-        HoverContents, HoverParams, InitializeParams, MarkupContent, MarkupKind, OneOf,
+        HoverContents, HoverParams, InitializeParams, Location, MarkupContent, MarkupKind, OneOf,
         PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
-        RelatedFullDocumentDiagnosticReport, ServerCapabilities, TextDocumentIdentifier,
-        TextDocumentItem, TextDocumentPositionParams, TextEdit, Url, WorkDoneProgressParams,
-        WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
+        RelatedFullDocumentDiagnosticReport, ServerCapabilities, SymbolKind,
+        TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, TextEdit, Url,
+        WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
         WorkspaceDocumentDiagnosticReport, WorkspaceEdit, WorkspaceFoldersChangeEvent,
+        WorkspaceSymbol, WorkspaceSymbolParams, WorkspaceSymbolResponse,
     },
 };
 
@@ -181,6 +182,46 @@ impl Server for HoverCaptureServer {
     }
 }
 
+/// Answers `workspace/symbol` with nested symbols located in `url("a.txt")`
+/// at UTF-8 (0,4)-(0,5) and `self.0` at UTF-8 (0,5)-(0,9).
+struct SymbolServer(Url);
+
+impl Server for SymbolServer {
+    fn symbol(
+        &self,
+        _state: ServerState,
+        _params: WorkspaceSymbolParams,
+    ) -> impl std::future::Future<Output = ServerResult<Option<WorkspaceSymbolResponse>>> + Send
+    {
+        let second_uri = self.0.clone();
+        let nested = vec![
+            WorkspaceSymbol {
+                name: "a".into(),
+                kind: SymbolKind::FUNCTION,
+                tags: None,
+                container_name: None,
+                location: OneOf::Left(Location {
+                    uri: url("a.txt"),
+                    range: same_line(0, 4, 5),
+                }),
+                data: None,
+            },
+            WorkspaceSymbol {
+                name: "b".into(),
+                kind: SymbolKind::FUNCTION,
+                tags: None,
+                container_name: None,
+                location: OneOf::Left(Location {
+                    uri: second_uri,
+                    range: same_line(0, 5, 9),
+                }),
+                data: None,
+            },
+        ];
+        std::future::ready(Ok(Some(WorkspaceSymbolResponse::Nested(nested))))
+    }
+}
+
 /// Drives documentLink/resolve over real dispatch: opens `documents`,
 /// sends a link at UTF-16 position (0,2) with the given target, and returns
 /// (what the handler received, what the client got back).
@@ -244,6 +285,43 @@ fn drive_will_create_files(documents: &[(&str, &str)]) -> Range {
         .get(&url("edit.txt"))
         .expect("edit is keyed at the emoji URL")[0]
         .range
+}
+
+/// Drives workspace/symbol over real dispatch: opens `documents` and returns
+/// the (uri, range) pairs the client received, in handler order. The handler
+/// answers with a location in `url("a.txt")` at UTF-8 (0,4)-(0,5) and one in
+/// `second_uri` at UTF-8 (0,5)-(0,9).
+fn drive_workspace_symbol(documents: &[(&str, &str)], second_uri: Url) -> Vec<(Url, Range)> {
+    let mut server =
+        LanguageServerWithState::new(ClientSocket::new_closed(), SymbolServer(second_uri));
+    server.state.set_position_encoding(Encoding::UTF16);
+    for (name, text) in documents {
+        let _ = server.did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: url(name),
+                language_id: "plaintext".into(),
+                version: 0,
+                text: (*text).into(),
+            },
+        });
+    }
+
+    let response = futures::executor::block_on(server.symbol(WorkspaceSymbolParams {
+        query: String::new(),
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    }))
+    .expect("symbol succeeds");
+    let Some(WorkspaceSymbolResponse::Nested(symbols)) = response else {
+        panic!("expected nested symbols");
+    };
+    symbols
+        .into_iter()
+        .map(|symbol| match symbol.location {
+            OneOf::Left(location) => (location.uri, location.range),
+            OneOf::Right(_) => panic!("expected a ranged location"),
+        })
+        .collect()
 }
 
 fn test_capabilities() -> Option<ServerCapabilities> {
@@ -844,6 +922,35 @@ fn url_less_passes_through_without_sole_document() {
         drive_will_create_files(&[("a.txt", "🙂abc"), ("b.txt", "🙂🙂")]),
         same_line(0, 4, 4)
     );
+}
+
+#[test]
+fn workspace_symbol_converts_in_sole_and_multi_document_states() {
+    // Sole document: the engine resolves a sole conversion document, so
+    // dispatch goes through `modify_response` — whose trait default
+    // delegates to the standalone hook. The tracked location must still
+    // convert; without the delegation this state passed through raw.
+    // The second location points inside this test's own temp workspace at
+    // a file that was never created — hermetically missing, so the disk
+    // fallback provably passes it through unchanged.
+    let missing =
+        Url::from_file_path(temp_workspace("with_state", "symbol-missing").join("missing.txt"))
+            .expect("path converts to a URL");
+    let locations = drive_workspace_symbol(&[("a.txt", "🙂abc")], missing.clone());
+
+    assert_eq!(locations[0], (url("a.txt"), same_line(0, 2, 3)));
+    assert_eq!(locations[1], (missing, same_line(0, 5, 9)));
+
+    // Two tracked documents with different multibyte layouts: each location
+    // must convert against its OWN document ("🙂abc": byte 4 == UTF-16
+    // unit 2, byte 5 == unit 3; "x🙂🙂": byte 5 == unit 3, byte 9 ==
+    // unit 5) — converting either location against the other document
+    // moves it to different columns in both directions. This is the exact
+    // state where URL-less responses used to pass through raw.
+    let locations = drive_workspace_symbol(&[("a.txt", "🙂abc"), ("b.txt", "x🙂🙂")], url("b.txt"));
+
+    assert_eq!(locations[0], (url("a.txt"), same_line(0, 2, 3)));
+    assert_eq!(locations[1], (url("b.txt"), same_line(0, 3, 5)));
 }
 
 #[test]
