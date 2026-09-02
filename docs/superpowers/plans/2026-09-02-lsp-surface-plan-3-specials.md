@@ -611,12 +611,29 @@ One test drives all twelve notifications through `LanguageServerWithState` (reus
 
 ---
 
-### Task 7: Final sweep for Plan 3 + cycle
+### Task 7: Resolve standalone fallback + final sweep
+
+Extended by the owner's design decision (2026-09-02, registered at T3's review): the resolve engine's sole-document gate leaves `workspaceSymbol/resolve` unconverted in multi-document sessions — the mirror of the T8 gate the standalone hook fixed for `workspace/symbol`.
 
 **Files:**
-- Verify-only (dupes-entry fate may touch `.dupes-ignore.toml`)
+- Modify: `src/requests/mod.rs` (`modify_params_standalone` hook), `src/server/with_state/mod.rs` (`implement_resolve_method!` branch), `src/requests/workspace_symbol_resolve.rs` (both hooks move), `.claude/rules/structure.md` (one sentence), `.claude/rules/testing.md` (`token` fixture line)
+- Test: `src/server/with_state/tests.rs` (multi-doc resolve dispatch test)
 
-- [ ] **Step 1: Registry-vs-spec cross-check** — 45 rows total (42 + 3 resolve); every spec Notifications-table row has an internal handler + (non-`$/`) a trait hook; the `$/$` trio confirmed untouched.
-- [ ] **Step 2: Dupes entries** — comment-out probe per entry (the T9 method, from pristine baseline each time); fate table recorded; reason-text refresh allowed HERE for drifted live entries (docs-only, one accurate reason each).
-- [ ] **Step 3: Full battery** + the registered optionals if trivially foldable (cross-line folding fixture — one-line test change; skip if it grows).
-- [ ] **Step 4: Review checkpoint; owner commits. Then the END-OF-CYCLE whole-branch review (base `c5cae8d`) with the ledger's carry-forward list.**
+- [ ] **Step 1: The params-side standalone hook** in `Request` (below `modify_response_standalone`):
+
+```rust
+    /// Params conversion for resolve requests with no document anchor.
+    ///
+    /// The resolve engine calls this instead of [`Request::modify_params`]
+    /// when no sole tracked document resolves. Default no-op; override for
+    /// state-driven conversions that resolve their own documents (the
+    /// workspace-symbol-resolve shape).
+    fn modify_params_standalone(_state: &ServerState, _params: &mut Self::Params) {}
+```
+
+- [ ] **Step 2: The resolve engine branch** — in `implement_resolve_method!`, replace the unconditional convert/handler/convert flow's anchor handling: when the sole document resolves, behavior is EXACTLY today's; when it does not, call `modify_params_standalone` before the handler and `modify_response_standalone` after it (the T8.5 hook already exists).
+
+- [ ] **Step 3: workspace_symbol_resolve moves both hooks** to the standalone pair (its converters are document-free — the per-URL resolution takes state only). With this, its row doc's unconditional conversion description becomes TRUE as written (no gating clause to add). A multi-doc dispatch test: TWO tracked documents, resolve driven through dispatch, per-URL conversion asserted for a location in each.
+
+- [ ] **Step 4: Sweep items** — 45-row registry-vs-spec cross-check (42 + 3 resolve); dupes comment-out probe per entry with fate table, reason-text refresh for drifted live entries; `token` fixture line in testing.md's harness inventory; the signature_help row doc's outgoing leg (trivia docs sweep, fold if trivial); cross-line folding fixture only if a one-line change.
+- [ ] **Step 5: Full battery + review checkpoint; owner commits. Then the END-OF-CYCLE whole-branch review (base `c5cae8d`) with the ledger's carry-forward list.**
