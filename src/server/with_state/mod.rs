@@ -176,21 +176,43 @@ macro_rules! implement_resolve_method {
             let state = self.state.clone();
             Box::pin(async move {
                 // Resolve requests carry no text-document URL: convert against
-                // the sole tracked document, if the server tracks exactly one.
+                // the sole tracked document, if the server tracks exactly one;
+                // with no sole document, the standalone hooks run state-driven
+                // conversions instead of skipping them.
                 let sole = conversion_document(&state, None);
-                convert_resolve_item::<$request_type, _>(
-                    &state,
-                    sole.as_ref(),
-                    &mut params,
-                    Direction::Incoming,
-                );
+                match sole.as_ref() {
+                    Some(document) => {
+                        convert_resolve_item::<$request_type, _>(
+                            &state,
+                            Some(document),
+                            &mut params,
+                            Direction::Incoming,
+                        );
+                    }
+                    None => {
+                        <$request_type as crate::requests::Request>::modify_params_standalone(
+                            &state,
+                            &mut params,
+                        );
+                    }
+                }
                 let mut result = server.$server_method(state.clone(), params).await?;
-                convert_resolve_item::<$request_type, _>(
-                    &state,
-                    sole.as_ref(),
-                    &mut result,
-                    Direction::Outgoing,
-                );
+                match sole.as_ref() {
+                    Some(document) => {
+                        convert_resolve_item::<$request_type, _>(
+                            &state,
+                            Some(document),
+                            &mut result,
+                            Direction::Outgoing,
+                        );
+                    }
+                    None => {
+                        <$request_type as crate::requests::Request>::modify_response_standalone(
+                            &state,
+                            &mut result,
+                        );
+                    }
+                }
                 Ok(result)
             })
         }

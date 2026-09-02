@@ -1,14 +1,14 @@
 [[ignore]]
 fingerprint = "d9a381ff3f5dca75"
-reason = "resolve twins (code-action, completion-item): modify_params/modify_response delegate to the same item-specific converter with only Direction flipped (T20h shape)"
+reason = "resolve twins (code-action, completion-item, inlay-hint): modify_params/modify_response delegate to the same item-specific converter with only Direction flipped (T20h shape)"
 
 [[ignore]]
 fingerprint = "e65ad068648fc2a0"
-reason = "single-field Request hooks across custom request files (document-link resolve params/response; incoming/outgoing calls, supertype/subtype modify_params): one-line delegation to a shared convert_range or convert_*_item converter"
+reason = "single-field Request hooks across custom request files (document-link and code-lens resolve params/response; incoming/outgoing calls, supertype/subtype modify_params): one-line delegation to a shared convert_range or convert_*_item converter"
 
 [[ignore]]
 fingerprint = "19bb6db0a0226924"
-reason = "Request::modify_response hooks (references, range-format, format) delegating to the outgoing locations/text-edits converters; trait-mandated per-file hooks"
+reason = "call-hierarchy incoming/outgoing modify_response hooks: one convert_optional_vec delegation with only the per-call item converter differing; trait-mandated per-file hooks"
 
 [[ignore]]
 fingerprint = "1eb0db22997f837e"
@@ -28,7 +28,7 @@ reason = "DocumentMatcher builder pair with_url_globs/with_lang_strings: mirror-
 
 [[ignore]]
 fingerprint = "2f800ef357d21f2d"
-reason = "Declaration/Definition modify_response: one-line delegation to convert_location (goto requests share the location-response shape)"
+reason = "one-line modify_response hooks in custom request files (signature_help; supertypes/subtypes): each delegates to its row's outgoing helper (signature-help label offsets; type-hierarchy items)"
 
 [[ignore]]
 fingerprint = "5e64d1f8cb621fc2"
@@ -60,11 +60,11 @@ reason = "node_at_position vs node_at_position_named differ only in descendant_f
 
 [[ignore]]
 fingerprint = "f9b5a480a3cae9d6"
-reason = "test-support position/range builders in src/testing.rs, a #[cfg(test)] pub(crate) module"
+reason = "test-support position/range builders in src/testing.rs and the tree_sitter_utils test module (both #[cfg(test)]): two-line constructors of a fixed position or range"
 
 [[ignore]]
 fingerprint = "fe902b81118cdf76"
-reason = "test fixtures re-declare the same matcher list per suite (state/tests.rs, with_state/tests.rs)"
+reason = "test fixtures re-declare the same matcher list per suite (state/tests.rs, with_state/tests.rs, oneshot/workspace_diagnostics.rs)"
 
 [[ignore]]
 fingerprint = "2cd01ee93bcca1c4"
@@ -140,7 +140,7 @@ reason = "link-resolve scenario-matrix pair in with_state/tests.rs (sole-doc con
 
 [[ignore]]
 fingerprint = "390d3562637a1839"
-reason = "outgoing references/formatting helpers (modify_outgoing_locations, modify_outgoing_text_edits): the registry mandates one named outgoing helper per response shape, each a one-line delegation to convert_optional_vec with only the item converter differing"
+reason = "outgoing vec helpers (locations, text-edits, call/type-hierarchy items): the registry mandates one named outgoing helper per response shape, each a one-line delegation to convert_optional_vec with only the item converter differing"
 
 [[ignore]]
 fingerprint = "6a82743bb2dfeb89"
@@ -171,8 +171,8 @@ fingerprint = "bf14980c7647a2e3"
 reason = "resolve capture trio in with_state/tests.rs (code_lens, inlay_hint, workspace_symbol): trait-mandated per-method Server impls sharing the capture-and-echo shape over the common store helper — each dispatch test needs its own echo handler for its method (family of the f83853ca365213c9 capture-server bodies)"
 
 [[ignore]]
-fingerprint = "31b0389d7206c403"
-reason = "workspace-symbol resolve twins: modify_params/modify_response delegate to the one document-free per-URL converter with only Direction flipped; the converter resolves each location against its own document, so the sole-document anchor plays no part (family of the d9a381ff3f5dca75 resolve twins)"
+fingerprint = "ee7fe2f829bc4130"
+reason = "workspace-symbol resolve twins: modify_params_standalone/modify_response_standalone delegate to the one document-free per-URL converter with only Direction flipped; the converter resolves each location against its own document, so no dispatch state needs an anchor (family of the d9a381ff3f5dca75 resolve twins)"
 
 [[ignore]]
 fingerprint = "958b58d9ab7eb467"

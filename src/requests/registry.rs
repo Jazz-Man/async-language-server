@@ -307,7 +307,7 @@ macro_rules! custom_methods {
                 response: Option<async_lsp::lsp_types::WorkspaceSymbolResponse>,
             }
             signature_help: signature_help @ SignatureHelp {
-                doc: "Handles `textDocument/signatureHelp` requests from the client.\n\nReturns signature help at the position in `params`, or `None`. Requires a signature help provider in [`Server::server_capabilities`]. The position AND the label offsets of an echoed `context.active_signature_help` are converted to UTF-8 before the handler runs; label offsets are recounted against the label string itself.",
+                doc: "Handles `textDocument/signatureHelp` requests from the client.\n\nReturns signature help at the position in `params`, or `None`. Requires a signature help provider in [`Server::server_capabilities`]. The position AND the label offsets of an echoed `context.active_signature_help` are converted to UTF-8 before the handler runs; the response's label offsets convert back to the negotiated encoding afterwards. Label offsets are recounted against the label string itself.",
                 params: async_lsp::lsp_types::SignatureHelpParams,
                 response: Option<async_lsp::lsp_types::SignatureHelp>,
             }

@@ -1305,6 +1305,51 @@ fn workspace_symbol_resolve_converts_per_url_and_passes_right_through() {
 }
 
 #[test]
+fn workspace_symbol_resolve_converts_in_multi_document_states() {
+    // Two tracked documents: no sole conversion document, so the engine
+    // drives the standalone pair directly. Per-URL conversion must still run
+    // — the handler sees UTF-8 and the client its UTF-16 columns back for a
+    // location in EACH document ("🙂abc": byte 4 == UTF-16 unit 2; "x🙂🙂":
+    // bytes 1 and 9 == units 1 and 5). This is the exact state where the old
+    // sole-document gate passed resolve items raw.
+    let (mut server, captures) = resolve_capture_server(&[("a.txt", "🙂abc"), ("b.txt", "x🙂🙂")]);
+
+    let (received, returned) = drive_workspace_symbol_resolve(
+        &mut server,
+        &captures,
+        OneOf::Left(Location {
+            uri: url("a.txt"),
+            range: same_line(0, 2, 3),
+        }),
+    );
+    let OneOf::Left(received_location) = received else {
+        panic!("expected a ranged location");
+    };
+    let OneOf::Left(returned_location) = returned else {
+        panic!("expected a ranged location");
+    };
+    assert_eq!(received_location.range, same_line(0, 4, 5));
+    assert_eq!(returned_location.range, same_line(0, 2, 3));
+
+    let (received, returned) = drive_workspace_symbol_resolve(
+        &mut server,
+        &captures,
+        OneOf::Left(Location {
+            uri: url("b.txt"),
+            range: same_line(0, 1, 5),
+        }),
+    );
+    let OneOf::Left(received_location) = received else {
+        panic!("expected a ranged location");
+    };
+    let OneOf::Left(returned_location) = returned else {
+        panic!("expected a ranged location");
+    };
+    assert_eq!(received_location.range, same_line(0, 1, 9));
+    assert_eq!(returned_location.range, same_line(0, 1, 5));
+}
+
+#[test]
 fn url_less_response_converts_against_sole_document() {
     // One tracked document ("🙂abc": byte 4 == UTF-16 unit 2); the edit keys
     // at that document's URL. A URL-less file-ops request must still run its

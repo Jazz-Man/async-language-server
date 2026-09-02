@@ -171,7 +171,12 @@ pub trait Request {
         None
     }
 
-    fn modify_params(_state: &ServerState, _document: &Document, _params: &mut Self::Params) {}
+    // Delegation, not a no-op: a request that overrides only the standalone
+    // hook must run it here too, or the resolve engine's sole-document path
+    // would skip its state-driven conversion in exactly that state.
+    fn modify_params(state: &ServerState, _document: &Document, params: &mut Self::Params) {
+        Self::modify_params_standalone(state, params);
+    }
 
     // Delegation, not a no-op: a request that overrides only the standalone
     // hook must run it here too, or the engine's sole-document fallback for
@@ -190,4 +195,12 @@ pub trait Request {
     /// document — the workspace-symbol shape; the default no-op passes the
     /// response through unchanged.
     fn modify_response_standalone(_state: &ServerState, _response: &mut Self::Response) {}
+
+    /// Params conversion for resolve requests with no document anchor.
+    ///
+    /// The resolve engine calls this instead of [`Request::modify_params`]
+    /// when no sole tracked document resolves. Default no-op; override for
+    /// state-driven conversions that resolve their own documents (the
+    /// workspace-symbol-resolve shape).
+    fn modify_params_standalone(_state: &ServerState, _params: &mut Self::Params) {}
 }

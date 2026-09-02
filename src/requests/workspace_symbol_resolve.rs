@@ -1,6 +1,6 @@
 use async_lsp::lsp_types::{OneOf, WorkspaceSymbol as LspWorkspaceSymbol};
 
-use crate::server::{Document, ServerState, read_document_from_disk};
+use crate::server::{ServerState, read_document_from_disk};
 
 use super::{
     Request,
@@ -13,15 +13,18 @@ impl Request for WorkspaceSymbolResolve {
     type Params = LspWorkspaceSymbol;
     type Response = LspWorkspaceSymbol;
 
-    // WorkspaceSymbol doesn't contain a request document; the resolve
-    // dispatch macro supplies the sole tracked document, but each location
-    // below resolves against its own document instead.
+    // WorkspaceSymbol doesn't contain a request document: each location
+    // below resolves against its own document. The standalone pair is
+    // overridden INSTEAD of the anchored hooks — the resolve engine calls it
+    // directly when no sole tracked document resolves, and the delegating
+    // defaults of `modify_params`/`modify_response` keep it running in the
+    // sole-document state (where `convert_resolve_item` routes through them).
 
-    fn modify_params(state: &ServerState, _document: &Document, params: &mut Self::Params) {
+    fn modify_params_standalone(state: &ServerState, params: &mut Self::Params) {
         convert_workspace_symbol_location(state, params, Direction::Incoming);
     }
 
-    fn modify_response(state: &ServerState, _document: &Document, response: &mut Self::Response) {
+    fn modify_response_standalone(state: &ServerState, response: &mut Self::Response) {
         convert_workspace_symbol_location(state, response, Direction::Outgoing);
     }
 }

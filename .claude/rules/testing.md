@@ -45,7 +45,8 @@ instructions in the test's own comment.
 - `crate::testing` (`src/testing.rs` — a `#[cfg(test)] pub(crate)` module
   declared in `src/lib.rs`, scopeless like `src/error.rs`) — the single
   shared home for fixtures: `line_position`, `line_range`, `same_line`
-  (LSP positions and ranges), `url`, `TestServer`, `open_document`,
+  (LSP positions and ranges), `token` (a `SemanticToken` from relative
+  columns, type and modifiers zero), `url`, `TestServer`, `open_document`,
   `state_with_documents`, `temp_workspace(prefix, name)`,
   `workspace_folder`, `diagnostic`, and `json_matchers`
   (tree-sitter-gated). The `"🙂abc"` document and the UTF-16 encoding in
