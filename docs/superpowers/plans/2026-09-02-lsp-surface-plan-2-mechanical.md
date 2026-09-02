@@ -1407,6 +1407,56 @@ symbol: symbol @ Symbol {
 
 ---
 
+### Task 8.5: Standalone response-conversion hook (engine)
+
+Added after the Task 8 review adjudicated the URL-less engine gate as a
+signal-swallowing workaround (owner decision 2026-09-02, option 1). The
+`Request` trait under-expresses the domain: document-anchored conversions
+(`modify_response(&Document, ..)`) and state-driven ones (workspace symbol)
+are two real shapes; forcing the second through the first made the engine
+skip conversion entirely when no single anchor existed.
+
+**Files:**
+- Modify: `src/requests/mod.rs` (the trait hook), `src/server/with_state/mod.rs` (engine branch), `src/requests/symbol.rs` (override moves here)
+- Modify: `docs/superpowers/specs/...` spec 1.5 (done), `.claude/rules/structure.md` (one line on the second hook shape)
+- Test: `src/server/with_state/tests.rs` (multi-doc dispatch test)
+
+**Interfaces:**
+- Produces: `fn modify_response_standalone(_state: &ServerState, _response: &mut Self::Response) {}` on `Request` (default no-op, documented: state-driven conversions that resolve their own documents; override INSTEAD of `modify_response` when the anchor is irrelevant).
+
+- [ ] **Step 1: Trait hook** in `src/requests/mod.rs`, below `modify_response`:
+
+```rust
+    /// Response conversion for requests with no document anchor.
+    ///
+    /// The dispatch engine calls this instead of [`Request::modify_response`]
+    /// when it cannot resolve a single conversion document (URL-less
+    /// requests in a zero- or multi-document state). Override it for
+    /// state-driven conversions that resolve each position against its own
+    /// document — the workspace-symbol shape; the default no-op passes the
+    /// response through unchanged.
+    fn modify_response_standalone(_state: &ServerState, _response: &mut Self::Response) {}
+```
+
+- [ ] **Step 2: Engine branch** — in `implement_method!`'s response side, replace the bare skip with the fallback call:
+
+```rust
+    match conversion_document(&state, url.as_ref()) {
+        Some(doc) => {
+            <$request_type as crate::requests::Request>::modify_response(&state, &doc, &mut result);
+        }
+        None => {
+            <$request_type as crate::requests::Request>::modify_response_standalone(&state, &mut result);
+        }
+    }
+```
+
+- [ ] **Step 3: symbol override** — move `Symbol`'s `modify_response` body to `modify_response_standalone` (drop the unused `document: &Document` parameter; the per-URL machinery takes `state` only).
+
+- [ ] **Step 4: Multi-doc dispatch test** in `with_state/tests.rs`: TWO tracked documents + a capture server whose `symbol` handler returns locations in BOTH tracked documents' files built at UTF-8 columns; drive `workspace/symbol` dispatch; assert both come back converted to client columns (the exact state where the old gate passed everything through raw).
+
+- [ ] **Step 5: structure.md line + battery + checkpoint.**
+
 ### Task 9: Final sweep for Plan 2
 
 **Files:**

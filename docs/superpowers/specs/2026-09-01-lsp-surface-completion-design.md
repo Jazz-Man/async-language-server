@@ -134,9 +134,16 @@ only tracked-URL ones:
   carries no version). The snapshot is not inserted into the document map —
   convert and drop, mirroring the resolve family's per-request capture.
 - **URL-less request** — the sole tracked document when exactly one is
-  tracked, else none (the `implement_resolve_method!` heuristic). Only
-  `modify_response` matters for the current URL-less methods (their params
-  carry no positions), but the resolution is uniform.
+  tracked, else none (the `implement_resolve_method!` heuristic). When no
+  anchor resolves, the engine calls the additive
+  `Request::modify_response_standalone(state, response)` hook (default
+  no-op) instead of skipping conversion: state-driven conversions
+  (workspace symbol resolves each location against its own document,
+  tracked or read from disk) run in every dispatch state.
+  Document-anchored conversions keep using `modify_response`, whose trait
+  default delegates to the standalone hook — so a standalone override also
+  runs in the sole-document state instead of being swallowed by the
+  fallback.
 
 This closes the gap where a stamped `outgoing:` hook never ran in dispatch
 for URL-less requests (file-ops trio, workspace symbol), and the older
