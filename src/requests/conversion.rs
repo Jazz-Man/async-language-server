@@ -21,6 +21,7 @@ use async_lsp::lsp_types::{
     LinkedEditingRanges as LspLinkedEditingRanges, Location as LspLocation,
     LocationLink as LspLocationLink, OneOf, ParameterLabel as LspParameterLabel,
     Position as LspPosition, PrepareRenameResponse as LspPrepareRenameResponse, Range as LspRange,
+    SemanticToken as LspSemanticToken, SemanticTokensResult as LspSemanticTokensResult,
     SignatureHelp as LspSignatureHelp, TextEdit as LspTextEdit,
     TypeHierarchyItem as LspTypeHierarchyItem, Url, WorkspaceEdit as LspWorkspaceEdit,
 };
@@ -690,6 +691,90 @@ fn convert_label_offsets(label: &str, offsets: &mut [u32; 2], from: Encoding, to
             };
         }
         *offset = u32::try_from(converted).unwrap_or(u32::MAX);
+    }
+}
+
+/// Converts a semantic-token stream's `delta_start` and `length` columns
+/// between the negotiated encoding and UTF-8, in place. `delta_line`
+/// values are encoding-independent line deltas and pass through.
+///
+/// Tokens are relative: `delta_start` counts from the previous token's
+/// start on the same line, or from 0 on a new line. The walk reconstructs
+/// each token's absolute source-encoding position, converts it (and the
+/// position after the token's length) through the document rope, and
+/// re-relativizes against the previous CONVERTED token.
+pub(crate) fn convert_semantic_tokens_data(
+    state: &ServerState,
+    document: &Document,
+    data: &mut [LspSemanticToken],
+    direction: Direction,
+) {
+    let (source, target) = match direction {
+        Direction::Incoming => (state.get_position_encoding(), Encoding::UTF8),
+        Direction::Outgoing => (Encoding::UTF8, state.get_position_encoding()),
+    };
+    if source == target {
+        return;
+    }
+    let mut previous_source = LspPosition {
+        line: 0,
+        character: 0,
+    };
+    let mut previous_target = LspPosition {
+        line: 0,
+        character: 0,
+    };
+    for token in data.iter_mut() {
+        let absolute_source = LspPosition {
+            line: previous_source.line + token.delta_line,
+            character: if token.delta_line == 0 {
+                previous_source.character + token.delta_start
+            } else {
+                token.delta_start
+            },
+        };
+        let absolute_end_source = LspPosition {
+            line: absolute_source.line,
+            character: absolute_source.character + token.length,
+        };
+        let absolute_target = position_to_encoding(&document.text, absolute_source, source, target);
+        let absolute_end_target =
+            position_to_encoding(&document.text, absolute_end_source, source, target);
+
+        token.delta_line = absolute_target.line - previous_target.line;
+        token.delta_start = if absolute_target.line == previous_target.line {
+            absolute_target.character - previous_target.character
+        } else {
+            absolute_target.character
+        };
+        // Mid-character lengths floor to the containing character boundary
+        // per `position_to_encoding`; saturating subtraction keeps the
+        // invariant length >= 0.
+        token.length = absolute_end_target
+            .character
+            .saturating_sub(absolute_target.character);
+
+        previous_source = absolute_source;
+        previous_target = absolute_target;
+    }
+}
+
+/// Converts a semanticTokens/full response's token stream from UTF-8 to
+/// the client encoding, covering both the full and the partial-result
+/// shape.
+pub(crate) fn modify_outgoing_semantic_tokens_result(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<LspSemanticTokensResult>,
+) {
+    let Some(result) = response else { return };
+    match result {
+        LspSemanticTokensResult::Tokens(tokens) => {
+            convert_semantic_tokens_data(state, document, &mut tokens.data, Direction::Outgoing);
+        }
+        LspSemanticTokensResult::Partial(partial) => {
+            convert_semantic_tokens_data(state, document, &mut partial.data, Direction::Outgoing);
+        }
     }
 }
 

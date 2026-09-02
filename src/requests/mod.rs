@@ -126,6 +126,7 @@ pub(crate) mod registry;
 mod rename;
 mod rename_prepare;
 mod selection_range;
+mod semantic_tokens_full;
 mod signature_help;
 mod subtypes;
 mod supertypes;

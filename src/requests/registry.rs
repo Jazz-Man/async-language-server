@@ -234,6 +234,13 @@ macro_rules! generated_methods {
                 params: async_lsp::lsp_types::ExecuteCommandParams,
                 response: Option<async_lsp::lsp_types::LSPAny>,
             }
+            semantic_tokens_full: semantic_tokens_full @ SemanticTokensFull {
+                doc: "Handles `textDocument/semanticTokens/full` requests from the client.\n\nReturns the document's full semantic token stream, or `None`. Token columns and lengths are UTF-8 here and converted to the negotiated encoding on the wire. Requires a semantic tokens provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::SemanticTokensParams,
+                response: Option<async_lsp::lsp_types::SemanticTokensResult>,
+                document: text_document,
+                outgoing: modify_outgoing_semantic_tokens_result,
+            }
         }
     };
 }
