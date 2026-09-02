@@ -16,9 +16,11 @@ use async_lsp::lsp_types::{
     DocumentDiagnosticReportKind, DocumentHighlight as LspDocumentHighlight,
     DocumentLink as LspDocumentLink, FoldingRange as LspFoldingRange,
     GotoDefinitionResponse as LspGotoDefinitionResponse, Hover as LspHover,
+    InlayHint as LspInlayHint, InlayHintLabel as LspInlayHintLabel,
     LinkedEditingRanges as LspLinkedEditingRanges, Location as LspLocation,
-    LocationLink as LspLocationLink, OneOf, Position as LspPosition,
-    PrepareRenameResponse as LspPrepareRenameResponse, Range as LspRange, TextEdit as LspTextEdit,
+    LocationLink as LspLocationLink, OneOf, ParameterLabel as LspParameterLabel,
+    Position as LspPosition, PrepareRenameResponse as LspPrepareRenameResponse, Range as LspRange,
+    SignatureHelp as LspSignatureHelp, TextEdit as LspTextEdit,
     TypeHierarchyItem as LspTypeHierarchyItem, Url, WorkspaceEdit as LspWorkspaceEdit,
 };
 
@@ -560,6 +562,88 @@ pub(crate) fn modify_outgoing_prepare_rename_response(
             }
             LspPrepareRenameResponse::DefaultBehavior { .. } => {}
         }
+    }
+}
+
+/// Converts each inlay hint's position and text-edit ranges from UTF-8 to
+/// the client encoding against the request document, and each label-part
+/// location against the document its URL points at.
+pub(crate) fn modify_outgoing_inlay_hints(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<Vec<LspInlayHint>>,
+) {
+    let Some(hints) = response else { return };
+    for hint in hints {
+        convert_position(state, document, &mut hint.position, Direction::Outgoing);
+        if let Some(edits) = hint.text_edits.as_mut() {
+            for edit in edits {
+                convert_text_edit(state, document, edit, Direction::Outgoing);
+            }
+        }
+        if let LspInlayHintLabel::LabelParts(parts) = &mut hint.label {
+            for part in parts {
+                if let Some(location) = part.location.as_mut() {
+                    convert_location(state, document, location, Direction::Outgoing);
+                }
+            }
+        }
+    }
+}
+
+/// Converts a signature help response's parameter label offsets from UTF-8
+/// to the client encoding, recounting them against the containing signature
+/// label string. `Simple` labels are substrings of the label and carry no
+/// offsets.
+pub(crate) fn modify_outgoing_signature_help(
+    state: &ServerState,
+    // Label offsets count code units of the label string itself, so no
+    // document snapshot takes part in the conversion.
+    _document: &Document,
+    response: &mut Option<LspSignatureHelp>,
+) {
+    let Some(help) = response else { return };
+    let encoding = state.get_position_encoding();
+    for signature in &mut help.signatures {
+        let Some(parameters) = signature.parameters.as_mut() else {
+            continue;
+        };
+        for parameter in parameters {
+            if let LspParameterLabel::LabelOffsets(offsets) = &mut parameter.label {
+                convert_label_offsets(&signature.label, offsets, Encoding::UTF8, encoding);
+            }
+        }
+    }
+}
+
+/// Recounts `[start, end]` code-unit offsets of `label` from one encoding
+/// to another. Signature-help parameter labels are offsets into their
+/// containing signature label string, so conversion needs only the string
+/// itself, never the document.
+fn convert_label_offsets(label: &str, offsets: &mut [u32; 2], from: Encoding, to: Encoding) {
+    if from == to {
+        return;
+    }
+    for offset in offsets {
+        let target = usize::try_from(*offset).unwrap_or(usize::MAX);
+        let mut seen_from: usize = 0;
+        let mut converted: usize = 0;
+        for ch in label.chars() {
+            if seen_from >= target {
+                break;
+            }
+            seen_from += match from {
+                Encoding::UTF8 => ch.len_utf8(),
+                Encoding::UTF16 => ch.len_utf16(),
+                Encoding::UTF32 => 1,
+            };
+            converted += match to {
+                Encoding::UTF8 => ch.len_utf8(),
+                Encoding::UTF16 => ch.len_utf16(),
+                Encoding::UTF32 => 1,
+            };
+        }
+        *offset = u32::try_from(converted).unwrap_or(u32::MAX);
     }
 }
 

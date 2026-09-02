@@ -206,6 +206,22 @@ macro_rules! generated_methods {
                 response: Option<async_lsp::lsp_types::WorkspaceEdit>,
                 outgoing: modify_outgoing_workspace_edit,
             }
+            inlay_hint: inlay_hint @ InlayHint {
+                doc: "Handles `textDocument/inlayHint` requests from the client.\n\nReturns inlay hints for the range in `params`, or `None`. Requires an inlay hint provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::InlayHintParams,
+                response: Option<Vec<async_lsp::lsp_types::InlayHint>>,
+                document: text_document,
+                incoming: range at range,
+                outgoing: modify_outgoing_inlay_hints,
+            }
+            signature_help: signature_help @ SignatureHelp {
+                doc: "Handles `textDocument/signatureHelp` requests from the client.\n\nReturns signature help at the position in `params`, or `None`. Requires a signature help provider in [`Server::server_capabilities`]. Parameter label offsets are recounted between UTF-8 and the negotiated encoding against the label string itself.",
+                params: async_lsp::lsp_types::SignatureHelpParams,
+                response: Option<async_lsp::lsp_types::SignatureHelp>,
+                document: text_document_position_params.text_document,
+                incoming: position at text_document_position_params.position,
+                outgoing: modify_outgoing_signature_help,
+            }
         }
     };
 }
@@ -253,6 +269,11 @@ macro_rules! custom_methods {
                 doc: "Handles `typeHierarchy/subtypes` requests from the client.\n\nReturns the subtypes of the item in `params`, or `None`. Only issued when the server registered a type hierarchy provider. Conversion as per `supertypes`.",
                 params: async_lsp::lsp_types::TypeHierarchySubtypesParams,
                 response: Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>,
+            }
+            inline_value: inline_value @ InlineValue {
+                doc: "Handles `textDocument/inlineValue` requests from the client.\n\nReturns a single inline value computed for the range in `params`, or `None`. Requires an inline value provider in [`Server::server_capabilities`].",
+                params: async_lsp::lsp_types::InlineValueParams,
+                response: Option<async_lsp::lsp_types::InlineValue>,
             }
         }
     };
