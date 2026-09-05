@@ -150,6 +150,7 @@ pub(crate) use completion_resolve::CompletionResolve;
 pub(crate) use conversion::{Direction, convert_resolve_item};
 pub(crate) use document_diagnostics::DocumentDiagnostics;
 pub(crate) use document_link_resolve::DocumentLinkResolve;
+pub(crate) use hover::HoverRequest;
 pub(crate) use incoming_calls::IncomingCalls;
 pub(crate) use inlay_hint_resolve::InlayHintResolve;
 pub(crate) use inline_value::InlineValue;
@@ -203,39 +204,4 @@ pub(crate) trait Request {
     /// state-driven conversions that resolve their own documents (the
     /// workspace-symbol-resolve shape).
     fn modify_params_standalone(_state: &ServerState, _params: &mut Self::Params) {}
-}
-
-#[cfg(test)]
-mod tests {
-    mod dogfood {
-        use crate::requests::Request;
-        use crate::testing::state_with_documents;
-
-        #[lsp_macros::lsp_request(
-            params = async_lsp::lsp_types::HoverParams,
-            response = Option<async_lsp::lsp_types::Hover>,
-            document(text_document_position_params.text_document),
-            incoming_position(text_document_position_params.position),
-        )]
-        pub(crate) struct DogfoodRequest;
-
-        #[test]
-        fn dogfood_request_converts_incoming_position() {
-            let (state, _plain, emoji) = state_with_documents();
-            let document = state.document(&emoji).expect("tracked");
-            let mut params = async_lsp::lsp_types::HoverParams {
-                text_document_position_params:
-                    async_lsp::lsp_types::TextDocumentPositionParams::new(
-                        async_lsp::lsp_types::TextDocumentIdentifier::new(emoji),
-                        crate::testing::line_position(0, 2),
-                    ),
-                work_done_progress_params: async_lsp::lsp_types::WorkDoneProgressParams::default(),
-            };
-            <DogfoodRequest as Request>::modify_params(&state, &document, &mut params);
-            assert_eq!(
-                params.text_document_position_params.position,
-                crate::testing::line_position(0, 4),
-            );
-        }
-    }
 }

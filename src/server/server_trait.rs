@@ -8,6 +8,7 @@ use async_lsp::{
         WorkDoneProgressCancelParams,
     },
 };
+use lsp_macros::lsp_method;
 
 use crate::{
     documents::DocumentMatcher,
@@ -103,6 +104,17 @@ pub trait Server {
     #[must_use]
     fn server_document_matchers() -> Vec<DocumentMatcher> {
         vec![]
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/hover` requests from the client.
+        ///
+        /// Returns hover contents for the position in `params`, or `None` when there is nothing to show. Positions and ranges are UTF-8. Requires a hover provider in [`Server::server_capabilities`].
+        fn hover(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::HoverParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::Hover>>> + Send;
     }
 
     crate::requests::registry::generated_methods!(registry_trait_methods);

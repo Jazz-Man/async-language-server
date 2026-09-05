@@ -12,6 +12,7 @@ use async_lsp::{
     },
 };
 use futures::future::BoxFuture;
+use lsp_macros::lsp_dispatch;
 use ropey::Rope;
 
 use tracing::debug;
@@ -398,6 +399,10 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
     crate::requests::registry::generated_methods!(registry_dispatch);
     crate::requests::registry::custom_methods!(registry_dispatch);
     crate::requests::registry::resolve_methods!(registry_dispatch_resolve);
+
+    lsp_dispatch! {
+        hover: hover @ crate::requests::HoverRequest,
+    }
 }
 
 #[cfg(test)]

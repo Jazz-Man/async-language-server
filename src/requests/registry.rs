@@ -19,14 +19,6 @@
 macro_rules! generated_methods {
     ($m:ident) => {
         $m! {
-            hover: hover @ Hover {
-                doc: "Handles `textDocument/hover` requests from the client.\n\nReturns hover contents for the position in `params`, or `None` when there is nothing to show. Positions and ranges are UTF-8. Requires a hover provider in [`Server::server_capabilities`].",
-                params: async_lsp::lsp_types::HoverParams,
-                response: Option<async_lsp::lsp_types::Hover>,
-                document: text_document_position_params.text_document,
-                incoming: position at text_document_position_params.position,
-                outgoing: modify_outgoing_hover,
-            }
             declaration: declaration @ Declaration {
                 doc: "Handles `textDocument/declaration` requests from the client.\n\nReturns the declaration locations of the symbol at the position in `params`, or `None`. Requires a declaration provider in [`Server::server_capabilities`].",
                 params: async_lsp::lsp_types::request::GotoDeclarationParams,

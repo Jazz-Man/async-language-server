@@ -1,3 +1,12 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::HoverParams,
+    response = Option<async_lsp::lsp_types::Hover>,
+    document(text_document_position_params.text_document),
+    incoming_position(text_document_position_params.position),
+    outgoing(crate::requests::conversion::modify_outgoing_hover),
+)]
+pub(crate) struct HoverRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -6,11 +15,11 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::Hover;
+    use crate::requests::HoverRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {
-        hover_incoming_utf16_becomes_utf8: Hover {
+        hover_incoming_utf16_becomes_utf8: HoverRequest {
             params: |uri| async_lsp::lsp_types::HoverParams {
                 text_document_position_params: TextDocumentPositionParams::new(
                     TextDocumentIdentifier::new(uri),
@@ -21,7 +30,7 @@ mod tests {
             incoming: |p| p.text_document_position_params.position,
             expects: line_position(0, 4),
         }
-        hover_outgoing_utf8_becomes_utf16: Hover {
+        hover_outgoing_utf8_becomes_utf16: HoverRequest {
             params: |uri| async_lsp::lsp_types::HoverParams {
                 text_document_position_params: TextDocumentPositionParams::new(
                     TextDocumentIdentifier::new(uri),
