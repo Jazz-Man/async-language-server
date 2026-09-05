@@ -2,17 +2,6 @@ use async_lsp::lsp_types::Url;
 
 use crate::server::{Document, ServerState};
 
-/// Implements [`Request::extract_url`] inside an existing `impl Request`
-/// block, for a request whose params carry the document URL at the given
-/// field path, e.g. `text_document` or `text_document_position_params.text_document`.
-macro_rules! request_extract_url {
-    ($($segment:ident).*) => {
-        fn extract_url(params: &Self::Params) -> Option<async_lsp::lsp_types::Url> {
-            Some(params $(.$segment)* .uri.clone())
-        }
-    };
-}
-
 /// Stamps `Request` impls for the registry's generated rows.
 macro_rules! registry_request_impls {
     ( $(
@@ -33,7 +22,6 @@ macro_rules! registry_request_impls {
                 type Params = $params;
                 type Response = $response;
 
-                $(request_extract_url!($($dseg).+);)?
                 $(request_modify_params_position!($($pseg).+);)?
                 $(request_modify_params_range!($($rseg).+);)?
                 $(
@@ -140,10 +128,10 @@ pub(crate) use selection_range::SelectionRangeRequest;
 pub(crate) use semantic_tokens_full::SemanticTokensFullRequest;
 pub(crate) use semantic_tokens_full_delta::SemanticTokensFullDeltaRequest;
 pub(crate) use semantic_tokens_range::SemanticTokensRangeRequest;
-pub(crate) use signature_help::SignatureHelp;
+pub(crate) use signature_help::SignatureHelpRequest;
 pub(crate) use subtypes::SubtypesRequest;
 pub(crate) use supertypes::SupertypesRequest;
-pub(crate) use symbol::Symbol;
+pub(crate) use symbol::SymbolRequest;
 pub(crate) use type_definition::TypeDefinitionRequest;
 pub(crate) use will_create_files::WillCreateFilesRequest;
 pub(crate) use will_delete_files::WillDeleteFilesRequest;

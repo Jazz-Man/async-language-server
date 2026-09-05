@@ -1,43 +1,32 @@
-use async_lsp::lsp_types::{
-    SignatureHelp as LspSignatureHelp, SignatureHelpParams as LspSignatureHelpParams,
-};
+use async_lsp::lsp_types::SignatureHelpParams;
 
 use crate::server::{Document, ServerState};
 
-use super::{
-    Request,
-    conversion::{
-        Direction, convert_position, convert_signature_help_label_offsets,
-        modify_outgoing_signature_help,
-    },
-};
+use super::conversion::{Direction, convert_signature_help_label_offsets};
 
-pub(crate) struct SignatureHelp;
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::SignatureHelpParams,
+    response = Option<async_lsp::lsp_types::SignatureHelp>,
+    document(text_document_position_params.text_document),
+    incoming_position(text_document_position_params.position),
+    incoming_custom(self::convert_context_label_offsets),
+    outgoing(crate::requests::conversion::modify_outgoing_signature_help),
+)]
+pub(crate) struct SignatureHelpRequest;
 
-impl Request for SignatureHelp {
-    type Params = LspSignatureHelpParams;
-    type Response = Option<LspSignatureHelp>;
-
-    request_extract_url!(text_document_position_params.text_document);
-
-    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        convert_position(
-            state,
-            document,
-            &mut params.text_document_position_params.position,
-            Direction::Incoming,
-        );
-        if let Some(help) = params
-            .context
-            .as_mut()
-            .and_then(|context| context.active_signature_help.as_mut())
-        {
-            convert_signature_help_label_offsets(state, document, help, Direction::Incoming);
-        }
-    }
-
-    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        modify_outgoing_signature_help(state, document, response);
+/// Converts the echoed context help's label offsets to UTF-8 (the custom
+/// incoming step, composed after the standard position conversion).
+fn convert_context_label_offsets(
+    state: &ServerState,
+    document: &Document,
+    params: &mut SignatureHelpParams,
+) {
+    if let Some(help) = params
+        .context
+        .as_mut()
+        .and_then(|context| context.active_signature_help.as_mut())
+    {
+        convert_signature_help_label_offsets(state, document, help, Direction::Incoming);
     }
 }
 
@@ -50,7 +39,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::{Request, SignatureHelp as SignatureHelpRequest};
+    use crate::requests::{Request, SignatureHelpRequest};
     use crate::testing::{line_position, state_with_documents};
 
     conversion_tests! {

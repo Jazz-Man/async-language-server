@@ -546,6 +546,28 @@ pub trait Server {
         ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>>> + Send;
     }
 
+    lsp_method! {
+        /// Handles `workspace/symbol` requests from the client.
+        ///
+        /// Returns the workspace-wide symbols matching the query, or `None`. Requires a workspace symbol provider in [`Server::server_capabilities`]. Symbol locations convert against their own document when tracked; untracked files are read from disk once per request (cached); unreadable locations pass through unchanged.
+        fn symbol(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::WorkspaceSymbolParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::WorkspaceSymbolResponse>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/signatureHelp` requests from the client.
+        ///
+        /// Returns signature help at the position in `params`, or `None`. Requires a signature help provider in [`Server::server_capabilities`]. The position AND the label offsets of an echoed `context.active_signature_help` are converted to UTF-8 before the handler runs; the response's label offsets convert back to the negotiated encoding afterwards. Label offsets are recounted against the label string itself.
+        fn signature_help(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::SignatureHelpParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::SignatureHelp>>> + Send;
+    }
+
     crate::requests::registry::generated_methods!(registry_trait_methods);
     crate::requests::registry::custom_methods!(registry_trait_methods);
     crate::requests::registry::resolve_methods!(registry_trait_resolve_methods);

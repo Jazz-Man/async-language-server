@@ -1,50 +1,49 @@
 use std::collections::HashMap;
 
 use async_lsp::lsp_types::{
-    Location as LspLocation, OneOf, Url, WorkspaceSymbolParams as LspWorkspaceSymbolParams,
-    WorkspaceSymbolResponse as LspWorkspaceSymbolResponse,
+    Location as LspLocation, OneOf, Url, WorkspaceSymbolResponse as LspWorkspaceSymbolResponse,
 };
 
 use crate::server::{Document, ServerState, read_document_from_disk};
 
-use super::{
-    Request,
-    conversion::{Direction, convert_range},
-};
+use super::conversion::{Direction, convert_range};
 
-pub(crate) struct Symbol;
+// extract_url stays the default (`None`): the params carry only the
+// query (plus work-done/partial tokens), so there is no request URL and
+// no staleness tracking. modify_params stays the default: nothing in the
+// params is conversion-relevant.
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::WorkspaceSymbolParams,
+    response = Option<async_lsp::lsp_types::WorkspaceSymbolResponse>,
+    outgoing_standalone(self::convert_locations),
+)]
+pub(crate) struct SymbolRequest;
 
-impl Request for Symbol {
-    type Params = LspWorkspaceSymbolParams;
-    type Response = Option<LspWorkspaceSymbolResponse>;
-
-    // extract_url stays the default (`None`): the params carry only the
-    // query (plus work-done/partial tokens), so there is no request URL and
-    // no staleness tracking. modify_params stays the default: nothing in the
-    // params is conversion-relevant.
-
-    // State-driven shape: no single engine-resolved document plays a role,
-    // because each location resolves against its own document below. The
-    // standalone hook is overridden INSTEAD of `modify_response`; the trait
-    // default of the latter delegates here, so dispatch runs it in every
-    // state, including the sole-tracked-document fallback.
-    fn modify_response_standalone(state: &ServerState, response: &mut Self::Response) {
-        let Some(response) = response else { return };
-        let mut disk: HashMap<Url, Option<Document>> = HashMap::new();
-        match response {
-            LspWorkspaceSymbolResponse::Flat(symbols) => {
-                for symbol in symbols {
-                    convert_symbol_location(state, &mut disk, &mut symbol.location);
-                }
+/// Converts each symbol location against its own document — tracked
+/// store-first, else a per-request cached disk snapshot, else left
+/// unchanged (the standalone outgoing hook).
+///
+/// State-driven shape: no single engine-resolved document plays a role,
+/// because each location resolves against its own document below. The
+/// standalone hook is wired INSTEAD of `outgoing`; the trait default of
+/// `modify_response` delegates here, so dispatch runs it in every state,
+/// including the sole-tracked-document fallback.
+fn convert_locations(state: &ServerState, response: &mut Option<LspWorkspaceSymbolResponse>) {
+    let Some(response) = response else { return };
+    let mut disk: HashMap<Url, Option<Document>> = HashMap::new();
+    match response {
+        LspWorkspaceSymbolResponse::Flat(symbols) => {
+            for symbol in symbols {
+                convert_symbol_location(state, &mut disk, &mut symbol.location);
             }
-            LspWorkspaceSymbolResponse::Nested(symbols) => {
-                for symbol in symbols {
-                    if let OneOf::Left(location) = &mut symbol.location {
-                        convert_symbol_location(state, &mut disk, location);
-                    }
-                    // `Right(WorkspaceLocation)` carries no range — nothing
-                    // to convert.
+        }
+        LspWorkspaceSymbolResponse::Nested(symbols) => {
+            for symbol in symbols {
+                if let OneOf::Left(location) = &mut symbol.location {
+                    convert_symbol_location(state, &mut disk, location);
                 }
+                // `Right(WorkspaceLocation)` carries no range — nothing
+                // to convert.
             }
         }
     }
@@ -89,7 +88,7 @@ mod tests {
     use crate::requests::Request;
     use crate::testing::{same_line, state_with_documents, temp_workspace};
 
-    use super::Symbol;
+    use super::SymbolRequest;
 
     #[test]
     fn symbol_flat_locations_convert_tracked_from_disk_or_pass_through() {
@@ -107,7 +106,7 @@ mod tests {
             },
             container_name: None,
         }]));
-        <Symbol as Request>::modify_response_standalone(&state, &mut tracked);
+        <SymbolRequest as Request>::modify_response_standalone(&state, &mut tracked);
         let WorkspaceSymbolResponse::Flat(symbols) = tracked.expect("response present") else {
             panic!("expected flat symbols");
         };
@@ -132,7 +131,7 @@ mod tests {
             },
             container_name: None,
         }]));
-        <Symbol as Request>::modify_response_standalone(&state, &mut disk);
+        <SymbolRequest as Request>::modify_response_standalone(&state, &mut disk);
         let WorkspaceSymbolResponse::Flat(symbols) = disk.expect("response present") else {
             panic!("expected flat symbols");
         };
@@ -152,7 +151,7 @@ mod tests {
             },
             container_name: None,
         }]));
-        <Symbol as Request>::modify_response_standalone(&state, &mut missing);
+        <SymbolRequest as Request>::modify_response_standalone(&state, &mut missing);
         let WorkspaceSymbolResponse::Flat(symbols) = missing.expect("response present") else {
             panic!("expected flat symbols");
         };
@@ -186,7 +185,7 @@ mod tests {
             },
         ]));
 
-        <Symbol as Request>::modify_response_standalone(&state, &mut response);
+        <SymbolRequest as Request>::modify_response_standalone(&state, &mut response);
 
         let WorkspaceSymbolResponse::Nested(symbols) = response.expect("response present") else {
             panic!("expected nested symbols");

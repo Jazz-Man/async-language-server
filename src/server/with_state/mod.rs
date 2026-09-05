@@ -38,86 +38,6 @@ const POSITION_ENCODING_PREFERRED_ORDER: [Encoding; 3] = [
     Encoding::UTF16,
 ];
 
-macro_rules! implement_method {
-    ($async_lsp_method:ident => $our_server_trait_method:ident @ $request_type:ty) => {
-        fn $async_lsp_method(
-            &mut self,
-            mut params: <$request_type as crate::requests::Request>::Params,
-        ) -> BoxFuture<
-            'static,
-            Result<<$request_type as crate::requests::Request>::Response, Self::Error>,
-        > {
-            let server = Arc::clone(&self.server);
-            let state = self.state.clone();
-            Box::pin(async move {
-                // 1. Try to extract the URL from the params for document tracking
-                let url: Option<Url> =
-                    <$request_type as crate::requests::Request>::extract_url(&params);
-                let mut ver: Option<i32> = None;
-
-                // 2. If we got an URL, track the document version
-                if let Some(url) = url.as_ref()
-                    && let Some(doc) = state.document(url)
-                {
-                    ver.replace(doc.version());
-                }
-
-                // 3. Call the "modify params" callback against the request's
-                //    conversion document: the tracked snapshot for a tracked
-                //    URL, a disk snapshot for an untracked file URL, or the
-                //    sole tracked document for URL-less requests
-                let params_doc = conversion_document(&state, url.as_ref());
-                if let Some(doc) = params_doc.as_ref() {
-                    <$request_type as crate::requests::Request>::modify_params(
-                        &state,
-                        doc,
-                        &mut params,
-                    );
-                }
-
-                // 4. Call the user-defined language server function
-                let mut result = server
-                    .$our_server_trait_method(state.clone(), params)
-                    .await?;
-
-                // 5. Check our document again, if we had one originally. If the
-                //    version changed, our result is stale, and we should try again
-                if let Some(url) = url.as_ref()
-                    && let Some(doc) = state.document(url)
-                    && ver.is_some_and(|v| v != doc.version())
-                {
-                    return Err(ResponseError::new(
-                        ErrorCode::CONTENT_MODIFIED,
-                        "document was modified during processing",
-                    ));
-                }
-
-                // 6. Run the final "modify response" callback against a freshly
-                //    resolved conversion document; when none resolves, the
-                //    standalone hook runs state-driven conversions instead of
-                //    skipping them.
-                match conversion_document(&state, url.as_ref()) {
-                    Some(doc) => {
-                        <$request_type as crate::requests::Request>::modify_response(
-                            &state,
-                            &doc,
-                            &mut result,
-                        );
-                    }
-                    None => {
-                        <$request_type as crate::requests::Request>::modify_response_standalone(
-                            &state,
-                            &mut result,
-                        );
-                    }
-                }
-
-                Ok(result)
-            })
-        }
-    };
-}
-
 /// Resolves the document a request's conversions run against: the
 /// tracked snapshot for `url` when tracked; otherwise, for file URLs, a
 /// per-request snapshot read from disk (best-effort — unreadable or
@@ -441,6 +361,8 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         outgoing_calls: outgoing_calls @ crate::requests::OutgoingCallsRequest,
         supertypes: supertypes @ crate::requests::SupertypesRequest,
         subtypes: subtypes @ crate::requests::SubtypesRequest,
+        symbol: symbol @ crate::requests::SymbolRequest,
+        signature_help: signature_help @ crate::requests::SignatureHelpRequest,
     }
 }
 
