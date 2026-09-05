@@ -10,17 +10,16 @@ them over nested matches.
 
 ## Feature gates
 
-Two features, both on by default (`[features]` in `Cargo.toml`):
+One feature, on by default (`[features]` in `Cargo.toml`):
 
-- `tracing` — adds `TracingLayer` to the middleware stack in `src/server/serve.rs`
-  and `debug!`/`info!` calls in handlers.
 - `tree-sitter` — adds `tree_sitter_utils`, the grammar field on
   `DocumentMatcher`, and syntax-tree access on `Document`.
 
-Code under `#[cfg(feature = "tree-sitter")]` must also compile without it.
-When a change touches a gated path, verify at least
-`cargo test --no-default-features --features tree-sitter` in addition to the
-default configuration.
+`tracing` is a permanent, non-optional dependency (owner decision 2026-09-05,
+spec decision 10): no consumer disables it, and `TracingLayer` is always in
+the middleware stack. Code under `#[cfg(feature = "tree-sitter")]` must also
+compile without it; when a change touches the gated path, verify at least
+`cargo test --no-default-features` in addition to the default configuration.
 
 ## Verification battery
 
@@ -54,11 +53,11 @@ non-ignored group means new duplication, not a threshold to loosen.
 
 Lint levels live in `Cargo.toml`, not in source attributes:
 
-- `[lints.clippy]`: `all` is `deny`; `cargo` and `pedantic` are `warn`, with
+- `[workspace.lints.clippy]`: `all`, `cargo`, and `pedantic` are `deny`, with
   a short inherited allow list (`module_inception`,
   `module_name_repetitions`, `multiple_crate_versions`, `similar_names`,
   `unnecessary_wraps`).
-- `[lints.rust]`: `missing_docs = "warn"`.
+- `[workspace.lints.rust]`: `missing_docs = "deny"`.
 
 Write code that passes at these levels. The allow entries are inherited from
 upstream and count as debt: do not add new entries, and treat removing one as

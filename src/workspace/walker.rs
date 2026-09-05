@@ -66,10 +66,7 @@ impl WorkspaceWalker {
                 let entry = match entry {
                     Ok(entry) => entry,
                     Err(error) => {
-                        #[cfg(feature = "tracing")]
                         tracing::warn!("skipping unreadable workspace entry: {error}");
-                        #[cfg(not(feature = "tracing"))]
-                        drop(error);
                         continue;
                     }
                 };

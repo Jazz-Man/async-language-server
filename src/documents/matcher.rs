@@ -127,7 +127,6 @@ impl DocumentMatchers {
                     globset.add(glob);
                     globset_any = true;
                 } else {
-                    #[cfg(feature = "tracing")]
                     tracing::warn!(
                         "Encountered invalid glob pattern '{}' in matcher '{}'",
                         glob,
@@ -140,7 +139,6 @@ impl DocumentMatchers {
                 if let Ok(globset) = globset.build() {
                     globsets.push((globset, Arc::clone(&matcher)));
                 } else {
-                    #[cfg(feature = "tracing")]
                     tracing::warn!("Encountered invalid globset in matcher '{}'", matcher.name);
                 }
             }

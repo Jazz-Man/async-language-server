@@ -14,8 +14,7 @@ name = "async_language_server"
 path = "src/lib.rs"
 
 [features]
-default = ["tracing", "tree-sitter"]
-tracing = ["dep:tracing", "async-lsp/tracing"]
+default = ["tree-sitter"]
 tree-sitter = ["dep:tree-sitter"]
 
 [workspace]
@@ -28,7 +27,7 @@ resolver = "2"
 [workspace.dependencies]
 # Shared version pins for workspace members. syn/quote stay local to
 # lsp_macros (sole consumer).
-async-lsp = { version = "0.2.4", default-features = false, features = ["client-monitor", "omni-trait"] }
+async-lsp = { version = "0.2.4", default-features = false, features = ["client-monitor", "omni-trait", "tracing"] }
 dashmap = "6.2.1"
 futures = "0.3.34"
 globset = "0.4.20"
@@ -57,7 +56,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["io-std", "rt"] }
 tower = { workspace = true }
 
-tracing = { workspace = true, optional = true }
+tracing = { workspace = true }
 tree-sitter = { workspace = true, optional = true }
 
 [dev-dependencies]

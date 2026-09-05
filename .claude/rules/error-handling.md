@@ -71,12 +71,11 @@ DocumentRead {
 - No `Result` on a path that can actually fail is dropped — propagate it with
   `?` or trace it. A bare `let _ =` on a fallible call is a bug unless the
   failure is impossible by construction.
-- Fire-and-forget client requests log their failure under the `tracing`
-  feature, never drop it silently; when an error value is in hand, include it
-  in the event, not just a message:
+- Fire-and-forget client requests log their failure through `tracing`, never
+  drop it silently; when an error value is in hand, include it in the event,
+  not just a message:
 
 ```rust
-#[cfg(feature = "tracing")]
 tracing::warn!("request failed: {error}");
 ```
 

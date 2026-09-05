@@ -7,8 +7,6 @@ use async_lsp::{
     },
 };
 use futures::future::BoxFuture;
-
-#[cfg(feature = "tracing")]
 use tracing::info;
 
 use super::{LanguageServerWithState, POSITION_ENCODING_PREFERRED_ORDER};
@@ -81,8 +79,7 @@ impl<T: Server + Send + Sync + 'static> LanguageServerWithState<T> {
             .set_position_encoding(negotiated_position_encoding);
         self.state.set_workspace_folders(workspace_folders.clone());
 
-        // 6. Emit a useful message about the negotiation, if enabled
-        #[cfg(feature = "tracing")]
+        // 6. Emit a useful message about the negotiation
         {
             let mut lines = Vec::new();
 

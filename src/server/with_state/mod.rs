@@ -14,7 +14,6 @@ use async_lsp::{
 use futures::future::BoxFuture;
 use ropey::Rope;
 
-#[cfg(feature = "tracing")]
 use tracing::debug;
 
 use crate::{
@@ -309,7 +308,6 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
     }
 
     fn did_open(&mut self, params: DidOpenTextDocumentParams) -> ControlFlow<Result<()>> {
-        #[cfg(feature = "tracing")]
         debug!("did_open: {}", params.text_document.uri);
         let result = self.state.handle_document_open(params.clone());
         self.server.did_open(&self.state, &params);
@@ -317,7 +315,6 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
     }
 
     fn did_close(&mut self, params: DidCloseTextDocumentParams) -> ControlFlow<Result<()>> {
-        #[cfg(feature = "tracing")]
         debug!("did_close: {}", params.text_document.uri);
         let result = self.state.handle_document_close(params.clone());
         self.server.did_close(&self.state, &params);
@@ -331,7 +328,6 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
     }
 
     fn did_save(&mut self, params: DidSaveTextDocumentParams) -> ControlFlow<Result<()>> {
-        #[cfg(feature = "tracing")]
         debug!("did_save: {}", params.text_document.uri);
         let result = self.state.handle_document_save(params.clone());
         self.server.did_save(&self.state, &params);
@@ -339,7 +335,6 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
     }
 
     fn will_save(&mut self, params: WillSaveTextDocumentParams) -> ControlFlow<Result<()>> {
-        #[cfg(feature = "tracing")]
         debug!("will_save: {}", params.text_document.uri);
         self.server.will_save(&self.state, &params);
         ControlFlow::Continue(())
@@ -349,7 +344,6 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         &mut self,
         params: DidChangeWatchedFilesParams,
     ) -> ControlFlow<Result<()>> {
-        #[cfg(feature = "tracing")]
         debug!("did_change_watched_files: {} events", params.changes.len());
         let result = self
             .state
@@ -359,14 +353,12 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
     }
 
     fn did_create_files(&mut self, params: CreateFilesParams) -> ControlFlow<Result<()>> {
-        #[cfg(feature = "tracing")]
         debug!("did_create_files: {} files", params.files.len());
         self.server.did_create_files(&self.state, &params);
         ControlFlow::Continue(())
     }
 
     fn did_rename_files(&mut self, params: RenameFilesParams) -> ControlFlow<Result<()>> {
-        #[cfg(feature = "tracing")]
         debug!("did_rename_files: {} files", params.files.len());
         let result = self.state.handle_files_renamed(params.files.clone());
         self.server.did_rename_files(&self.state, &params);
@@ -374,7 +366,6 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
     }
 
     fn did_delete_files(&mut self, params: DeleteFilesParams) -> ControlFlow<Result<()>> {
-        #[cfg(feature = "tracing")]
         debug!("did_delete_files: {} files", params.files.len());
         let result = self.state.handle_files_deleted(params.files.clone());
         self.server.did_delete_files(&self.state, &params);
@@ -385,7 +376,6 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         &mut self,
         params: WorkDoneProgressCancelParams,
     ) -> ControlFlow<Result<()>> {
-        #[cfg(feature = "tracing")]
         debug!("work_done_progress_cancel: {:?}", params.token);
         self.server.work_done_progress_cancel(&self.state, &params);
         ControlFlow::Continue(())

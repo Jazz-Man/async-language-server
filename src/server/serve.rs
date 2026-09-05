@@ -6,14 +6,11 @@ use std::{
 
 use async_lsp::{
     client_monitor::ClientProcessMonitorLayer, concurrency::ConcurrencyLayer,
-    panic::CatchUnwindLayer, router::Router, server::LifecycleLayer,
+    panic::CatchUnwindLayer, router::Router, server::LifecycleLayer, tracing::TracingLayer,
 };
 use futures::{AsyncRead, AsyncWrite};
 use tokio::io::ReadBuf;
 use tower::ServiceBuilder;
-
-#[cfg(feature = "tracing")]
-use async_lsp::tracing::TracingLayer;
 
 use crate::{
     error::ServerResult,
@@ -81,10 +78,9 @@ where
     W: AsyncWrite,
 {
     let (server, _) = async_lsp::MainLoop::new_server(|client| {
-        let builder = ServiceBuilder::new().layer(LifecycleLayer::default());
-
-        #[cfg(feature = "tracing")]
-        let builder = builder.layer(TracingLayer::default());
+        let builder = ServiceBuilder::new()
+            .layer(LifecycleLayer::default())
+            .layer(TracingLayer::default());
 
         builder
             .layer(ConcurrencyLayer::new(MAX_CONCURRENT_REQUESTS))

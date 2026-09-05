@@ -77,8 +77,9 @@ the encoding negotiated with the client — conversions are handled internally.
 
 ## Feature flags
 
-Both default on: `tracing` (middleware + handler logging) and `tree-sitter`
-(per-document grammars, `tree_sitter_utils`).
+One feature, default on: `tree-sitter` (per-document grammars,
+`tree_sitter_utils`). Tracing is always compiled in — middleware spans and
+handler logging need no flag.
 
 ## Stability
 

@@ -241,7 +241,6 @@ impl ServerState {
             // Keeping the last-known (possibly partially edited) text is
             // better than dropping the document: the editor still
             // considers it open, and handlers keep resolving it.
-            #[cfg(feature = "tracing")]
             tracing::warn!(
                 "did_change: incremental update failed and '{}' could not be re-read; keeping last-known text",
                 uri
@@ -352,7 +351,6 @@ impl ServerState {
             } else {
                 // Keep the old snapshot: a stale tracked document beats
                 // dropping one that handlers may still be resolving.
-                #[cfg(feature = "tracing")]
                 tracing::warn!(
                     "did_change_watched_files: '{}' could not be re-read; keeping last-known snapshot",
                     event.uri
@@ -385,7 +383,6 @@ impl ServerState {
     /// still exists on disk).
     fn remove_workspace_document_by_uri_string(&self, raw_uri: &str) {
         let Ok(url) = Url::parse(raw_uri) else {
-            #[cfg(feature = "tracing")]
             tracing::warn!("file operation: unparseable URI '{raw_uri}' skipped");
             return;
         };

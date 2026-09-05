@@ -286,12 +286,9 @@ fn register_configuration(state: ServerState) {
                 }],
             })
             .await;
-        #[cfg(feature = "tracing")]
         if let Err(error) = &result {
             tracing::warn!("workspace diagnostics capability registration failed: {error}");
         }
-        #[cfg(not(feature = "tracing"))]
-        drop(result);
     });
 }
 
@@ -346,12 +343,9 @@ fn refresh_diagnostics(state: ServerState) {
             .client()
             .request::<WorkspaceDiagnosticRefresh>(())
             .await;
-        #[cfg(feature = "tracing")]
         if let Err(error) = &result {
             tracing::warn!("workspace diagnostic refresh request failed: {error}");
         }
-        #[cfg(not(feature = "tracing"))]
-        drop(result);
     });
 }
 

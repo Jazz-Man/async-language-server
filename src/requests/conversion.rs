@@ -947,7 +947,6 @@ fn convert_semantic_tokens_edits(
     edits: &mut [LspSemanticTokensEdit],
 ) {
     let Some(cached) = cached else {
-        #[cfg(feature = "tracing")]
         tracing::debug!("semantic tokens delta without a cached previous result");
         return;
     };
