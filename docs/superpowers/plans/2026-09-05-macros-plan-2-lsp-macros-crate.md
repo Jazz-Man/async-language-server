@@ -1331,8 +1331,9 @@ mod tests {
         TextDocumentPositionParams, WorkDoneProgressParams,
     };
 
+    use lsp_macros::conversion_tests;
     use crate::requests::HoverRequest;
-    use crate::testing::{conversion_tests, line_position, same_line};
+    use crate::testing::{line_position, same_line};
 
     conversion_tests! {
         hover_incoming_utf16_becomes_utf8: HoverRequest {

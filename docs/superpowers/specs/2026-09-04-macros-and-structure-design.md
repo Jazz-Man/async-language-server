@@ -66,6 +66,12 @@ one owner-approved breaking change: the `tracing` feature is removed** (decision
     `text_utils`/`tree_sitter_utils` and the public `ErrorCode as ServerErrorCode`
     facade re-export. Enforced by the plans' global constraints and Plan 3's final
     sweep, where every survivor names its collision in a one-line comment.
+12. **Direct imports at use sites** (owner, 2026-09-05): `conversion_tests` is imported
+    directly (`use lsp_macros::conversion_tests;`) in every test module that invokes it.
+    The `src/testing.rs` re-export that Plan 2 Task 4 briefly introduced for
+    zero-call-site-diff integration was removed the same day by a dedicated sweep that
+    converted all 22 sites. Generalizes: macros from `lsp_macros` are never re-exported
+    through intermediate modules; use sites import them from `lsp_macros` directly.
 
 ## Architecture
 
