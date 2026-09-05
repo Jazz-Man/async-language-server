@@ -26,26 +26,6 @@ pub(crate) use generated_methods;
 macro_rules! custom_methods {
     ($m:ident) => {
         $m! {
-            incoming_calls: incoming_calls @ IncomingCalls {
-                doc: "Handles `callHierarchy/incomingCalls` requests from the client.\n\nReturns the callers of the item in `params`, or `None`. Only issued when the server registered a call hierarchy provider. The item's ranges arrive converted to UTF-8 and return converted to the negotiated encoding, each against the item's own document when tracked.",
-                params: async_lsp::lsp_types::CallHierarchyIncomingCallsParams,
-                response: Option<Vec<async_lsp::lsp_types::CallHierarchyIncomingCall>>,
-            }
-            outgoing_calls: outgoing_calls @ OutgoingCalls {
-                doc: "Handles `callHierarchy/outgoingCalls` requests from the client.\n\nReturns the callees of the item in `params`, or `None`. Only issued when the server registered a call hierarchy provider. The item's own ranges arrive converted to UTF-8 and return converted to the negotiated encoding against the item's document when tracked; the response's `from_ranges` convert against the request document (the caller's).",
-                params: async_lsp::lsp_types::CallHierarchyOutgoingCallsParams,
-                response: Option<Vec<async_lsp::lsp_types::CallHierarchyOutgoingCall>>,
-            }
-            supertypes: supertypes @ Supertypes {
-                doc: "Handles `typeHierarchy/supertypes` requests from the client.\n\nReturns the supertypes of the item in `params`, or `None`. Only issued when the server registered a type hierarchy provider. The item's ranges arrive converted to UTF-8 and return converted to the negotiated encoding, each against the item's own document when tracked.",
-                params: async_lsp::lsp_types::TypeHierarchySupertypesParams,
-                response: Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>,
-            }
-            subtypes: subtypes @ Subtypes {
-                doc: "Handles `typeHierarchy/subtypes` requests from the client.\n\nReturns the subtypes of the item in `params`, or `None`. Only issued when the server registered a type hierarchy provider. Conversion as per `supertypes`.",
-                params: async_lsp::lsp_types::TypeHierarchySubtypesParams,
-                response: Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>,
-            }
             symbol: symbol @ Symbol {
                 doc: "Handles `workspace/symbol` requests from the client.\n\nReturns the workspace-wide symbols matching the query, or `None`. Requires a workspace symbol provider in [`Server::server_capabilities`]. Symbol locations convert against their own document when tracked; untracked files are read from disk once per request (cached); unreadable locations pass through unchanged.",
                 params: async_lsp::lsp_types::WorkspaceSymbolParams,

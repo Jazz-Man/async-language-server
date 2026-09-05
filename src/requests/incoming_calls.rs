@@ -1,55 +1,61 @@
-use async_lsp::lsp_types::CallHierarchyIncomingCallsParams as LspCallHierarchyIncomingCallsParams;
+use async_lsp::lsp_types::CallHierarchyIncomingCallsParams;
 
 use crate::server::{Document, ServerState};
 
-use super::{
-    Request,
-    conversion::{
-        Direction, convert_call_hierarchy_incoming_call, convert_call_hierarchy_item,
-        convert_optional_vec,
-    },
+use super::conversion::{
+    Direction, convert_call_hierarchy_incoming_call, convert_call_hierarchy_item,
+    convert_optional_vec,
 };
 
-pub(crate) struct IncomingCalls;
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::CallHierarchyIncomingCallsParams,
+    response = Option<Vec<async_lsp::lsp_types::CallHierarchyIncomingCall>>,
+    document(item),
+    incoming_custom(self::convert_params),
+    outgoing(self::convert_response),
+)]
+pub(crate) struct IncomingCallsRequest;
 
-impl Request for IncomingCalls {
-    type Params = LspCallHierarchyIncomingCallsParams;
-    type Response = Option<Vec<async_lsp::lsp_types::CallHierarchyIncomingCall>>;
+/// Converts the item's ranges to UTF-8 (the incoming hook).
+fn convert_params(
+    state: &ServerState,
+    document: &Document,
+    params: &mut CallHierarchyIncomingCallsParams,
+) {
+    convert_call_hierarchy_item(state, document, &mut params.item, Direction::Incoming);
+}
 
-    request_extract_url!(item);
-
-    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        convert_call_hierarchy_item(state, document, &mut params.item, Direction::Incoming);
-    }
-
-    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        convert_optional_vec(
-            state,
-            document,
-            response,
-            Direction::Outgoing,
-            convert_call_hierarchy_incoming_call,
-        );
-    }
+/// Converts the returned calls' ranges back (the outgoing hook).
+fn convert_response(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<Vec<async_lsp::lsp_types::CallHierarchyIncomingCall>>,
+) {
+    convert_optional_vec(
+        state,
+        document,
+        response,
+        Direction::Outgoing,
+        convert_call_hierarchy_incoming_call,
+    );
 }
 
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
-        CallHierarchyIncomingCall, CallHierarchyIncomingCallsParams,
-        CallHierarchyItem as LspCallHierarchyItem, PartialResultParams, SymbolKind,
-        WorkDoneProgressParams,
+        CallHierarchyIncomingCall, CallHierarchyIncomingCallsParams, CallHierarchyItem,
+        PartialResultParams, SymbolKind, WorkDoneProgressParams,
     };
 
-    use crate::requests::{IncomingCalls, Request};
+    use crate::requests::{IncomingCallsRequest, Request};
     use crate::testing::{same_line, state_with_documents};
 
     fn item(
         uri: async_lsp::lsp_types::Url,
         range_start: u32,
         selection_start: u32,
-    ) -> LspCallHierarchyItem {
-        LspCallHierarchyItem {
+    ) -> CallHierarchyItem {
+        CallHierarchyItem {
             uri,
             range: same_line(0, range_start, range_start),
             selection_range: same_line(0, selection_start, selection_start),
@@ -71,7 +77,7 @@ mod tests {
             partial_result_params: PartialResultParams::default(),
         };
 
-        <IncomingCalls as Request>::modify_params(&state, &document, &mut params);
+        <IncomingCallsRequest as Request>::modify_params(&state, &document, &mut params);
 
         assert_eq!(params.item.range, same_line(0, 4, 4));
         assert_eq!(params.item.selection_range, same_line(0, 5, 5));
@@ -85,7 +91,7 @@ mod tests {
         // fallback, to land on the client columns.
         let fallback = state.document(&plain).expect("plain document is tracked");
 
-        <IncomingCalls as Request>::modify_response(&state, &fallback, &mut response);
+        <IncomingCallsRequest as Request>::modify_response(&state, &fallback, &mut response);
 
         let calls = response.expect("calls present");
         assert_eq!(calls[0].from.range, same_line(0, 2, 2));

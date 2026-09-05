@@ -502,6 +502,50 @@ pub trait Server {
         ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::InlineValue>>> + Send;
     }
 
+    lsp_method! {
+        /// Handles `callHierarchy/incomingCalls` requests from the client.
+        ///
+        /// Returns the callers of the item in `params`, or `None`. Only issued when the server registered a call hierarchy provider. The item's ranges arrive converted to UTF-8 and return converted to the negotiated encoding, each against the item's own document when tracked.
+        fn incoming_calls(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::CallHierarchyIncomingCallsParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::CallHierarchyIncomingCall>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `callHierarchy/outgoingCalls` requests from the client.
+        ///
+        /// Returns the callees of the item in `params`, or `None`. Only issued when the server registered a call hierarchy provider. The item's own ranges arrive converted to UTF-8 and return converted to the negotiated encoding against the item's document when tracked; the response's `from_ranges` convert against the request document (the caller's).
+        fn outgoing_calls(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::CallHierarchyOutgoingCallsParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::CallHierarchyOutgoingCall>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `typeHierarchy/supertypes` requests from the client.
+        ///
+        /// Returns the supertypes of the item in `params`, or `None`. Only issued when the server registered a type hierarchy provider. The item's ranges arrive converted to UTF-8 and return converted to the negotiated encoding, each against the item's own document when tracked.
+        fn supertypes(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::TypeHierarchySupertypesParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `typeHierarchy/subtypes` requests from the client.
+        ///
+        /// Returns the subtypes of the item in `params`, or `None`. Only issued when the server registered a type hierarchy provider. Conversion as per `supertypes`.
+        fn subtypes(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::TypeHierarchySubtypesParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>>> + Send;
+    }
+
     crate::requests::registry::generated_methods!(registry_trait_methods);
     crate::requests::registry::custom_methods!(registry_trait_methods);
     crate::requests::registry::resolve_methods!(registry_trait_resolve_methods);

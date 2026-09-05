@@ -1,45 +1,43 @@
-use async_lsp::lsp_types::TypeHierarchySupertypesParams as LspTypeHierarchySupertypesParams;
+use async_lsp::lsp_types::TypeHierarchySupertypesParams;
 
 use crate::server::{Document, ServerState};
 
-use super::{
-    Request,
-    conversion::{Direction, convert_type_hierarchy_item, modify_outgoing_type_hierarchy_items},
-};
+use super::conversion::{Direction, convert_type_hierarchy_item};
 
-pub(crate) struct Supertypes;
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::TypeHierarchySupertypesParams,
+    response = Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>,
+    document(item),
+    incoming_custom(self::convert_params),
+    outgoing(crate::requests::conversion::modify_outgoing_type_hierarchy_items),
+)]
+pub(crate) struct SupertypesRequest;
 
-impl Request for Supertypes {
-    type Params = LspTypeHierarchySupertypesParams;
-    type Response = Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>;
-
-    request_extract_url!(item);
-
-    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        convert_type_hierarchy_item(state, document, &mut params.item, Direction::Incoming);
-    }
-
-    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        modify_outgoing_type_hierarchy_items(state, document, response);
-    }
+/// Converts the item's ranges to UTF-8 (the incoming hook).
+fn convert_params(
+    state: &ServerState,
+    document: &Document,
+    params: &mut TypeHierarchySupertypesParams,
+) {
+    convert_type_hierarchy_item(state, document, &mut params.item, Direction::Incoming);
 }
 
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
-        PartialResultParams, SymbolKind, TypeHierarchyItem as LspTypeHierarchyItem,
-        TypeHierarchySupertypesParams, WorkDoneProgressParams,
+        PartialResultParams, SymbolKind, TypeHierarchyItem, TypeHierarchySupertypesParams,
+        WorkDoneProgressParams,
     };
 
-    use crate::requests::{Request, Supertypes};
+    use crate::requests::{Request, SupertypesRequest};
     use crate::testing::{same_line, state_with_documents};
 
     fn item(
         uri: async_lsp::lsp_types::Url,
         range_start: u32,
         selection_start: u32,
-    ) -> LspTypeHierarchyItem {
-        LspTypeHierarchyItem {
+    ) -> TypeHierarchyItem {
+        TypeHierarchyItem {
             uri,
             range: same_line(0, range_start, range_start),
             selection_range: same_line(0, selection_start, selection_start),
@@ -61,7 +59,7 @@ mod tests {
             partial_result_params: PartialResultParams::default(),
         };
 
-        <Supertypes as Request>::modify_params(&state, &document, &mut params);
+        <SupertypesRequest as Request>::modify_params(&state, &document, &mut params);
 
         assert_eq!(params.item.range, same_line(0, 4, 4));
         assert_eq!(params.item.selection_range, same_line(0, 5, 5));
@@ -72,7 +70,7 @@ mod tests {
         // fallback, to land on the client columns.
         let fallback = state.document(&plain).expect("plain document is tracked");
 
-        <Supertypes as Request>::modify_response(&state, &fallback, &mut response);
+        <SupertypesRequest as Request>::modify_response(&state, &fallback, &mut response);
 
         let items = response.expect("items present");
         assert_eq!(items[0].range, same_line(0, 2, 2));

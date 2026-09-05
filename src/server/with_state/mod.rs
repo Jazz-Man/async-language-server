@@ -437,6 +437,10 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         document_diagnostics: document_diagnostic @ crate::requests::DocumentDiagnosticsRequest,
         selection_range: selection_range @ crate::requests::SelectionRangeRequest,
         inline_value: inline_value @ crate::requests::InlineValueRequest,
+        incoming_calls: incoming_calls @ crate::requests::IncomingCallsRequest,
+        outgoing_calls: outgoing_calls @ crate::requests::OutgoingCallsRequest,
+        supertypes: supertypes @ crate::requests::SupertypesRequest,
+        subtypes: subtypes @ crate::requests::SubtypesRequest,
     }
 }
 

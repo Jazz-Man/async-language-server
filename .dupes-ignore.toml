@@ -4,11 +4,7 @@ reason = "resolve twins (code-action, completion-item, inlay-hint): modify_param
 
 [[ignore]]
 fingerprint = "e65ad068648fc2a0"
-reason = "single-field Request hooks across custom request files (document-link and code-lens resolve params/response; incoming/outgoing calls, supertype/subtype modify_params): one-line delegation to a shared convert_range or convert_*_item converter"
-
-[[ignore]]
-fingerprint = "19bb6db0a0226924"
-reason = "call-hierarchy incoming/outgoing modify_response hooks: one convert_optional_vec delegation with only the per-call item converter differing; trait-mandated per-file hooks"
+reason = "single-field Request hooks in the resolve request files (document-link and code-lens resolve params/response): one-line delegation to the shared convert_range converter (the incoming/outgoing-calls and supertype/subtype members moved to the lsp_request attribute form — see 3f792e39a2cd77aa)"
 
 [[ignore]]
 fingerprint = "1eb0db22997f837e"
@@ -25,10 +21,6 @@ reason = "WorkspaceDiagnosticsState atomic load-and-return accessors (supported,
 [[ignore]]
 fingerprint = "06f46feff88c5331"
 reason = "DocumentMatcher builder pair with_url_globs/with_lang_strings: mirror-by-design extend of Into<String> items into the respective set"
-
-[[ignore]]
-fingerprint = "2f800ef357d21f2d"
-reason = "one-line modify_response hooks in custom request files (signature_help; supertypes/subtypes): each delegates to its row's outgoing helper (signature-help label offsets; type-hierarchy items)"
 
 [[ignore]]
 fingerprint = "5e64d1f8cb621fc2"
@@ -140,7 +132,7 @@ reason = "link-resolve scenario-matrix pair in with_state/tests.rs (sole-doc con
 
 [[ignore]]
 fingerprint = "390d3562637a1839"
-reason = "outgoing vec helpers (locations, text-edits, call/type-hierarchy items): the registry mandates one named outgoing helper per response shape, each a one-line delegation to convert_optional_vec with only the item converter differing"
+reason = "outgoing vec converters (conversion.rs helpers for locations, text-edits, call/type-hierarchy items; incoming/outgoing calls' per-file convert_response hooks): each a one-line delegation to convert_optional_vec with only the item converter differing; the lsp_request outgoing hook must name one fn per response shape, so the per-call wrappers exist only to bind their per-call item converter (family of e0894e2bcf1c1930)"
 
 [[ignore]]
 fingerprint = "6a82743bb2dfeb89"
@@ -189,3 +181,7 @@ reason = "HookRecordingServer hook impls in with_state/tests.rs (11 members): tr
 [[ignore]]
 fingerprint = "b89ab176db6368aa"
 reason = "file-operations state handlers (handle_files_renamed, handle_files_deleted): a loop forwarding each entry's URI string to the shared remove_workspace_document_by_uri_string; FileRename/FileDelete are distinct foreign types with differently-named URI fields, so the mandated per-notification handlers mirror by design"
+
+[[ignore]]
+fingerprint = "3f792e39a2cd77aa"
+reason = "hierarchy convert_params free fns (incoming/outgoing calls, supertypes/subtypes): the item converters take (state, document, &mut Item, Direction) while the lsp_request incoming hook takes the whole params, so a field-extraction wrapper is mandatory; unifying the four would need a field-access trait over four distinct foreign params types — dedup-only ceremony per the typing criterion (successor of e65ad068648fc2a0's impl-method form; family of 3ca1c2536ff13cb7's mirror converter pair)"
