@@ -12,7 +12,7 @@
 //! bodies), and `conversion_tests!` (W0 conversion-test stamping).
 
 mod conversion_tests {}
-mod dispatch {}
+mod dispatch;
 mod request;
 mod trait_method;
 
@@ -56,6 +56,30 @@ pub fn lsp_method(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn lsp_resolve_method(input: TokenStream) -> TokenStream {
     entry(input, Kind::ResolveUnchanged)
+}
+
+/// Stamps `LanguageServer` dispatch methods from the request table.
+///
+/// # Examples
+///
+/// ```ignore
+/// lsp_dispatch! {
+///     hover: hover @ crate::requests::HoverRequest,
+///     rename_prepare: prepare_rename @ crate::requests::RenamePrepareRequest,
+///     resolve(completion_resolve: completion_resolve @ crate::requests::CompletionResolveRequest),
+/// }
+/// ```
+///
+/// Rows are `our_trait_method : async_lsp_method @ RequestType`; resolve
+/// rows wrap the same triple in `resolve(...)`. Every row expands to one
+/// dispatch method whose body is the former `implement_method!` /
+/// `implement_resolve_method!` engine: version snapshot, encoding
+/// conversion, staleness detection, and the user's `Server` call.
+#[proc_macro]
+pub fn lsp_dispatch(input: TokenStream) -> TokenStream {
+    dispatch::expand(input.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
 }
 
 /// Registers one LSP request on a non-generic struct, stamping its `impl
