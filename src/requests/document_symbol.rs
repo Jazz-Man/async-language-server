@@ -9,9 +9,10 @@ mod tests {
         DocumentSymbol as LspDocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
         PartialResultParams, SymbolKind, TextDocumentIdentifier, WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::{DocumentSymbol, Request};
-    use crate::testing::{conversion_tests, line_position, same_line, state_with_documents};
+    use crate::testing::{line_position, same_line, state_with_documents};
 
     conversion_tests! {
         document_symbol_nested_outgoing_utf8_becomes_utf16: DocumentSymbol {

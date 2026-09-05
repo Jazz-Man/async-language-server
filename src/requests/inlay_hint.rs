@@ -4,9 +4,10 @@ mod tests {
         InlayHint, InlayHintLabel, InlayHintLabelPart, InlayHintParams, Location,
         TextDocumentIdentifier, TextEdit, WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::{InlayHint as InlayHintRequest, Request};
-    use crate::testing::{conversion_tests, line_position, same_line, state_with_documents};
+    use crate::testing::{line_position, same_line, state_with_documents};
 
     conversion_tests! {
         inlay_hint_round_trips_both_directions: InlayHintRequest {

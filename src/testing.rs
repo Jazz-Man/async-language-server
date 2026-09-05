@@ -16,11 +16,12 @@
 //! flavor — they are not (and need not be) the shared LSP fixtures
 //! (`line_position`, `line_range`, `same_line`).
 //!
-//! The `conversion_tests!` macro at the bottom of this module is the
-//! table-driven W0 harness: one row stamps the standard conversion test
-//! (fixture → `modify_params` → UTF-8 assert → `modify_response` → client
-//! assert). Rows pin the single-incoming-position shape; richer tests stay
-//! hand-written next to their `Request` impls.
+//! The `conversion_tests!` macro — a procedural macro in the workspace
+//! `lsp_macros` crate, imported directly from there by test modules — is
+//! the table-driven W0 harness: one row stamps the standard conversion
+//! test (fixture → `modify_params` → UTF-8 assert → `modify_response` →
+//! client assert). Rows pin the single-incoming-position shape; richer
+//! tests stay hand-written next to their `Request` impls.
 
 use std::{
     fs,
@@ -156,7 +157,7 @@ pub(crate) fn json_matchers() -> Vec<DocumentMatcher> {
 /// extracted position equals `expected`.
 ///
 /// The closure is taken as an [`Fn`] bound rather than called directly
-/// inside [`conversion_tests!`] because rustc cannot infer the parameter
+/// inside `conversion_tests!` because rustc cannot infer the parameter
 /// types of an immediately-invoked closure — a plain parenthesized closure
 /// call fails identically, so the limitation is that general inference
 /// rule, not the `macro_rules!` `expr` metavariable; the
@@ -169,61 +170,3 @@ pub(crate) fn assert_converted_position<T>(
 ) {
     assert_eq!(extract(value), expected, "{message}");
 }
-
-/// Stamps one `#[test]` per row for a [`crate::requests::Request`]'s
-/// conversion hooks — the table-driven W0 harness.
-///
-/// Row grammar (both `incoming`/`expects` and the
-/// `response`/`outgoing`/`returns` triple are optional):
-///
-/// - `params` — `Fn(Url) -> Params`, building params against the **emoji**
-///   document (the request's document), positions expressed in the CLIENT
-///   encoding (UTF-16 in this fixture).
-/// - `incoming`/`expects` — `Fn(&Params) -> Position` and the UTF-8
-///   (byte-column) position it must equal after `modify_params`.
-/// - `response` — `Fn(Url, Url) -> Response` receiving
-///   `(plain_url, emoji_url)`, positions built in UTF-8.
-/// - `outgoing`/`returns` — `Fn(&Response) -> Position` and the
-///   client-encoding position it must equal after `modify_response`.
-///
-/// Coverage boundary: a single incoming position and an optional single
-/// outgoing position. Anything richer stays hand-written.
-macro_rules! conversion_tests {
-    ($(
-        $name:ident : $request:ty {
-            params: $params:expr
-            $(, incoming: $incoming:expr, expects: $expects:expr)?
-            $(, response: $response:expr, outgoing: $outgoing:expr, returns: $returns:expr)?
-            $(,)?
-        }
-    )*) => {
-        $(
-        #[test]
-        fn $name() {
-            let (state, _plain, emoji) = crate::testing::state_with_documents();
-            let document = state.document(&emoji).expect("emoji document is tracked");
-            let mut params = ($params)(emoji.clone());
-            <$request as $crate::requests::Request>::modify_params(&state, &document, &mut params);
-            $(
-            crate::testing::assert_converted_position(
-                &params,
-                $incoming,
-                $expects,
-                "incoming position must be converted to the UTF-8 byte column",
-            );
-            )?
-            $(
-            let mut response = ($response)(_plain.clone(), emoji.clone());
-            <$request as $crate::requests::Request>::modify_response(&state, &document, &mut response);
-            crate::testing::assert_converted_position(
-                &response,
-                $outgoing,
-                $returns,
-                "outgoing position must be converted to the client encoding",
-            );
-            )?
-        }
-        )*
-    };
-}
-pub(crate) use conversion_tests;

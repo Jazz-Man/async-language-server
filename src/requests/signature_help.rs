@@ -48,9 +48,10 @@ mod tests {
         SignatureHelpContext, SignatureHelpParams, SignatureHelpTriggerKind, SignatureInformation,
         TextDocumentIdentifier, TextDocumentPositionParams, WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::{Request, SignatureHelp as SignatureHelpRequest};
-    use crate::testing::{conversion_tests, line_position, state_with_documents};
+    use crate::testing::{line_position, state_with_documents};
 
     conversion_tests! {
         signature_help_position_converts_incoming: SignatureHelpRequest {

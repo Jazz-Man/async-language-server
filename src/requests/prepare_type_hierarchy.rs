@@ -5,9 +5,10 @@ mod tests {
         TypeHierarchyItem as LspTypeHierarchyItem, TypeHierarchyPrepareParams,
         WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::TypeHierarchyPrepare;
-    use crate::testing::{conversion_tests, line_position, same_line};
+    use crate::testing::{line_position, same_line};
 
     conversion_tests! {
         prepare_type_hierarchy_items_convert_both_directions: TypeHierarchyPrepare {

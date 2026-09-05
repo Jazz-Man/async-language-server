@@ -4,9 +4,10 @@ mod tests {
         GotoDefinitionParams, GotoDefinitionResponse, Location, PartialResultParams,
         TextDocumentIdentifier, TextDocumentPositionParams, WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::{Definition, Request};
-    use crate::testing::{conversion_tests, line_position, same_line, state_with_documents};
+    use crate::testing::{line_position, same_line, state_with_documents};
 
     #[test]
     fn definition_locations_are_converted_using_their_own_document() {

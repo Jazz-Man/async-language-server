@@ -3,9 +3,10 @@ mod tests {
     use async_lsp::lsp_types::{
         PrepareRenameResponse, TextDocumentIdentifier, TextDocumentPositionParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::RenamePrepare;
-    use crate::testing::{conversion_tests, line_position, same_line};
+    use crate::testing::{line_position, same_line};
 
     conversion_tests! {
         rename_prepare_round_trips_both_directions: RenamePrepare {

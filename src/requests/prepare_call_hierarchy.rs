@@ -4,9 +4,10 @@ mod tests {
         CallHierarchyItem as LspCallHierarchyItem, CallHierarchyPrepareParams, SymbolKind,
         TextDocumentIdentifier, TextDocumentPositionParams, WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::CallHierarchyPrepare;
-    use crate::testing::{conversion_tests, line_position, same_line};
+    use crate::testing::{line_position, same_line};
 
     conversion_tests! {
         prepare_call_hierarchy_items_convert_both_directions: CallHierarchyPrepare {

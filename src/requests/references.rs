@@ -4,9 +4,10 @@ mod tests {
         Location, PartialResultParams, ReferenceContext, ReferenceParams, TextDocumentIdentifier,
         TextDocumentPositionParams, WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::References;
-    use crate::testing::{conversion_tests, line_position, same_line};
+    use crate::testing::{line_position, same_line};
 
     conversion_tests! {
         references_round_trips_both_directions: References {

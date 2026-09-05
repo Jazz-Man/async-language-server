@@ -4,9 +4,10 @@ mod tests {
         DocumentFormattingParams, FormattingOptions, TextDocumentIdentifier, TextEdit,
         WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::DocumentFormat;
-    use crate::testing::{conversion_tests, line_position, same_line};
+    use crate::testing::{line_position, same_line};
 
     conversion_tests! {
         document_format_edits_convert_outgoing: DocumentFormat {

@@ -4,9 +4,10 @@ mod tests {
         GotoDefinitionParams, GotoDefinitionResponse, Location, PartialResultParams,
         TextDocumentIdentifier, TextDocumentPositionParams, WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::TypeDefinition;
-    use crate::testing::{conversion_tests, line_position, same_line};
+    use crate::testing::{line_position, same_line};
 
     conversion_tests! {
         type_definition_round_trips_both_directions: TypeDefinition {

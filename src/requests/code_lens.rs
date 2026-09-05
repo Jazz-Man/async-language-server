@@ -4,9 +4,10 @@ mod tests {
         CodeLens, CodeLensParams, PartialResultParams, TextDocumentIdentifier,
         WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::CodeLens as CodeLensRequest;
-    use crate::testing::{conversion_tests, line_position, same_line};
+    use crate::testing::{line_position, same_line};
 
     conversion_tests! {
         code_lens_outgoing_utf8_becomes_utf16: CodeLensRequest {

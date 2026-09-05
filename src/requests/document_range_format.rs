@@ -4,9 +4,10 @@ mod tests {
         DocumentRangeFormattingParams, FormattingOptions, TextDocumentIdentifier, TextEdit,
         WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::DocumentRangeFormat;
-    use crate::testing::{conversion_tests, line_position, same_line};
+    use crate::testing::{line_position, same_line};
 
     conversion_tests! {
         document_range_format_round_trips_both_directions: DocumentRangeFormat {

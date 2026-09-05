@@ -4,9 +4,10 @@ mod tests {
         MonikerParams, PartialResultParams, TextDocumentIdentifier, TextDocumentPositionParams,
         WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::Moniker;
-    use crate::testing::{conversion_tests, line_position};
+    use crate::testing::line_position;
 
     conversion_tests! {
         moniker_position_converts_incoming: Moniker {

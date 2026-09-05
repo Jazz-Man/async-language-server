@@ -3,9 +3,10 @@ mod tests {
     use async_lsp::lsp_types::{
         TextDocumentIdentifier, TextDocumentSaveReason, TextEdit, WillSaveTextDocumentParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::WillSaveWaitUntil;
-    use crate::testing::{conversion_tests, line_position, same_line};
+    use crate::testing::{line_position, same_line};
 
     conversion_tests! {
         will_save_wait_until_edits_convert_outgoing: WillSaveWaitUntil {

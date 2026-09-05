@@ -4,9 +4,10 @@ mod tests {
         LinkedEditingRangeParams, LinkedEditingRanges, TextDocumentIdentifier,
         TextDocumentPositionParams, WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::LinkedEditingRange;
-    use crate::testing::{conversion_tests, line_position, same_line};
+    use crate::testing::{line_position, same_line};
 
     conversion_tests! {
         linked_editing_range_incoming_and_outgoing_convert: LinkedEditingRange {

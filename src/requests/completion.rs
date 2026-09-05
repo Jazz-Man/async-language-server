@@ -44,8 +44,9 @@ mod tests {
         CompletionItem, CompletionParams, CompletionResponse, PartialResultParams,
         TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
-    use crate::testing::{conversion_tests, line_position, same_line, state_with_documents};
+    use crate::testing::{line_position, same_line, state_with_documents};
 
     use super::{Completion, Request};
 

@@ -4,9 +4,10 @@ mod tests {
         DocumentLink as LspDocumentLink, DocumentLinkParams, PartialResultParams,
         TextDocumentIdentifier, WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
     use crate::requests::DocumentLink;
-    use crate::testing::{conversion_tests, line_position, same_line};
+    use crate::testing::{line_position, same_line};
 
     conversion_tests! {
         document_link_ranges_convert_outgoing: DocumentLink {
