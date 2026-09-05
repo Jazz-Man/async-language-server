@@ -28,13 +28,13 @@ Before considering work done, run the same battery CI runs
 (`.github/workflows/rust.yml`, on push/PR to `main`):
 
 ```bash
-cargo build --all-targets
-cargo test                          # default features
-cargo test --no-default-features
-cargo test --all-features
+cargo build --workspace --all-targets
+cargo test --workspace              # default features
+cargo test --workspace --no-default-features
+cargo test --workspace --all-features
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+cargo clippy --workspace --all-targets -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
 
 `cargo test <test_name>` runs a single test. A failing check is a signal

@@ -17,7 +17,7 @@
 - Errors: `syn::Error` with the span of the offending token → `to_compile_error()`. No `panic!`/`expect`/`unwrap` in `lsp_macros` production code (`expect_used`/`unwrap_used` are `deny` via `[workspace.lints]`; allowed in `#[cfg(test)]` per `clippy.toml`).
 - Generated code references call-site paths (`crate::requests::Request`, `crate::server::ServerState`, …) — never `$crate` (proc macros have none) and never `lsp_macros::` items.
 - Docs on every public macro (`missing_docs` is deny). English only.
-- Battery (both crates): `cargo build --all-targets`, `cargo test` ×3 feature configurations, `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`. Single-macro smoke checks may use `-p lsp_macros` / `-p async-language-server` scoping; every task ends battery-green for what it touched, Task 5 ends with the full battery.
+- Battery (both crates): `cargo build --workspace --all-targets`, `cargo test --workspace` ×3 feature configurations, `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`. Single-macro smoke checks may use `-p lsp_macros` / `-p async-language-server` scoping; every task ends battery-green for what it touched, Task 5 ends with the full battery.
 - On any failure: invoke `superpowers:systematic-debugging` and `no-workarounds`; fix root causes, never suppress.
 - The dupes gate stays quiet in this plan by construction (macro invocations are opaque nodes); if `cargo dupes check` is run and a group appears, the avoidance analysis rule applies (memory + spec decision 4).
 - No `use … as Name` import aliases: an alias exists only to resolve a genuine name collision — two same-named types that must coexist in scope (the BaseCar rule, owner 2026-09-05). `as _` trait imports are not aliases. New/rewritten code uses real names.
@@ -1234,7 +1234,7 @@ pub(crate) use lsp_macros::conversion_tests;
 
 - [ ] **Step 4: Integration dogfood — the entire existing suite**
 
-Run: `cargo test && cargo test --no-default-features && cargo test --all-features`
+Run: `cargo test --workspace && cargo test --workspace --no-default-features && cargo test --workspace --all-features`
 Expected: green in all three configurations, identical test counts to Plan 1's baseline — every existing `conversion_tests!` call site now expands through the proc macro.
 
 - [ ] **Step 5: Unit tests (append to `conversion_tests.rs`)**
@@ -1289,7 +1289,7 @@ Expected: green.
 
 - [ ] **Step 6: Clippy/fmt/doc + checkpoint**
 
-Run: `cargo clippy --all-targets -- -D warnings && cargo fmt --check && RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`
+Run: `cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --check && RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`
 
 Changed files: `macros/src/lib.rs`, `macros/src/conversion_tests.rs`, `src/testing.rs`.
 
@@ -1419,13 +1419,13 @@ Expected: the dispatch method diff is empty modulo `Hover` → `HoverRequest` an
 - [ ] **Step 8: Full battery**
 
 ```bash
-cargo build --all-targets
-cargo test
-cargo test --no-default-features
-cargo test --all-features
+cargo build --workspace --all-targets
+cargo test --workspace
+cargo test --workspace --no-default-features
+cargo test --workspace --all-features
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+cargo clippy --workspace --all-targets -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
 Expected: green everywhere; the two hover conversion tests pass through the attribute-stamped impl.
 

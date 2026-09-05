@@ -8,7 +8,7 @@ Library crate (no binary) that wraps `async-lsp` to make language servers with l
 
 ## Commands
 
-- CI runs the full battery on push/PR to `main`: `cargo build --all-targets`, `cargo test` in three feature configurations (default, `--no-default-features`, `--all-features`), `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`
+- CI runs the full battery on push/PR to `main`: `cargo build --workspace --all-targets`, `cargo test --workspace` in three feature configurations (default, `--no-default-features`, `--all-features`), `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`
 - `cargo test <test_name>` — run a single test; tests are inline `#[cfg(test)] mod tests` blocks inside each `src/` module, or sibling `tests.rs` files for the larger modules
 - `cargo clippy --all-targets` — `clippy::all` is `deny` in `Cargo.toml` `[lints.clippy]`, so default lints are hard errors; `pedantic`/`cargo` warn, with an explicit allow list there
 - `cargo fmt` — rustfmt and clippy are pinned via `rust-toolchain.toml`

@@ -14,7 +14,7 @@
 
 - The owner commits; the agent never runs git write commands. Each task ends with a checkpoint listing the changed files for the owner's commit — no `git add`/`git commit` steps anywhere.
 - Zero behavior change. Zero public-API change except the owner-approved removal of the `tracing` feature (spec decision 10, breaking for consumers naming it) — the owner's commit message names it.
-- The verification battery (from `.claude/rules/tech.md`, now covering BOTH workspace members): `cargo build --all-targets`, `cargo test`, `cargo test --no-default-features`, `cargo test --all-features`, `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`.
+- The verification battery (from `.claude/rules/tech.md`, now covering BOTH workspace members): `cargo build --workspace --all-targets`, `cargo test --workspace`, `cargo test --workspace --no-default-features`, `cargo test --workspace --all-features`, `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`.
 - Toolchain pinned by `rust-toolchain.toml` (stable + rustfmt + clippy); never bypass with `rustup run` or `+nightly`.
 - All written artifacts (code comments, manifest comments, docs) in English only.
 - No `#[allow]`, `--cap-lints`, or lint suppression. When anything fails, invoke `superpowers:systematic-debugging` and `no-workarounds` skills and fix the root cause.
@@ -393,13 +393,13 @@ Expected: empty output.
 - [ ] **Step 6: Run the full battery**
 
 ```bash
-cargo build --all-targets
-cargo test
-cargo test --no-default-features
-cargo test --all-features
+cargo build --workspace --all-targets
+cargo test --workspace
+cargo test --workspace --no-default-features
+cargo test --workspace --all-features
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+cargo clippy --workspace --all-targets -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
 Expected: all green in all three configurations; `--no-default-features` now builds the crate without tree-sitter only.
 
@@ -452,13 +452,13 @@ Expected: empty output. (The pattern deliberately matches only bare `pub `, not 
 
 Run:
 ```bash
-cargo build --all-targets
-cargo test
-cargo test --no-default-features
-cargo test --all-features
+cargo build --workspace --all-targets
+cargo test --workspace
+cargo test --workspace --no-default-features
+cargo test --workspace --all-features
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+cargo clippy --workspace --all-targets -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
 Expected: all green, same test counts as the pre-plan baseline in each configuration. A compile error pointing at some `pub` use elsewhere is a signal to inspect that site — convert it to `pub(crate)` if it is internal (expected), and stop to investigate if it turns out to be reachable from a public path (would contradict the research; surface it rather than patch it).
 
