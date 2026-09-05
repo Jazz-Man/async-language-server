@@ -19,6 +19,14 @@ default = ["tracing", "tree-sitter"]
 tracing = ["dep:tracing", "async-lsp/tracing"]
 tree-sitter = ["dep:tree-sitter"]
 
+[workspace]
+members = [
+    "macros",
+    ".", # поточна директорія (основний крейт)
+]
+resolver = "2"
+
+
 [dependencies]
 async-lsp = { version = "0.2.4", default-features = false, features = ["client-monitor", "omni-trait"] }
 dashmap = "6.2.1"
@@ -33,6 +41,8 @@ tower = "0.5.3"
 
 tracing = { version = "0.1.44", optional = true }
 tree-sitter = { version = "0.26.13", optional = true }
+
+
 
 [dev-dependencies]
 # Pinned exactly: 0.4 -> 0.5 silently changed what the "strict" preset means,

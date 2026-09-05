@@ -1,0 +1,13 @@
+[package]
+name = "lsp_macros"
+version = "0.1.0"
+edition = "2024"
+
+
+[lib]
+proc-macro = true
+
+
+[dependencies]
+quote = "1.0.47"
+syn = { version = "3.0.4", features = ["full"] }
