@@ -2,11 +2,13 @@
 name = "lsp_macros"
 version = "0.1.0"
 edition = "2024"
-
+rust-version = "1.88"
+license = "MIT"
+publish = false
+description = "Procedural macros for async-language-server (workspace-internal)"
 
 [lib]
 proc-macro = true
-
 
 [dependencies]
 quote = "1.0.47"
