@@ -13,10 +13,11 @@
 
 mod conversion_tests {}
 mod dispatch {}
-mod request {}
+mod request;
 mod trait_method;
 
 use proc_macro::TokenStream;
+use trait_method::{Kind, entry};
 
 /// Appends the `METHOD_NOT_FOUND` default body to a bodiless `Server`
 /// trait-method declaration.
@@ -36,10 +37,7 @@ use proc_macro::TokenStream;
 /// ```
 #[proc_macro]
 pub fn lsp_method(input: TokenStream) -> TokenStream {
-    let item = syn::parse_macro_input!(input as syn::TraitItemFn);
-    trait_method::expand(item, trait_method::Kind::NotImplemented)
-        .unwrap_or_else(syn::Error::into_compile_error)
-        .into()
+    entry(input, Kind::NotImplemented)
 }
 
 /// Appends the resolve default body (`Ok(item)`) to a bodiless `Server`
@@ -57,8 +55,40 @@ pub fn lsp_method(input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro]
 pub fn lsp_resolve_method(input: TokenStream) -> TokenStream {
-    let item = syn::parse_macro_input!(input as syn::TraitItemFn);
-    trait_method::expand(item, trait_method::Kind::ResolveUnchanged)
+    entry(input, Kind::ResolveUnchanged)
+}
+
+/// Registers one LSP request on a non-generic struct, stamping its `impl
+/// Request`.
+///
+/// `params` and `response` carry the wire types; every hook is optional —
+/// unspecified hooks keep the `Request` trait's delegating defaults:
+///
+/// - `document(...)` — field path to the params' document URL (enables
+///   `extract_url`)
+/// - `incoming_position(...)` / `incoming_range(...)` — field path whose
+///   position/range `modify_params` converts client encoding → UTF-8
+/// - `incoming_custom(...)` / `outgoing(...)` — function path
+///   `fn(&ServerState, &Document, &mut Params or &mut Response)`
+/// - `incoming_standalone(...)` / `outgoing_standalone(...)` — function
+///   path `fn(&ServerState, &mut Params or &mut Response)` for the
+///   no-anchor hooks
+///
+/// # Examples
+///
+/// ```ignore
+/// #[lsp_request(
+///     params = async_lsp::lsp_types::HoverParams,
+///     response = Option<async_lsp::lsp_types::Hover>,
+///     document(text_document_position_params.text_document),
+///     incoming_position(text_document_position_params.position),
+/// )]
+/// pub struct HoverRequest;
+/// ```
+#[proc_macro_attribute]
+pub fn lsp_request(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let item = syn::parse_macro_input!(item as syn::ItemStruct);
+    request::expand(attr.into(), &item)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

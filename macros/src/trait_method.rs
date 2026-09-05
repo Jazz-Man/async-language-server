@@ -16,6 +16,17 @@ pub(super) enum Kind {
     ResolveUnchanged,
 }
 
+/// Entry point shared by the `lsp_method!` / `lsp_resolve_method!` macros:
+/// parses the invocation as a bodiless trait-method declaration and emits it
+/// with `kind`'s default body appended, or the spanned error as a compile
+/// error.
+pub(super) fn entry(input: proc_macro::TokenStream, kind: Kind) -> proc_macro::TokenStream {
+    let item = syn::parse_macro_input!(input as syn::TraitItemFn);
+    expand(item, kind)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
 /// Parses the invocation input as a bodiless trait-method declaration and
 /// returns it with the default body for `kind` appended.
 ///
@@ -70,54 +81,75 @@ mod tests {
         syn::parse2(tokens).expect("declaration parses")
     }
 
+    // Table-driven to avoid the near-duplicate pair the dupes gate flagged;
+    // cases differ only in Kind and the needles the body must carry.
     #[test]
-    fn not_implemented_appends_body_with_method_name() {
-        let item = parse(quote! {
-            /// doc
-            fn hover(&self, _state: ServerState, _params: HoverParams) -> impl Future<Output = R> + Send;
-        });
-        let out = expand(item, Kind::NotImplemented).expect("expands");
-        let text = out.to_string();
-        assert!(text.contains("method_not_implemented"));
-        assert!(text.contains("stringify"));
-        assert!(text.contains("(hover)"));
-        assert!(text.contains("doc =")); // docs survive as attributes
+    fn expand_appends_default_body_per_kind() {
+        let cases: [(Kind, TokenStream, &[&str]); 2] = [
+            (
+                Kind::NotImplemented,
+                quote! {
+                    /// doc
+                    fn hover(&self, _state: ServerState, _params: HoverParams) -> impl Future<Output = R> + Send;
+                },
+                // "doc =" pins that docs survive as attributes.
+                &["method_not_implemented", "stringify", "(hover)", "doc ="],
+            ),
+            (
+                Kind::ResolveUnchanged,
+                quote! {
+                    fn completion_resolve(&self, _state: ServerState, item: CompletionItem)
+                        -> impl Future<Output = ServerResult<CompletionItem>> + Send;
+                },
+                // "Ok"/"item" pin that the last parameter is returned unchanged.
+                &["async move", "Ok", "item"],
+            ),
+        ];
+        for (i, (kind, decl, needles)) in cases.into_iter().enumerate() {
+            let text = expand(parse(decl), kind).expect("expands").to_string();
+            for needle in needles {
+                assert!(
+                    text.contains(needle),
+                    "case {i}: {needle:?} missing from {text}"
+                );
+            }
+        }
     }
 
+    // Table-driven to avoid the duplicate reject tests the dupes gate
+    // flagged; the per-kind success table above is the precedent.
     #[test]
-    fn resolve_appends_ok_of_last_param() {
-        let item = parse(quote! {
-            fn completion_resolve(&self, _state: ServerState, item: CompletionItem)
-                -> impl Future<Output = ServerResult<CompletionItem>> + Send;
-        });
-        let out = expand(item, Kind::ResolveUnchanged).expect("expands");
-        let text = out.to_string();
-        assert!(text.contains("async move"));
-        assert!(text.contains("Ok")); // the last parameter is returned unchanged
-        assert!(text.contains("item"));
-    }
-
-    #[test]
-    fn rejects_declaration_with_body() {
-        let item = parse(quote! {
-            fn hover(&self) -> impl Future<Output = R> + Send { ready(()) }
-        });
-        let err = expand(item, Kind::NotImplemented).expect_err("bodied input rejected");
-        assert!(err.to_string().contains("bodiless"));
-    }
-
-    #[test]
-    fn resolve_rejects_missing_param() {
-        let item = parse(quote! { fn r(&self) -> impl Future<Output = R> + Send; });
-        assert!(expand(item, Kind::ResolveUnchanged).is_err());
-    }
-
-    #[test]
-    fn resolve_rejects_pattern_parameter() {
-        let item = parse(quote! {
-            fn r(&self, (a, b): (u8, u8)) -> impl Future<Output = R> + Send;
-        });
-        let err = expand(item, Kind::ResolveUnchanged).expect_err("pattern parameter rejected");
-        assert!(err.to_string().contains("plain named parameter"));
+    fn rejects_bodied_and_malformed_declarations() {
+        let cases: [(Kind, TokenStream, &str); 3] = [
+            (
+                Kind::NotImplemented,
+                quote! {
+                    fn hover(&self) -> impl Future<Output = R> + Send { ready(()) }
+                },
+                // "bodiless" pins the has-a-body rejection.
+                "bodiless",
+            ),
+            (
+                Kind::ResolveUnchanged,
+                quote! { fn r(&self) -> impl Future<Output = R> + Send; },
+                // "final named parameter" pins the no-parameter rejection.
+                "final named parameter",
+            ),
+            (
+                Kind::ResolveUnchanged,
+                quote! {
+                    fn r(&self, (a, b): (u8, u8)) -> impl Future<Output = R> + Send;
+                },
+                // "plain named parameter" pins the pattern-parameter rejection.
+                "plain named parameter",
+            ),
+        ];
+        for (i, (kind, decl, needle)) in cases.into_iter().enumerate() {
+            let err = expand(parse(decl), kind).expect_err("input rejected");
+            assert!(
+                err.to_string().contains(needle),
+                "case {i}: {needle:?} missing from {err}"
+            );
+        }
     }
 }
