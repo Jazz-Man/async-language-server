@@ -8,25 +8,35 @@ resolved as T2 + family entry (owner, 2026-09-05).
 
 ## Goal
 
-Migrate all 15 custom `macro_rules!` into the `lsp_macros` proc-macro crate as **three
+Migrate all 15 custom `macro_rules!` into the `lsp_macros` proc-macro crate as **five
 procedural macros**, restructure request registration into distributed per-file form,
-hand-write the `Server` trait, run the visibility sweep, and complete workspace plumbing —
-with **zero behavior change** and **zero downstream-visible API change**.
+declare the `Server` trait with real docs and signatures (macro-stamped default bodies),
+run the visibility sweep, and complete workspace plumbing — with **zero behavior change**
+and **zero downstream-visible API change**.
 
 ## Owner decisions log
 
 1. **Consolidation — all four candidates:** helpers #12–14 become plain functions inside
    `lsp_macros` (not macros); stamper pairs merge; the three registry tables die in favor of
-   distributed registration; the two dispatch engines share one skeleton. 15 definitions → 3.
+   distributed registration; the two dispatch engines share one skeleton. 15 definitions → 5
+   (`lsp_request`, `lsp_dispatch`, `lsp_method`, `lsp_resolve_method`, `conversion_tests`).
 2. **Distributed per-file registration:** one request file = one `#[lsp_request(...)]`
    invocation + colocated test macros. No central registry.
 3. **Workspace architecture W1:** two members — the facade (current crate, layout unchanged)
    + `lsp_macros`. No `als-core`, no leaf crates (W2/W3 rejected on the research evidence:
    no independent consumers, hard blockers in `Document` field privacy and the
    `Request`↔`ServerState` binding; async-lsp itself chose features over crates).
-4. **Trait site T2:** the 48 `Server` trait methods are hand-written real code. The dupes
-   gate cost is one or two reasoned "deliberate parallel family" entries in
-   `.dupes-ignore.toml` (the existing notification-forwards precedent), accepted explicitly.
+4. **Trait site T4:** the 48 `Server` trait methods are written as real declarations —
+   docs and signatures verbatim in source — with only the one-line default bodies stamped
+   by `lsp_method!` / `lsp_resolve_method!`. **Zero new `.dupes-ignore.toml` entries**
+   (gate condition, owner 2026-09-05: entries stay minimal and only genuinely justified;
+   any proposed addition must carry an avoidance analysis first — this decision is that
+   analysis for the trait). Backed by rust-skills `macro-prefer-functions` (stamping a
+   trait for many methods is the sanctioned macro case) and `macro-no-rewrite-item` (the
+   written signature is untouched; only the mechanical body is appended). **Documented
+   fallback** if the trait-position probe fails (rustc rejecting a function-like proc
+   macro in trait item position): plain hand-written methods plus exactly one "deliberate
+   parallel family" entry (the notification-forwards precedent).
 5. **Struct rename:** uniform `Request` suffix on all 48 marker structs.
 6. **No `method = "..."` field:** no consumer exists; the wire-method string lives only
    inside async-lsp.
@@ -53,11 +63,13 @@ Two workspace members. A request flows through three places, each real code or a
 )]
 pub struct HoverRequest;
 
-// ② src/server/server_trait.rs — PUBLIC API (hand-written, T2)
-/// Handles `textDocument/hover` requests from the client. ...
-fn hover(&self, _state: ServerState, _params: HoverParams)
-    -> impl Future<Output = ServerResult<Option<Hover>>> + Send
-{ method_not_implemented(stringify!(hover)) }
+// ② src/server/server_trait.rs — PUBLIC API (T4: real docs + signature,
+//    the macro appends only the default body)
+lsp_method! {
+    /// Handles `textDocument/hover` requests from the client. ...
+    fn hover(&self, _state: ServerState, _params: HoverParams)
+        -> impl Future<Output = ServerResult<Option<Hover>>> + Send;
+}
 
 // ③ src/server/with_state/mod.rs — DISPATCH (one macro, thin rows)
 lsp_dispatch! {
@@ -137,16 +149,41 @@ path). **Equivalence requirement:** the generated method bodies are line-for-lin
 macro expansion — same steps, same comments, same behavior; verified by the one-off
 `cargo expand` diff (testing section).
 
-## The hand-written `Server` trait (T2)
+## The `Server` trait (T4)
 
-- 48 methods as real code: doc comments moved **byte-identical** from registry rows to
-  `///` (rendered rustdoc unchanged), full parameter/response types, defaults
-  `method_not_implemented(stringify!(name))` (42) and `async move { Ok(item) }` (6).
-- Config methods and the 12 notification hooks stay as today.
-- File grows to ~550 lines — accepted (upstream async-lsp's `omni_trait.rs` is ~1900).
-- **Dupes gate:** the 48 methods form one deliberate parallel family; the cycle adds one
-  or two reasoned entries to `.dupes-ignore.toml` (normal-default family, resolve family)
-  following the notification-forwards precedent. Never per-method entries.
+Each of the 48 request methods is a real declaration — doc comment and signature written
+verbatim in the source — wrapped in a one-liner macro that appends the default body:
+
+```rust
+lsp_method! {
+    /// Handles `textDocument/hover` requests from the client.
+    ///
+    /// Returns hover contents for the position in `params`, or `None` ...
+    fn hover(&self, _state: ServerState, _params: async_lsp::lsp_types::HoverParams)
+        -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::Hover>>> + Send;
+}
+lsp_resolve_method! {
+    /// Handles `completionItem/resolve` requests from the client. ...
+    fn completion_resolve(&self, _state: ServerState, item: async_lsp::lsp_types::CompletionItem)
+        -> impl Future<Output = ServerResult<async_lsp::lsp_types::CompletionItem>> + Send;
+}
+```
+
+- The macros re-emit the written item unchanged (docs, attributes, signature — every
+  token) and append the default: `method_not_implemented(stringify!(name))` for the 42
+  normal methods, `async move { Ok(item) }` for the 6 resolve methods. `macro-no-rewrite-
+  item` satisfied by construction: nothing written is altered.
+- Docs move **byte-identical** from registry rows to `///` (rendered rustdoc unchanged).
+- Config methods and the 12 notification hooks stay as today (their empty bodies are
+  below the dupes threshold; no wrapping needed).
+- **Trait-position probe (first task of plan 2):** verify rustc accepts a function-like
+  proc-macro invocation in trait item position (`syn::ItemTrait` has `TraitItem::Macro`,
+  so macro calls in trait bodies parse; the proc-macro variant specifically is
+  [Unverified] until probed). On failure, the documented fallback applies: plain
+  hand-written methods plus exactly one deliberate-parallel-family entry in
+  `.dupes-ignore.toml` (decision 4). A `proc-macro = true` crate cannot export
+  `macro_rules!`, so there is no declarative fallback from inside `lsp_macros`.
+- **Dupes gate:** zero new entries in the T4 path — each invocation is one opaque node.
 - **Rename mapping:** uniform rule — append `Request`. Bases:
   - generated (31): Hover, Declaration, Definition, References, DocumentLink, Rename,
     RenamePrepare, DocumentFormat, DocumentRangeFormat, Implementation, TypeDefinition,
@@ -193,14 +230,16 @@ macro expansion — same steps, same comments, same behavior; verified by the on
   green before and after.
 - **One-off expansion equivalence:** `cargo expand` on `with_state` before/after — the
   diff of generated dispatch methods must be empty modulo the struct rename.
-- **New completeness pin (T2's only silent gap):** a trait method without a dispatch row
+- **New completeness pin (the design's only silent gap):** a trait method without a dispatch row
   answers `-32601` silently; everything else fails compilation. A parametrized wire test
   asserts each of the 48 methods answers ≠ `-32601` against an echo server.
 - **`lsp_macros` unit tests:** the parse/emit functions are plain Rust
   (`parse_row`, `dispatch_method`, …) and are tested directly; error paths assert
   `syn::Error` spans/messages.
-- **Dupes gate** re-run after migration; the trait family entry (above) plus any
-  attribute-wiring parallels get reasoned entries — never threshold changes.
+- **Dupes gate** re-run after migration; the target is **zero new entries** (decision 4).
+  If any group surfaces — attribute wiring parallels, generated-hook families — each
+  carries an avoidance analysis before an entry is even considered, and only a genuinely
+  justified minimal set lands. Thresholds never change.
 - **D6 form:** lean (b) — `conversion_tests!` stays a function-like proc macro with
   today's call syntax; rows remain ordinary module code. Variant (a)
   (`#[lsp_request_test]` stacked attribute) is reserved; the spike decides if it flips.
@@ -219,8 +258,8 @@ the D6 lean may flip on the findings.
 | plan | contents | done when |
 |---|---|---|
 | 1. Plumbing + hygiene + visibility | workspace lints/deps, `macros/Cargo.toml` parity, clean skeleton replacing the placeholder, 49 `pub`→`pub(crate)`, English fixes | battery green, both crates linted |
-| 2. `lsp_macros` crate | the three macros + shared skeleton as plain functions, parser/generator unit tests | dogfood `hover.rs` compiles and passes its conversion tests; **spike D3** runs right after |
-| 3. Migration sweep (may slice 3a/3b) | 31 request files gain structs + attributes; 17 custom/resolve impls rewritten as attribute wiring over free fns; rename `Request` × 48; hand-written trait with docs moved; `lsp_dispatch!` table replaces five stamper invocations; registry + the 14 obsolete macro
+| 2. `lsp_macros` crate | **first task: the trait-position probe** (decision 4 fallback decides the trait form), then the five macros + shared skeleton as plain functions, parser/generator unit tests | dogfood `hover.rs` compiles and passes its conversion tests; **spike D3** runs right after |
+| 3. Migration sweep (may slice 3a/3b) | 31 request files gain structs + attributes; 17 custom/resolve impls rewritten as attribute wiring over free fns; rename `Request` × 48; the trait via `lsp_method!`/`lsp_resolve_method!` with docs moved (or the fallback form per the probe); `lsp_dispatch!` table replaces five stamper invocations; registry + the 14 obsolete macro
 definitions deleted (3 tables, 4 table-stampers, the aggregator, 2 engines, 3 helpers —
 `conversion_tests!` moves instead); `requests/mod.rs` re-exports updated; normative docs + oneshot sentence; completeness wire test | full battery ×3 feature configs + dupes gate + `cargo expand` diff clean |
 
