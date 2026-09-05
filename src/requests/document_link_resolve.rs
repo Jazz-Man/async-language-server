@@ -1,28 +1,28 @@
-use async_lsp::lsp_types::DocumentLink as LspDocumentLink;
+use async_lsp::lsp_types::DocumentLink;
 
 use crate::server::{Document, ServerState};
 
-use super::{
-    Request,
-    conversion::{Direction, convert_range},
-};
+use super::conversion::{Direction, convert_range};
 
-pub(crate) struct DocumentLinkResolve;
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::DocumentLink,
+    response = async_lsp::lsp_types::DocumentLink,
+    incoming_custom(self::convert_params),
+    outgoing(self::convert_response),
+)]
+pub(crate) struct DocumentLinkResolveRequest;
 
-impl Request for DocumentLinkResolve {
-    type Params = LspDocumentLink;
-    type Response = LspDocumentLink;
+// DocumentLink doesn't contain a source document URI; the resolve
+// dispatch macro supplies the sole tracked document.
 
-    // DocumentLink doesn't contain a source document URI; the resolve
-    // dispatch macro supplies the sole tracked document.
+/// Converts the link's range to UTF-8 (the incoming hook).
+fn convert_params(state: &ServerState, document: &Document, params: &mut DocumentLink) {
+    convert_range(state, document, &mut params.range, Direction::Incoming);
+}
 
-    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        convert_range(state, document, &mut params.range, Direction::Incoming);
-    }
-
-    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        convert_range(state, document, &mut response.range, Direction::Outgoing);
-    }
+/// Converts the link's range back to the client encoding (the outgoing hook).
+fn convert_response(state: &ServerState, document: &Document, response: &mut DocumentLink) {
+    convert_range(state, document, &mut response.range, Direction::Outgoing);
 }
 
 #[cfg(test)]
@@ -30,7 +30,7 @@ mod tests {
     use async_lsp::ClientSocket;
     use async_lsp::lsp_types::{DocumentLink, Range};
 
-    use crate::requests::{Direction, DocumentLinkResolve, convert_resolve_item};
+    use crate::requests::{Direction, DocumentLinkResolveRequest, convert_resolve_item};
     use crate::server::{ServerOptions, ServerState};
     use crate::testing::{TestServer, open_document, same_line, state_with_documents, url};
     use crate::text_utils::Encoding;
@@ -59,7 +59,7 @@ mod tests {
         let document = state
             .document(&url("only.txt"))
             .expect("sole document is tracked");
-        convert_resolve_item::<DocumentLinkResolve, _>(
+        convert_resolve_item::<DocumentLinkResolveRequest, _>(
             &state,
             Some(&document),
             &mut item,
@@ -76,7 +76,7 @@ mod tests {
 
         let mut item = link(same_line(0, 4, 4));
 
-        convert_resolve_item::<DocumentLinkResolve, _>(
+        convert_resolve_item::<DocumentLinkResolveRequest, _>(
             &state,
             None,
             &mut item,
@@ -104,13 +104,13 @@ mod tests {
         let sole = state
             .document(&url("only.txt"))
             .expect("sole document is tracked");
-        convert_resolve_item::<DocumentLinkResolve, _>(
+        convert_resolve_item::<DocumentLinkResolveRequest, _>(
             &state,
             Some(&sole),
             &mut item,
             Direction::Incoming,
         );
-        convert_resolve_item::<DocumentLinkResolve, _>(
+        convert_resolve_item::<DocumentLinkResolveRequest, _>(
             &state,
             Some(&sole),
             &mut item,

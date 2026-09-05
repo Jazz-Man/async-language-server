@@ -2,42 +2,6 @@ use async_lsp::lsp_types::Url;
 
 use crate::server::{Document, ServerState};
 
-/// Stamps `Request` impls for the registry's generated rows.
-macro_rules! registry_request_impls {
-    ( $(
-        $trait_name:ident : $alsp_name:ident @ $req:ident {
-            doc: $doc:literal,
-            params: $params:ty,
-            response: $response:ty,
-            $(document: $($dseg:ident).+,)?
-            $(incoming: position at $($pseg:ident).+,)?
-            $(incoming: range at $($rseg:ident).+,)?
-            $(outgoing: $outgoing:ident,)?
-        }
-    )*) => {
-        $(
-            pub(crate) struct $req;
-
-            impl Request for $req {
-                type Params = $params;
-                type Response = $response;
-
-                $(request_modify_params_position!($($pseg).+);)?
-                $(request_modify_params_range!($($rseg).+);)?
-                $(
-                fn modify_response(
-                    state: &crate::server::ServerState,
-                    document: &crate::server::Document,
-                    response: &mut Self::Response,
-                ) {
-                    $crate::requests::conversion::$outgoing(state, document, response);
-                }
-                )?
-            }
-        )*
-    };
-}
-
 mod code_action;
 mod code_action_resolve;
 mod code_lens;
@@ -71,7 +35,6 @@ mod outgoing_calls;
 mod prepare_call_hierarchy;
 mod prepare_type_hierarchy;
 mod references;
-pub(crate) mod registry;
 mod rename;
 mod rename_prepare;
 mod selection_range;
@@ -90,12 +53,12 @@ mod will_save_wait_until;
 mod workspace_symbol_resolve;
 
 pub(crate) use code_action::CodeActionRequest;
-pub(crate) use code_action_resolve::CodeActionResolve;
+pub(crate) use code_action_resolve::CodeActionResolveRequest;
 pub(crate) use code_lens::CodeLensRequest;
-pub(crate) use code_lens_resolve::CodeLensResolve;
+pub(crate) use code_lens_resolve::CodeLensResolveRequest;
 pub(crate) use color_presentation::ColorPresentationRequest;
 pub(crate) use completion::CompletionRequest;
-pub(crate) use completion_resolve::CompletionResolve;
+pub(crate) use completion_resolve::CompletionResolveRequest;
 pub(crate) use conversion::{Direction, convert_resolve_item};
 pub(crate) use declaration::DeclarationRequest;
 pub(crate) use definition::DefinitionRequest;
@@ -104,7 +67,7 @@ pub(crate) use document_diagnostics::DocumentDiagnosticsRequest;
 pub(crate) use document_format::DocumentFormatRequest;
 pub(crate) use document_highlight::DocumentHighlightRequest;
 pub(crate) use document_link::DocumentLinkRequest;
-pub(crate) use document_link_resolve::DocumentLinkResolve;
+pub(crate) use document_link_resolve::DocumentLinkResolveRequest;
 pub(crate) use document_range_format::DocumentRangeFormatRequest;
 pub(crate) use document_symbol::DocumentSymbolRequest;
 pub(crate) use execute_command::ExecuteCommandRequest;
@@ -113,7 +76,7 @@ pub(crate) use hover::HoverRequest;
 pub(crate) use implementation::ImplementationRequest;
 pub(crate) use incoming_calls::IncomingCallsRequest;
 pub(crate) use inlay_hint::InlayHintRequest;
-pub(crate) use inlay_hint_resolve::InlayHintResolve;
+pub(crate) use inlay_hint_resolve::InlayHintResolveRequest;
 pub(crate) use inline_value::InlineValueRequest;
 pub(crate) use linked_editing_range::LinkedEditingRangeRequest;
 pub(crate) use moniker::MonikerRequest;
@@ -137,9 +100,7 @@ pub(crate) use will_create_files::WillCreateFilesRequest;
 pub(crate) use will_delete_files::WillDeleteFilesRequest;
 pub(crate) use will_rename_files::WillRenameFilesRequest;
 pub(crate) use will_save_wait_until::WillSaveWaitUntilRequest;
-pub(crate) use workspace_symbol_resolve::WorkspaceSymbolResolve;
-
-crate::requests::registry::generated_methods!(registry_request_impls);
+pub(crate) use workspace_symbol_resolve::WorkspaceSymbolResolveRequest;
 
 pub(crate) trait Request {
     type Params;

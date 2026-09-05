@@ -1,10 +1,6 @@
 [[ignore]]
-fingerprint = "d9a381ff3f5dca75"
-reason = "resolve twins (code-action, completion-item, inlay-hint): modify_params/modify_response delegate to the same item-specific converter with only Direction flipped (T20h shape)"
-
-[[ignore]]
-fingerprint = "e65ad068648fc2a0"
-reason = "single-field Request hooks in the resolve request files (document-link and code-lens resolve params/response): one-line delegation to the shared convert_range converter (the incoming/outgoing-calls and supertype/subtype members moved to the lsp_request attribute form — see 3f792e39a2cd77aa)"
+fingerprint = "796b160440b3f2f3"
+reason = "resolve hook twins (completion, code-action, inlay-hint): the lsp_request grammar binds one incoming and one outgoing hook fn per direction, each a one-line delegation to the file's item converter with only Direction flipped; the converters take distinct foreign item types, so unifying them is trait ceremony (successor of d9a381ff3f5dca75's impl-method form; family of 3ca1c2536ff13cb7)"
 
 [[ignore]]
 fingerprint = "1eb0db22997f837e"
@@ -163,8 +159,8 @@ fingerprint = "bf14980c7647a2e3"
 reason = "resolve capture trio in with_state/tests.rs (code_lens, inlay_hint, workspace_symbol): trait-mandated per-method Server impls sharing the capture-and-echo shape over the common store helper — each dispatch test needs its own echo handler for its method (family of the f83853ca365213c9 capture-server bodies)"
 
 [[ignore]]
-fingerprint = "ee7fe2f829bc4130"
-reason = "workspace-symbol resolve twins: modify_params_standalone/modify_response_standalone delegate to the one document-free per-URL converter with only Direction flipped; the converter resolves each location against its own document, so no dispatch state needs an anchor (family of the d9a381ff3f5dca75 resolve twins)"
+fingerprint = "5accfbb29662c6ee"
+reason = "workspace-symbol resolve standalone twins: the lsp_request standalone hooks bind one fn per direction, each delegating to the one document-free per-URL converter with only Direction flipped; the converter resolves each location against its own document, so no dispatch state needs an anchor (successor of ee7fe2f829bc4130's impl-method form; family of 796b160440b3f2f3)"
 
 [[ignore]]
 fingerprint = "958b58d9ab7eb467"

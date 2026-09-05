@@ -1,32 +1,33 @@
-use async_lsp::lsp_types::{OneOf, WorkspaceSymbol as LspWorkspaceSymbol};
+use async_lsp::lsp_types::{OneOf, WorkspaceSymbol};
 
 use crate::server::{ServerState, read_document_from_disk};
 
-use super::{
-    Request,
-    conversion::{Direction, convert_range},
-};
+use super::conversion::{Direction, convert_range};
 
-pub(crate) struct WorkspaceSymbolResolve;
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::WorkspaceSymbol,
+    response = async_lsp::lsp_types::WorkspaceSymbol,
+    incoming_standalone(self::convert_params_standalone),
+    outgoing_standalone(self::convert_response_standalone),
+)]
+pub(crate) struct WorkspaceSymbolResolveRequest;
 
-impl Request for WorkspaceSymbolResolve {
-    type Params = LspWorkspaceSymbol;
-    type Response = LspWorkspaceSymbol;
+// WorkspaceSymbol doesn't contain a request document: each location
+// below resolves against its own document. The standalone pair is
+// overridden INSTEAD of the anchored hooks — the resolve engine calls it
+// directly when no sole tracked document resolves, and the delegating
+// defaults of `modify_params`/`modify_response` keep it running in the
+// sole-document state (where `convert_resolve_item` routes through them).
 
-    // WorkspaceSymbol doesn't contain a request document: each location
-    // below resolves against its own document. The standalone pair is
-    // overridden INSTEAD of the anchored hooks — the resolve engine calls it
-    // directly when no sole tracked document resolves, and the delegating
-    // defaults of `modify_params`/`modify_response` keep it running in the
-    // sole-document state (where `convert_resolve_item` routes through them).
+/// Converts the symbol's location to UTF-8 (the incoming standalone hook).
+fn convert_params_standalone(state: &ServerState, params: &mut WorkspaceSymbol) {
+    convert_workspace_symbol_location(state, params, Direction::Incoming);
+}
 
-    fn modify_params_standalone(state: &ServerState, params: &mut Self::Params) {
-        convert_workspace_symbol_location(state, params, Direction::Incoming);
-    }
-
-    fn modify_response_standalone(state: &ServerState, response: &mut Self::Response) {
-        convert_workspace_symbol_location(state, response, Direction::Outgoing);
-    }
+/// Converts the symbol's location back to the client encoding (the outgoing
+/// standalone hook).
+fn convert_response_standalone(state: &ServerState, response: &mut WorkspaceSymbol) {
+    convert_workspace_symbol_location(state, response, Direction::Outgoing);
 }
 
 /// Converts a workspace symbol's ranged location between the client
@@ -36,7 +37,7 @@ impl Request for WorkspaceSymbolResolve {
 /// unchanged.
 fn convert_workspace_symbol_location(
     state: &ServerState,
-    symbol: &mut LspWorkspaceSymbol,
+    symbol: &mut WorkspaceSymbol,
     direction: Direction,
 ) {
     let OneOf::Left(location) = &mut symbol.location else {

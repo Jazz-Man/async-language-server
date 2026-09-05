@@ -1,27 +1,29 @@
-use async_lsp::lsp_types::CodeAction as LspCodeAction;
+use async_lsp::lsp_types::CodeAction;
 
 use crate::server::{Document, ServerState};
 
-use super::{
-    Request,
-    conversion::{Direction, convert_diagnostic, convert_workspace_edit},
-};
+use super::conversion::{Direction, convert_diagnostic, convert_workspace_edit};
 
-pub(crate) struct CodeActionResolve;
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::CodeAction,
+    response = async_lsp::lsp_types::CodeAction,
+    incoming_custom(self::convert_params),
+    outgoing(self::convert_response),
+)]
+pub(crate) struct CodeActionResolveRequest;
 
-impl Request for CodeActionResolve {
-    type Params = LspCodeAction;
-    type Response = LspCodeAction;
+// CodeAction doesn't contain a document URI; the resolve dispatch
+// engine supplies the sole tracked document.
 
-    // CodeAction doesn't contain a document URI
+/// Converts the action's diagnostics and edits to UTF-8 (the incoming hook).
+fn convert_params(state: &ServerState, document: &Document, params: &mut CodeAction) {
+    convert_code_action(state, document, params, Direction::Incoming);
+}
 
-    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        convert_code_action(state, document, params, Direction::Incoming);
-    }
-
-    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        convert_code_action(state, document, response, Direction::Outgoing);
-    }
+/// Converts the action's diagnostics and edits back to the client encoding
+/// (the outgoing hook).
+fn convert_response(state: &ServerState, document: &Document, response: &mut CodeAction) {
+    convert_code_action(state, document, response, Direction::Outgoing);
 }
 
 /// Converts a code action's diagnostics and workspace edit between the
@@ -30,7 +32,7 @@ impl Request for CodeActionResolve {
 fn convert_code_action(
     state: &ServerState,
     document: &Document,
-    action: &mut LspCodeAction,
+    action: &mut CodeAction,
     direction: Direction,
 ) {
     if let Some(diagnostics) = action.diagnostics.as_mut() {

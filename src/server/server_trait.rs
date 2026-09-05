@@ -8,62 +8,13 @@ use async_lsp::{
         WorkDoneProgressCancelParams,
     },
 };
-use lsp_macros::lsp_method;
+use lsp_macros::{lsp_method, lsp_resolve_method};
 
 use crate::{
     documents::DocumentMatcher,
     error::{ServerError, ServerResult},
     server::{ServerOptions, ServerState},
 };
-
-/// Stamps `Server` trait methods for registry rows (normal methods default
-/// to `METHOD_NOT_FOUND`; hook fields are matched and discarded here).
-macro_rules! registry_trait_methods {
-    ( $(
-        $trait_name:ident : $alsp_name:ident @ $req:ident {
-            doc: $doc:literal,
-            params: $params:ty,
-            response: $response:ty,
-            $(document: $($dseg:ident).+,)?
-            $(incoming: position at $($pseg:ident).+,)?
-            $(incoming: range at $($rseg:ident).+,)?
-            $(outgoing: $outgoing:ident,)?
-        }
-    )*) => {
-        $(
-            #[doc = $doc]
-            fn $trait_name(
-                &self,
-                _state: ServerState,
-                _params: $params,
-            ) -> impl Future<Output = ServerResult<$response>> + Send {
-                method_not_implemented(stringify!($trait_name))
-            }
-        )*
-    };
-}
-
-/// Stamps `Server` trait methods for resolve rows (default: item unchanged).
-macro_rules! registry_trait_resolve_methods {
-    ( $(
-        $trait_name:ident : $alsp_name:ident @ $req:ident {
-            doc: $doc:literal,
-            params: $params:ty,
-            response: $response:ty,
-        }
-    )*) => {
-        $(
-            #[doc = $doc]
-            fn $trait_name(
-                &self,
-                _state: ServerState,
-                item: $params,
-            ) -> impl Future<Output = ServerResult<$response>> + Send {
-                async move { Ok(item) }
-            }
-        )*
-    };
-}
 
 /// The main entrypoint to LSP functionality for a server.
 ///
@@ -568,9 +519,71 @@ pub trait Server {
         ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::SignatureHelp>>> + Send;
     }
 
-    crate::requests::registry::generated_methods!(registry_trait_methods);
-    crate::requests::registry::custom_methods!(registry_trait_methods);
-    crate::requests::registry::resolve_methods!(registry_trait_resolve_methods);
+    lsp_resolve_method! {
+        /// Handles `completionItem/resolve` requests from the client.
+        ///
+        /// Fills in additional detail on an item previously returned by [`Server::completion`]. The default implementation resolves the item unchanged; returning the item as-is is always valid. Requires a completion provider with `resolve_provider` enabled. Positions in the incoming item are converted to UTF-8 before the handler runs, and positions in returned edits are converted back to the negotiated encoding — both against the sole tracked document, when exactly one document is tracked; otherwise they pass through unchanged.
+        fn completion_resolve(
+            &self,
+            _state: ServerState,
+            item: async_lsp::lsp_types::CompletionItem,
+        ) -> impl Future<Output = ServerResult<async_lsp::lsp_types::CompletionItem>> + Send;
+    }
+
+    lsp_resolve_method! {
+        /// Handles `codeAction/resolve` requests from the client.
+        ///
+        /// Fills in additional detail on an action previously returned by [`Server::code_action`]. The default implementation resolves the action unchanged. Requires a code action provider with `resolve_provider` enabled. Positions in the incoming action are converted to UTF-8 before the handler runs, and positions in returned edits are converted back to the negotiated encoding — both against the sole tracked document, when exactly one document is tracked; otherwise they pass through unchanged.
+        fn code_action_resolve(
+            &self,
+            _state: ServerState,
+            item: async_lsp::lsp_types::CodeAction,
+        ) -> impl Future<Output = ServerResult<async_lsp::lsp_types::CodeAction>> + Send;
+    }
+
+    lsp_resolve_method! {
+        /// Handles `documentLink/resolve` requests from the client.
+        ///
+        /// Fills in the target of a link previously returned by [`Server::link`]. The default implementation resolves the link unchanged. Requires a document link provider with `resolve_provider` enabled. The range in the incoming link is converted to UTF-8 before the handler runs and back to the negotiated encoding afterwards — both against the sole tracked document, when exactly one document is tracked; otherwise it passes through unchanged.
+        fn link_resolve(
+            &self,
+            _state: ServerState,
+            item: async_lsp::lsp_types::DocumentLink,
+        ) -> impl Future<Output = ServerResult<async_lsp::lsp_types::DocumentLink>> + Send;
+    }
+
+    lsp_resolve_method! {
+        /// Handles `codeLens/resolve` requests from the client.
+        ///
+        /// Fills in the command of a lens previously returned by [`Server::code_lens`]. The default implementation resolves the lens unchanged. Requires a code lens provider with `resolve_provider` enabled. The lens's range is converted to UTF-8 before the handler runs and back to the negotiated encoding afterwards — both against the sole tracked document, when exactly one document is tracked; otherwise it passes through unchanged.
+        fn code_lens_resolve(
+            &self,
+            _state: ServerState,
+            item: async_lsp::lsp_types::CodeLens,
+        ) -> impl Future<Output = ServerResult<async_lsp::lsp_types::CodeLens>> + Send;
+    }
+
+    lsp_resolve_method! {
+        /// Handles `inlayHint/resolve` requests from the client.
+        ///
+        /// Fills in additional detail on a hint previously returned by [`Server::inlay_hint`]. The default implementation resolves the hint unchanged. Requires an inlay hint provider with `resolve_provider` enabled. The hint's position, edits, and label-part locations are converted to UTF-8 before the handler runs and back to the negotiated encoding afterwards — both against the sole tracked document, when exactly one document is tracked; otherwise they pass through unchanged.
+        fn inlay_hint_resolve(
+            &self,
+            _state: ServerState,
+            item: async_lsp::lsp_types::InlayHint,
+        ) -> impl Future<Output = ServerResult<async_lsp::lsp_types::InlayHint>> + Send;
+    }
+
+    lsp_resolve_method! {
+        /// Handles `workspaceSymbol/resolve` requests from the client.
+        ///
+        /// Fills in the location range of a symbol previously returned by [`Server::symbol`] without one. The default implementation resolves the symbol unchanged. Requires a workspace symbol provider with `resolve_provider` enabled. The symbol's location is converted to UTF-8 before the handler runs and back to the negotiated encoding afterwards — against the location's own document when tracked, reading from disk otherwise; a location without a range passes through unchanged.
+        fn workspace_symbol_resolve(
+            &self,
+            _state: ServerState,
+            item: async_lsp::lsp_types::WorkspaceSymbol,
+        ) -> impl Future<Output = ServerResult<async_lsp::lsp_types::WorkspaceSymbol>> + Send;
+    }
 
     // Notification hooks — called after each notification's internal
     // handler, so they observe post-internal state.

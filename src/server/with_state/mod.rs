@@ -75,103 +75,6 @@ pub(crate) fn read_document_from_disk(url: &Url) -> Option<Document> {
     })
 }
 
-macro_rules! implement_methods {
-    ($($lsp_method:ident => $server_method:ident @ $request_type:ty),* $(,)?) => {
-        $(
-            implement_method!($lsp_method => $server_method @ $request_type);
-        )*
-    };
-}
-
-macro_rules! implement_resolve_method {
-    ($lsp_method:ident => $server_method:ident @ $request_type:ty) => {
-        fn $lsp_method(
-            &mut self,
-            mut params: <$request_type as crate::requests::Request>::Params,
-        ) -> BoxFuture<
-            'static,
-            Result<<$request_type as crate::requests::Request>::Response, Self::Error>,
-        > {
-            let server = Arc::clone(&self.server);
-            let state = self.state.clone();
-            Box::pin(async move {
-                // Resolve requests carry no text-document URL: convert against
-                // the sole tracked document, if the server tracks exactly one;
-                // with no sole document, the standalone hooks run state-driven
-                // conversions instead of skipping them.
-                let sole = conversion_document(&state, None);
-                match sole.as_ref() {
-                    Some(document) => {
-                        convert_resolve_item::<$request_type, _>(
-                            &state,
-                            Some(document),
-                            &mut params,
-                            Direction::Incoming,
-                        );
-                    }
-                    None => {
-                        <$request_type as crate::requests::Request>::modify_params_standalone(
-                            &state,
-                            &mut params,
-                        );
-                    }
-                }
-                let mut result = server.$server_method(state.clone(), params).await?;
-                match sole.as_ref() {
-                    Some(document) => {
-                        convert_resolve_item::<$request_type, _>(
-                            &state,
-                            Some(document),
-                            &mut result,
-                            Direction::Outgoing,
-                        );
-                    }
-                    None => {
-                        <$request_type as crate::requests::Request>::modify_response_standalone(
-                            &state,
-                            &mut result,
-                        );
-                    }
-                }
-                Ok(result)
-            })
-        }
-    };
-}
-
-/// Stamps dispatch entries for registry rows through the existing engine.
-macro_rules! registry_dispatch {
-    ( $(
-        $trait_name:ident : $alsp_name:ident @ $req:ident {
-            doc: $doc:literal,
-            params: $params:ty,
-            response: $response:ty,
-            $(document: $($dseg:ident).+,)?
-            $(incoming: position at $($pseg:ident).+,)?
-            $(incoming: range at $($rseg:ident).+,)?
-            $(outgoing: $outgoing:ident,)?
-        }
-    )*) => {
-        implement_methods!(
-            $( $alsp_name => $trait_name @ crate::requests::$req, )*
-        );
-    };
-}
-
-macro_rules! registry_dispatch_resolve {
-    ( $(
-        $trait_name:ident : $alsp_name:ident @ $req:ident {
-            doc: $doc:literal,
-            params: $params:ty,
-            response: $response:ty,
-        }
-    )*) => {
-        $(
-            implement_resolve_method!($alsp_name => $trait_name @ crate::requests::$req);
-        )*
-    };
-}
-
 /// The low-level language server implementation that automatically
 /// manages documents and forwards requests to the underlying server.
 ///
@@ -313,12 +216,7 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         ))
     }
 
-    // async-lsp method name => our method name @ request type definition,
-    // stamped from the registry (src/requests/registry.rs)
-
-    crate::requests::registry::generated_methods!(registry_dispatch);
-    crate::requests::registry::custom_methods!(registry_dispatch);
-    crate::requests::registry::resolve_methods!(registry_dispatch_resolve);
+    // async-lsp method name => our method name @ request type definition
 
     lsp_dispatch! {
         hover: hover @ crate::requests::HoverRequest,
@@ -363,6 +261,12 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         subtypes: subtypes @ crate::requests::SubtypesRequest,
         symbol: symbol @ crate::requests::SymbolRequest,
         signature_help: signature_help @ crate::requests::SignatureHelpRequest,
+        resolve(completion_resolve: completion_item_resolve @ crate::requests::CompletionResolveRequest),
+        resolve(code_action_resolve: code_action_resolve @ crate::requests::CodeActionResolveRequest),
+        resolve(link_resolve: document_link_resolve @ crate::requests::DocumentLinkResolveRequest),
+        resolve(code_lens_resolve: code_lens_resolve @ crate::requests::CodeLensResolveRequest),
+        resolve(inlay_hint_resolve: inlay_hint_resolve @ crate::requests::InlayHintResolveRequest),
+        resolve(workspace_symbol_resolve: workspace_symbol_resolve @ crate::requests::WorkspaceSymbolResolveRequest),
     }
 }
 

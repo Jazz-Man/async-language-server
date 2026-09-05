@@ -1,27 +1,28 @@
-use async_lsp::lsp_types::CompletionItem as LspCompletionItem;
+use async_lsp::lsp_types::CompletionItem;
 
 use crate::server::{Document, ServerState};
 
-use super::{
-    Request,
-    conversion::{Direction, convert_completion_text_edit, convert_text_edit},
-};
+use super::conversion::{Direction, convert_completion_text_edit, convert_text_edit};
 
-pub(crate) struct CompletionResolve;
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::CompletionItem,
+    response = async_lsp::lsp_types::CompletionItem,
+    incoming_custom(self::convert_params),
+    outgoing(self::convert_response),
+)]
+pub(crate) struct CompletionResolveRequest;
 
-impl Request for CompletionResolve {
-    type Params = LspCompletionItem;
-    type Response = LspCompletionItem;
+// CompletionItem doesn't contain a document URI; the resolve dispatch
+// engine supplies the sole tracked document.
 
-    // CompletionItem doesn't contain a document URI
+/// Converts the item's edits to UTF-8 (the incoming hook).
+fn convert_params(state: &ServerState, document: &Document, params: &mut CompletionItem) {
+    convert_completion_item(state, document, params, Direction::Incoming);
+}
 
-    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        convert_completion_item(state, document, params, Direction::Incoming);
-    }
-
-    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        convert_completion_item(state, document, response, Direction::Outgoing);
-    }
+/// Converts the item's edits back to the client encoding (the outgoing hook).
+fn convert_response(state: &ServerState, document: &Document, response: &mut CompletionItem) {
+    convert_completion_item(state, document, response, Direction::Outgoing);
 }
 
 /// Converts a completion item's edits between the client encoding and UTF-8
@@ -29,7 +30,7 @@ impl Request for CompletionResolve {
 fn convert_completion_item(
     state: &ServerState,
     document: &Document,
-    item: &mut LspCompletionItem,
+    item: &mut CompletionItem,
     direction: Direction,
 ) {
     if let Some(edit) = item.text_edit.as_mut() {
@@ -46,11 +47,9 @@ fn convert_completion_item(
 #[cfg(test)]
 mod tests {
     use async_lsp::ClientSocket;
-    use async_lsp::lsp_types::{
-        CompletionItem, CompletionTextEdit as LspCompletionTextEdit, TextEdit,
-    };
+    use async_lsp::lsp_types::{CompletionItem, CompletionTextEdit, TextEdit};
 
-    use crate::requests::{CompletionResolve, Direction, convert_resolve_item};
+    use crate::requests::{CompletionResolveRequest, Direction, convert_resolve_item};
     use crate::server::{ServerOptions, ServerState};
     use crate::testing::{TestServer, open_document, same_line, state_with_documents, url};
     use crate::text_utils::Encoding;
@@ -67,7 +66,7 @@ mod tests {
 
         let mut item = CompletionItem {
             label: "item".into(),
-            text_edit: Some(LspCompletionTextEdit::Edit(TextEdit::new(
+            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
                 same_line(0, 4, 4),
                 "x".into(),
             ))),
@@ -77,14 +76,14 @@ mod tests {
         let document = state
             .document(&url("only.txt"))
             .expect("sole document is tracked");
-        convert_resolve_item::<CompletionResolve, _>(
+        convert_resolve_item::<CompletionResolveRequest, _>(
             &state,
             Some(&document),
             &mut item,
             Direction::Outgoing,
         );
 
-        let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
+        let Some(CompletionTextEdit::Edit(edit)) = item.text_edit else {
             panic!("expected edit");
         };
         assert_eq!(edit.range, same_line(0, 2, 2));
@@ -97,16 +96,21 @@ mod tests {
 
         let mut item = CompletionItem {
             label: "item".into(),
-            text_edit: Some(LspCompletionTextEdit::Edit(TextEdit::new(
+            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
                 same_line(0, 4, 4),
                 "x".into(),
             ))),
             ..Default::default()
         };
 
-        convert_resolve_item::<CompletionResolve, _>(&state, None, &mut item, Direction::Outgoing);
+        convert_resolve_item::<CompletionResolveRequest, _>(
+            &state,
+            None,
+            &mut item,
+            Direction::Outgoing,
+        );
 
-        let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
+        let Some(CompletionTextEdit::Edit(edit)) = item.text_edit else {
             panic!("expected edit");
         };
         assert_eq!(edit.range, same_line(0, 4, 4));
@@ -127,7 +131,7 @@ mod tests {
 
         let mut item = CompletionItem {
             label: "item".into(),
-            text_edit: Some(LspCompletionTextEdit::Edit(TextEdit::new(
+            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
                 same_line(0, 2, 2),
                 "x".into(),
             ))),
@@ -137,20 +141,20 @@ mod tests {
         let sole = state
             .document(&url("only.txt"))
             .expect("sole document is tracked");
-        convert_resolve_item::<CompletionResolve, _>(
+        convert_resolve_item::<CompletionResolveRequest, _>(
             &state,
             Some(&sole),
             &mut item,
             Direction::Incoming,
         );
-        convert_resolve_item::<CompletionResolve, _>(
+        convert_resolve_item::<CompletionResolveRequest, _>(
             &state,
             Some(&sole),
             &mut item,
             Direction::Outgoing,
         );
 
-        let Some(LspCompletionTextEdit::Edit(edit)) = item.text_edit else {
+        let Some(CompletionTextEdit::Edit(edit)) = item.text_edit else {
             panic!("expected edit");
         };
         assert_eq!(edit.range, same_line(0, 2, 2));
