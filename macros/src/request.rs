@@ -15,7 +15,7 @@ use syn::{
 };
 
 /// Parsed attribute content for one request.
-pub(super) struct RequestSpec {
+struct RequestSpec {
     params: Type,
     response: Type,
     document: Option<Vec<Ident>>,
@@ -86,36 +86,38 @@ fn extract_url_fn(segments: &[Ident]) -> TokenStream {
     }
 }
 
-/// Emits `modify_params` converting exactly the wired incoming hooks — the
-/// generated import lists only converters the body calls, since an unused
-/// `use` would fail the crate's `-D warnings` battery.
+/// Emits `modify_params` converting exactly the wired incoming hooks —
+/// fully-qualified converter calls, the old `request_modify_params_position!`
+/// bodies' own shape (`macro-absolute-std-paths`), so no imports are needed.
 fn modify_params_fn(
     position: Option<Vec<Ident>>,
     range: Option<Vec<Ident>>,
     custom: Option<Path>,
 ) -> Option<TokenStream> {
     let mut conversions = Vec::new();
-    let mut converters = Vec::new();
     if let Some(segments) = position {
-        converters.push(quote! { convert_position });
-        conversions.push(
-            quote! { convert_position(state, document, &mut params.#(#segments).*, Direction::Incoming); },
-        );
+        conversions.push(quote! {
+            crate::requests::conversion::convert_position(
+                state,
+                document,
+                &mut params.#(#segments).*,
+                crate::requests::conversion::Direction::Incoming,
+            );
+        });
     }
     if let Some(segments) = range {
-        converters.push(quote! { convert_range });
-        conversions.push(
-            quote! { convert_range(state, document, &mut params.#(#segments).*, Direction::Incoming); },
-        );
+        conversions.push(quote! {
+            crate::requests::conversion::convert_range(
+                state,
+                document,
+                &mut params.#(#segments).*,
+                crate::requests::conversion::Direction::Incoming,
+            );
+        });
     }
     let custom = custom.map(|fun| quote! { #fun(state, document, params); });
     let has_incoming = !conversions.is_empty() || custom.is_some();
     has_incoming.then(|| {
-        let imports = if conversions.is_empty() {
-            quote! {}
-        } else {
-            quote! { use crate::requests::conversion::{Direction, #(#converters),*}; }
-        };
         let custom = custom.into_iter();
         quote! {
             fn modify_params(
@@ -123,7 +125,6 @@ fn modify_params_fn(
                 document: &crate::server::Document,
                 params: &mut Self::Params,
             ) {
-                #imports
                 #(#conversions)*
                 #(#custom)*
             }
@@ -371,7 +372,7 @@ fn unknown_field(name: &Ident) -> syn::Error {
 
 /// Extracts the dotted identifier chain of a field-path expression
 /// (`a.b.c`), erroring spanned on anything else.
-pub(super) fn field_path(expr: &Expr) -> syn::Result<Vec<Ident>> {
+fn field_path(expr: &Expr) -> syn::Result<Vec<Ident>> {
     match expr {
         Expr::Field(field) => {
             let mut segments = field_path(&field.base)?;
@@ -440,7 +441,11 @@ mod tests {
         assert!(text.contains("impl crate :: requests :: Request for X"));
         assert!(text.contains("type Params = P"));
         assert!(text.contains("type Response = Option < R >"));
+        // No hooks wired, so nothing hook-shaped may be emitted: an empty
+        // `modify_params` would shadow the trait default whose delegation to
+        // `modify_params_standalone` the resolve engine reaches through.
         assert!(!text.contains("extract_url"));
+        assert!(!text.contains("modify_params"));
     }
 
     #[test]
@@ -452,6 +457,8 @@ mod tests {
                 response = R,
                 document(a.b),
                 incoming_position(a.c),
+                incoming_range(a.d),
+                incoming_custom(k),
                 outgoing(f),
                 incoming_standalone(g),
                 outgoing_standalone(h),
@@ -466,6 +473,11 @@ mod tests {
             "modify_response",
             "modify_params_standalone",
             "modify_response_standalone",
+            "convert_position",
+            "convert_range",
+            // The custom hook's call, pinned with its arguments so it cannot
+            // be confused with the standard converters.
+            "k (state , document , params)",
         ] {
             assert!(text.contains(needle), "missing {needle}");
         }

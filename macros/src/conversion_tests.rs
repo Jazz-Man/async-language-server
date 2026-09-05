@@ -125,7 +125,7 @@ impl Parse for TestTable {
 /// Spanned errors for malformed rows: a missing first `params` field, an
 /// unknown or duplicated row field, a missing `expects`/`outgoing`/
 /// `returns` partner, or stray tokens inside the braces.
-pub(super) fn expand(input: TokenStream) -> syn::Result<TokenStream> {
+fn expand(input: TokenStream) -> syn::Result<TokenStream> {
     let rows = syn::parse2::<TestTable>(input)?.0;
     let tests = rows.iter().map(|row| {
         let TestRow {

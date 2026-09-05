@@ -34,7 +34,7 @@ pub(super) fn entry(input: proc_macro::TokenStream, kind: Kind) -> proc_macro::T
 ///
 /// When the declaration already carries a body, or (resolve kind) has no
 /// named final parameter to return — the error spans the offending tokens.
-pub(super) fn expand(mut item: TraitItemFn, kind: Kind) -> syn::Result<TokenStream> {
+fn expand(mut item: TraitItemFn, kind: Kind) -> syn::Result<TokenStream> {
     if let Some(default) = item.default.as_ref() {
         return Err(syn::Error::new(
             default.brace_token.span.join(),

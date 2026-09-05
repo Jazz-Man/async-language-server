@@ -12,15 +12,15 @@ use syn::{
 
 /// One dispatch-table row: the triple linking our `Server` trait method to
 /// the async-lsp `LanguageServer` method and the request marker type.
-pub(super) struct DispatchRow {
+struct DispatchRow {
     /// Our `Server` trait method (called on the server).
-    pub(super) trait_method: Ident,
+    trait_method: Ident,
     /// The async-lsp `LanguageServer` method (the generated fn's name).
-    pub(super) alsp: Ident,
+    alsp: Ident,
     /// The request marker type (full path).
-    pub(super) request: Path,
+    request: Path,
     /// Resolve-family row.
-    pub(super) resolve: bool,
+    resolve: bool,
 }
 
 impl Parse for DispatchRow {
