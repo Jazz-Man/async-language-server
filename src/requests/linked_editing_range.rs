@@ -1,3 +1,12 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::LinkedEditingRangeParams,
+    response = Option<async_lsp::lsp_types::LinkedEditingRanges>,
+    document(text_document_position_params.text_document),
+    incoming_position(text_document_position_params.position),
+    outgoing(crate::requests::conversion::modify_outgoing_linked_editing_ranges),
+)]
+pub(crate) struct LinkedEditingRangeRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -6,11 +15,11 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::LinkedEditingRange;
+    use crate::requests::LinkedEditingRangeRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {
-        linked_editing_range_incoming_and_outgoing_convert: LinkedEditingRange {
+        linked_editing_range_incoming_and_outgoing_convert: LinkedEditingRangeRequest {
             params: |uri| LinkedEditingRangeParams {
                 text_document_position_params: TextDocumentPositionParams::new(
                     TextDocumentIdentifier::new(uri),

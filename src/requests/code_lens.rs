@@ -1,3 +1,11 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::CodeLensParams,
+    response = Option<Vec<async_lsp::lsp_types::CodeLens>>,
+    document(text_document),
+    outgoing(crate::requests::conversion::modify_outgoing_code_lenses),
+)]
+pub(crate) struct CodeLensRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -6,7 +14,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::CodeLens as CodeLensRequest;
+    use crate::requests::CodeLensRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {

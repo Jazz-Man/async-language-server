@@ -1,3 +1,12 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::DocumentRangeFormattingParams,
+    response = Option<Vec<async_lsp::lsp_types::TextEdit>>,
+    document(text_document),
+    incoming_range(range),
+    outgoing(crate::requests::conversion::modify_outgoing_text_edits),
+)]
+pub(crate) struct DocumentRangeFormatRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -6,11 +15,11 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::DocumentRangeFormat;
+    use crate::requests::DocumentRangeFormatRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {
-        document_range_format_round_trips_both_directions: DocumentRangeFormat {
+        document_range_format_round_trips_both_directions: DocumentRangeFormatRequest {
             params: |uri| DocumentRangeFormattingParams {
                 text_document: TextDocumentIdentifier::new(uri),
                 range: same_line(0, 2, 3),

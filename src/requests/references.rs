@@ -1,3 +1,12 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::ReferenceParams,
+    response = Option<Vec<async_lsp::lsp_types::Location>>,
+    document(text_document_position.text_document),
+    incoming_position(text_document_position.position),
+    outgoing(crate::requests::conversion::modify_outgoing_locations),
+)]
+pub(crate) struct ReferencesRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -6,11 +15,11 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::References;
+    use crate::requests::ReferencesRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {
-        references_round_trips_both_directions: References {
+        references_round_trips_both_directions: ReferencesRequest {
             params: |uri| ReferenceParams {
                 text_document_position: TextDocumentPositionParams::new(
                     TextDocumentIdentifier::new(uri),

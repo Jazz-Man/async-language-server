@@ -1,3 +1,12 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::GotoDefinitionParams,
+    response = Option<async_lsp::lsp_types::GotoDefinitionResponse>,
+    document(text_document_position_params.text_document),
+    incoming_position(text_document_position_params.position),
+    outgoing(crate::requests::conversion::modify_outgoing_goto_response),
+)]
+pub(crate) struct DefinitionRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -6,7 +15,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::{Definition, Request};
+    use crate::requests::{DefinitionRequest, Request};
     use crate::testing::{line_position, same_line, state_with_documents};
 
     #[test]
@@ -18,7 +27,7 @@ mod tests {
             same_line(0, 4, 4),
         )));
 
-        <Definition as Request>::modify_response(&state, &document, &mut response);
+        <DefinitionRequest as Request>::modify_response(&state, &document, &mut response);
 
         let Some(GotoDefinitionResponse::Scalar(loc)) = response else {
             panic!("expected scalar location");
@@ -27,7 +36,7 @@ mod tests {
     }
 
     conversion_tests! {
-        definition_round_trips_both_directions: Definition {
+        definition_round_trips_both_directions: DefinitionRequest {
             params: |uri| GotoDefinitionParams {
                 text_document_position_params: TextDocumentPositionParams::new(
                     TextDocumentIdentifier::new(uri),

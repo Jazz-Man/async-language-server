@@ -1,3 +1,12 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::DocumentOnTypeFormattingParams,
+    response = Option<Vec<async_lsp::lsp_types::TextEdit>>,
+    document(text_document_position.text_document),
+    incoming_position(text_document_position.position),
+    outgoing(crate::requests::conversion::modify_outgoing_text_edits),
+)]
+pub(crate) struct OnTypeFormattingRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -6,11 +15,11 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::OnTypeFormatting;
+    use crate::requests::OnTypeFormattingRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {
-        on_type_formatting_round_trips_both_directions: OnTypeFormatting {
+        on_type_formatting_round_trips_both_directions: OnTypeFormattingRequest {
             params: |uri| DocumentOnTypeFormattingParams {
                 text_document_position: TextDocumentPositionParams::new(
                     TextDocumentIdentifier::new(uri),

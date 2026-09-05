@@ -1,10 +1,19 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::RenameParams,
+    response = Option<async_lsp::lsp_types::WorkspaceEdit>,
+    document(text_document_position.text_document),
+    incoming_position(text_document_position.position),
+    outgoing(crate::requests::conversion::modify_outgoing_workspace_edit),
+)]
+pub(crate) struct RenameRequest;
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
     use async_lsp::lsp_types::{TextEdit, WorkspaceEdit};
 
-    use crate::requests::{Rename, Request};
+    use crate::requests::{RenameRequest, Request};
     use crate::testing::{same_line, state_with_documents, url};
 
     #[test]
@@ -19,7 +28,7 @@ mod tests {
             ..Default::default()
         });
 
-        <Rename as Request>::modify_response(&state, &document, &mut response);
+        <RenameRequest as Request>::modify_response(&state, &document, &mut response);
 
         let edit = response.unwrap();
         let edit = edit.changes.unwrap().into_values().next().unwrap();
@@ -39,7 +48,7 @@ mod tests {
             ..Default::default()
         });
 
-        <Rename as Request>::modify_response(&state, &document, &mut response);
+        <RenameRequest as Request>::modify_response(&state, &document, &mut response);
 
         let edit = response.unwrap();
         let edit = edit.changes.unwrap().into_values().next().unwrap();

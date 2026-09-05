@@ -117,6 +117,171 @@ pub trait Server {
         ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::Hover>>> + Send;
     }
 
+    lsp_method! {
+        /// Handles `textDocument/declaration` requests from the client.
+        ///
+        /// Returns the declaration locations of the symbol at the position in `params`, or `None`. Requires a declaration provider in [`Server::server_capabilities`].
+        fn declaration(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::request::GotoDeclarationParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::request::GotoDeclarationResponse>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/definition` requests from the client.
+        ///
+        /// Returns the definition locations of the symbol at the position in `params`, or `None`. Requires a definition provider in [`Server::server_capabilities`].
+        fn definition(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::GotoDefinitionParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::GotoDefinitionResponse>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/references` requests from the client.
+        ///
+        /// Returns the locations that reference the symbol at the position in `params`, or `None`. Requires a references provider in [`Server::server_capabilities`].
+        fn references(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::ReferenceParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::Location>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/documentLink` requests from the client.
+        ///
+        /// Returns links inside the document in `params`, or `None`. Requires a document link provider in [`Server::server_capabilities`].
+        fn link(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::DocumentLinkParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::DocumentLink>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/rename` requests from the client.
+        ///
+        /// Returns a workspace edit renaming the symbol at the position in `params` to `params.new_name`, or `None` when renaming is not possible. Requires a rename provider in [`Server::server_capabilities`].
+        fn rename(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::RenameParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::WorkspaceEdit>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/prepareRename` requests from the client.
+        ///
+        /// Returns the range of the symbol at the position in `params` that a rename would apply to, or `None` when renaming is not possible. Requires a rename provider with `prepare_provider` enabled.
+        fn rename_prepare(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::TextDocumentPositionParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::PrepareRenameResponse>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/formatting` requests from the client.
+        ///
+        /// Returns edits formatting the whole document in `params`, or `None`. Requires a document formatting provider in [`Server::server_capabilities`].
+        fn document_format(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::DocumentFormattingParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::TextEdit>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/rangeFormatting` requests from the client.
+        ///
+        /// Returns edits formatting the range in `params`, or `None`. Requires a document range formatting provider in [`Server::server_capabilities`].
+        fn document_range_format(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::DocumentRangeFormattingParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::TextEdit>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/implementation` requests from the client.
+        ///
+        /// Returns the implementation locations of the symbol at the position in `params`, or `None`. Requires an implementation provider in [`Server::server_capabilities`].
+        fn implementation(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::request::GotoImplementationParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::request::GotoImplementationResponse>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/typeDefinition` requests from the client.
+        ///
+        /// Returns the type definition locations of the symbol at the position in `params`, or `None`. Requires a type definition provider in [`Server::server_capabilities`].
+        fn type_definition(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::request::GotoTypeDefinitionParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::request::GotoTypeDefinitionResponse>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/documentHighlight` requests from the client.
+        ///
+        /// Returns the highlights of the symbol at the position in `params`, or `None`. Requires a document highlight provider in [`Server::server_capabilities`].
+        fn document_highlight(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::DocumentHighlightParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::DocumentHighlight>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/onTypeFormatting` requests from the client.
+        ///
+        /// Returns edits formatting around the typed character at the position in `params`, or `None`. Requires a document on-type formatting provider in [`Server::server_capabilities`].
+        fn on_type_formatting(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::DocumentOnTypeFormattingParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::TextEdit>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/foldingRange` requests from the client.
+        ///
+        /// Returns the folding ranges of the document in `params`, or `None`. Requires a folding range provider in [`Server::server_capabilities`].
+        fn folding_range(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::FoldingRangeParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::FoldingRange>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/linkedEditingRange` requests from the client.
+        ///
+        /// Returns the ranges that rename together with the symbol at the position in `params`, or `None`. Requires a linked editing range provider in [`Server::server_capabilities`].
+        fn linked_editing_range(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::LinkedEditingRangeParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::LinkedEditingRanges>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/codeLens` requests from the client.
+        ///
+        /// Returns the code lenses of the document in `params`, or `None`. Requires a code lens provider in [`Server::server_capabilities`].
+        fn code_lens(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::CodeLensParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::CodeLens>>>> + Send;
+    }
+
     crate::requests::registry::generated_methods!(registry_trait_methods);
     crate::requests::registry::custom_methods!(registry_trait_methods);
     crate::requests::registry::resolve_methods!(registry_trait_resolve_methods);

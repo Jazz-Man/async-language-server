@@ -1,3 +1,12 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::request::GotoImplementationParams,
+    response = Option<async_lsp::lsp_types::request::GotoImplementationResponse>,
+    document(text_document_position_params.text_document),
+    incoming_position(text_document_position_params.position),
+    outgoing(crate::requests::conversion::modify_outgoing_goto_response),
+)]
+pub(crate) struct ImplementationRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -6,11 +15,11 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::Implementation;
+    use crate::requests::ImplementationRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {
-        implementation_round_trips_both_directions: Implementation {
+        implementation_round_trips_both_directions: ImplementationRequest {
             params: |uri| GotoDefinitionParams {
                 text_document_position_params: TextDocumentPositionParams::new(
                     TextDocumentIdentifier::new(uri),

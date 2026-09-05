@@ -1,3 +1,11 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::DocumentFormattingParams,
+    response = Option<Vec<async_lsp::lsp_types::TextEdit>>,
+    document(text_document),
+    outgoing(crate::requests::conversion::modify_outgoing_text_edits),
+)]
+pub(crate) struct DocumentFormatRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -6,11 +14,11 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::DocumentFormat;
+    use crate::requests::DocumentFormatRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {
-        document_format_edits_convert_outgoing: DocumentFormat {
+        document_format_edits_convert_outgoing: DocumentFormatRequest {
             params: |uri| DocumentFormattingParams {
                 text_document: TextDocumentIdentifier::new(uri),
                 options: FormattingOptions::default(),

@@ -1,3 +1,12 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::TextDocumentPositionParams,
+    response = Option<async_lsp::lsp_types::PrepareRenameResponse>,
+    document(text_document),
+    incoming_position(position),
+    outgoing(crate::requests::conversion::modify_outgoing_prepare_rename_response),
+)]
+pub(crate) struct RenamePrepareRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -5,11 +14,11 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::RenamePrepare;
+    use crate::requests::RenamePrepareRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {
-        rename_prepare_round_trips_both_directions: RenamePrepare {
+        rename_prepare_round_trips_both_directions: RenamePrepareRequest {
             params: |uri| TextDocumentPositionParams::new(
                 TextDocumentIdentifier::new(uri),
                 line_position(0, 2),

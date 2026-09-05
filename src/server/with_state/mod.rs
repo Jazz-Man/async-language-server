@@ -402,6 +402,21 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
 
     lsp_dispatch! {
         hover: hover @ crate::requests::HoverRequest,
+        declaration: declaration @ crate::requests::DeclarationRequest,
+        definition: definition @ crate::requests::DefinitionRequest,
+        references: references @ crate::requests::ReferencesRequest,
+        link: document_link @ crate::requests::DocumentLinkRequest,
+        rename: rename @ crate::requests::RenameRequest,
+        rename_prepare: prepare_rename @ crate::requests::RenamePrepareRequest,
+        document_format: formatting @ crate::requests::DocumentFormatRequest,
+        document_range_format: range_formatting @ crate::requests::DocumentRangeFormatRequest,
+        implementation: implementation @ crate::requests::ImplementationRequest,
+        type_definition: type_definition @ crate::requests::TypeDefinitionRequest,
+        document_highlight: document_highlight @ crate::requests::DocumentHighlightRequest,
+        on_type_formatting: on_type_formatting @ crate::requests::OnTypeFormattingRequest,
+        folding_range: folding_range @ crate::requests::FoldingRangeRequest,
+        linked_editing_range: linked_editing_range @ crate::requests::LinkedEditingRangeRequest,
+        code_lens: code_lens @ crate::requests::CodeLensRequest,
     }
 }
 
