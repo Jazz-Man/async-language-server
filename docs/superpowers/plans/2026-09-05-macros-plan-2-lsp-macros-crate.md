@@ -20,6 +20,7 @@
 - Battery (both crates): `cargo build --all-targets`, `cargo test` ×3 feature configurations, `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`. Single-macro smoke checks may use `-p lsp_macros` / `-p async-language-server` scoping; every task ends battery-green for what it touched, Task 5 ends with the full battery.
 - On any failure: invoke `superpowers:systematic-debugging` and `no-workarounds`; fix root causes, never suppress.
 - The dupes gate stays quiet in this plan by construction (macro invocations are opaque nodes); if `cargo dupes check` is run and a group appears, the avoidance analysis rule applies (memory + spec decision 4).
+- No `use … as Name` import aliases: an alias exists only to resolve a genuine name collision — two same-named types that must coexist in scope (the BaseCar rule, owner 2026-09-05). `as _` trait imports are not aliases. New/rewritten code uses real names.
 
 ## File Structure
 

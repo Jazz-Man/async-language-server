@@ -20,6 +20,7 @@
 - No `#[allow]`, `--cap-lints`, or lint suppression. When anything fails, invoke `superpowers:systematic-debugging` and `no-workarounds` skills and fix the root cause.
 - `Cargo.lock` is committed and must not change semantically in this plan: `[workspace.dependencies]` moves pins, it does not relax them. If the lock diff shows a version movement, stop and investigate — do not proceed.
 - MSRV: `rust-version = "1.88"` on both members.
+- No `use … as Name` import aliases: an alias exists only to resolve a genuine name collision — two same-named types that must coexist in scope (the BaseCar rule, owner 2026-09-05). `as _` trait imports are not aliases. New/rewritten code uses real names.
 
 ## File Structure
 

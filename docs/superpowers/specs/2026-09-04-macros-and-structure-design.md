@@ -58,6 +58,14 @@ one owner-approved breaking change: the `tracing` feature is removed** (decision
     dedicated task (before the visibility sweep, since `cfg` against a removed feature
     fails `-D warnings`) deletes the sites and rewrites the five doc sites (tech.md,
     structure.md, error-handling.md, CLAUDE.md, README).
+11. **No import aliases without a genuine collision** (owner, 2026-09-05): `use … as
+    Name` exists only when two same-named types must coexist in scope (the "BaseCar"
+    rule); `as _` trait imports are not aliases. The `Request` rename dissolves the one
+    real collision in `src/requests/` (`SignatureHelp` marker vs the LSP type); the
+    surviving whitelist is the `Ts…`/`Lsp…` tree-sitter-vs-LSP pairs in
+    `text_utils`/`tree_sitter_utils` and the public `ErrorCode as ServerErrorCode`
+    facade re-export. Enforced by the plans' global constraints and Plan 3's final
+    sweep, where every survivor names its collision in a one-line comment.
 
 ## Architecture
 
