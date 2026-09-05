@@ -11,7 +11,7 @@
 //! impl), `lsp_method!` / `lsp_resolve_method!` (`Server`-trait default
 //! bodies), and `conversion_tests!` (W0 conversion-test stamping).
 
-mod conversion_tests {}
+mod conversion_tests;
 mod dispatch;
 mod request;
 mod trait_method;
@@ -115,4 +115,45 @@ pub fn lsp_request(attr: TokenStream, item: TokenStream) -> TokenStream {
     request::expand(attr.into(), &item)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
+}
+
+/// Stamps one `#[test]` per row for a `crate::requests::Request`'s
+/// conversion hooks — the table-driven W0 harness. Both the
+/// `incoming`/`expects` pair and the `response`/`outgoing`/`returns` triple
+/// are optional per row:
+///
+/// - `params` — `Fn(Url) -> Params`, building params against the **emoji**
+///   document (the request's document), positions expressed in the CLIENT
+///   encoding (UTF-16 in the shared fixture).
+/// - `incoming`/`expects` — `Fn(&Params) -> Position` and the UTF-8
+///   (byte-column) position it must equal after `modify_params`.
+/// - `response` — `Fn(Url, Url) -> Response` receiving
+///   `(plain_url, emoji_url)`, positions built in UTF-8.
+/// - `outgoing`/`returns` — `Fn(&Response) -> Position` and the
+///   client-encoding position it must equal after `modify_response`.
+///
+/// Coverage boundary: a single incoming position and an optional single
+/// outgoing position; richer tests stay hand-written next to their
+/// `Request` impls.
+///
+/// # Examples
+///
+/// ```ignore
+/// conversion_tests! {
+///     hover_incoming_utf16_becomes_utf8: Hover {
+///         params: |uri| HoverParams {
+///             text_document_position_params: TextDocumentPositionParams::new(
+///                 TextDocumentIdentifier::new(uri),
+///                 line_position(0, 2),
+///             ),
+///             work_done_progress_params: WorkDoneProgressParams::default(),
+///         },
+///         incoming: |p| p.text_document_position_params.position,
+///         expects: line_position(0, 4),
+///     }
+/// }
+/// ```
+#[proc_macro]
+pub fn conversion_tests(input: TokenStream) -> TokenStream {
+    conversion_tests::entry(input)
 }
