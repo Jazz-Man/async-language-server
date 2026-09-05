@@ -11,8 +11,9 @@ resolved as T2 + family entry (owner, 2026-09-05).
 Migrate all 15 custom `macro_rules!` into the `lsp_macros` proc-macro crate as **five
 procedural macros**, restructure request registration into distributed per-file form,
 declare the `Server` trait with real docs and signatures (macro-stamped default bodies),
-run the visibility sweep, and complete workspace plumbing — with **zero behavior change**
-and **zero downstream-visible API change**.
+run the visibility sweep, complete workspace plumbing, and make `tracing` a permanent
+dependency — with **zero behavior change** and **zero downstream-visible API change except
+one owner-approved breaking change: the `tracing` feature is removed** (decision 10).
 
 ## Owner decisions log
 
@@ -47,6 +48,16 @@ and **zero downstream-visible API change**.
 9. **`oneshot` stays** a top-level module of the facade (research §3: folding inverts the
    arch-lint layering; a split forces `LanguageServerWithState` public). The owner-facing
    confusion is a docs gap — one README/module-doc sentence ships with this cycle.
+10. **`tracing` becomes permanent** (owner, 2026-09-05, closing the prior cycle's
+    deferral): the feature is removed, `tracing` and `async-lsp/tracing` are
+    unconditional, `TracingLayer` is always in the middleware stack, and the 23
+    `#[cfg(feature = "tracing")]` sites across 8 files disappear. Rationale: no real
+    no-tracing consumer exists and the cfg noise is real (10 sites in `with_state/mod.rs`
+    alone). Breaking for any consumer naming the feature — stated in the commit message
+    per product.md. Landed in Plan 1: the manifest task absorbs the workspace side; a
+    dedicated task (before the visibility sweep, since `cfg` against a removed feature
+    fails `-D warnings`) deletes the sites and rewrites the five doc sites (tech.md,
+    structure.md, error-handling.md, CLAUDE.md, README).
 
 ## Architecture
 
