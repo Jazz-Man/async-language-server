@@ -9,7 +9,7 @@ use super::{
     conversion::{Direction, convert_diagnostic, convert_range, convert_workspace_edit},
 };
 
-pub struct CodeAction;
+pub(crate) struct CodeAction;
 
 impl Request for CodeAction {
     type Params = LspCodeActionParams;

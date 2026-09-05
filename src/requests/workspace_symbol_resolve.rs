@@ -7,7 +7,7 @@ use super::{
     conversion::{Direction, convert_range},
 };
 
-pub struct WorkspaceSymbolResolve;
+pub(crate) struct WorkspaceSymbolResolve;
 
 impl Request for WorkspaceSymbolResolve {
     type Params = LspWorkspaceSymbol;

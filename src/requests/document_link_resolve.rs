@@ -7,7 +7,7 @@ use super::{
     conversion::{Direction, convert_range},
 };
 
-pub struct DocumentLinkResolve;
+pub(crate) struct DocumentLinkResolve;
 
 impl Request for DocumentLinkResolve {
     type Params = LspDocumentLink;

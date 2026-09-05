@@ -9,7 +9,7 @@ use super::{
     conversion::{Direction, convert_diagnostic, modify_outgoing_diagnostic_report_kind_at_url},
 };
 
-pub struct DocumentDiagnostics;
+pub(crate) struct DocumentDiagnostics;
 
 impl Request for DocumentDiagnostics {
     type Params = DocumentDiagnosticParams;

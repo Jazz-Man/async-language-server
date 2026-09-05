@@ -7,7 +7,7 @@ use super::{
     conversion::{Direction, convert_range},
 };
 
-pub struct InlineValue;
+pub(crate) struct InlineValue;
 
 impl Request for InlineValue {
     type Params = LspInlineValueParams;

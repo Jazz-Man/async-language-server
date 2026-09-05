@@ -7,7 +7,7 @@ use super::{
     conversion::{Direction, convert_inlay_hint},
 };
 
-pub struct InlayHintResolve;
+pub(crate) struct InlayHintResolve;
 
 impl Request for InlayHintResolve {
     type Params = LspInlayHint;

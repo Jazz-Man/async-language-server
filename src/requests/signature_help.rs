@@ -12,7 +12,7 @@ use super::{
     },
 };
 
-pub struct SignatureHelp;
+pub(crate) struct SignatureHelp;
 
 impl Request for SignatureHelp {
     type Params = LspSignatureHelpParams;

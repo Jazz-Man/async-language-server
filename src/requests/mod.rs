@@ -69,7 +69,7 @@ macro_rules! registry_request_impls {
         }
     )*) => {
         $(
-            pub struct $req;
+            pub(crate) struct $req;
 
             impl Request for $req {
                 type Params = $params;
@@ -163,7 +163,7 @@ pub(crate) use workspace_symbol_resolve::WorkspaceSymbolResolve;
 
 crate::requests::registry::generated_methods!(registry_request_impls);
 
-pub trait Request {
+pub(crate) trait Request {
     type Params;
     type Response;
 

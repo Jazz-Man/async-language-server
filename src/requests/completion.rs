@@ -9,7 +9,7 @@ use super::{
     conversion::{Direction, convert_completion_text_edit, convert_text_edit},
 };
 
-pub struct Completion;
+pub(crate) struct Completion;
 
 impl Request for Completion {
     type Params = LspCompletionParams;

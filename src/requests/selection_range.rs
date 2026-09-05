@@ -7,7 +7,7 @@ use super::{
     conversion::{Direction, convert_position, convert_range},
 };
 
-pub struct SelectionRange;
+pub(crate) struct SelectionRange;
 
 impl Request for SelectionRange {
     type Params = LspSelectionRangeParams;

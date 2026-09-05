@@ -12,7 +12,7 @@ use super::{
     conversion::{Direction, convert_range},
 };
 
-pub struct Symbol;
+pub(crate) struct Symbol;
 
 impl Request for Symbol {
     type Params = LspWorkspaceSymbolParams;

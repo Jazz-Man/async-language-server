@@ -7,7 +7,7 @@ use super::{
     conversion::{Direction, convert_range},
 };
 
-pub struct CodeLensResolve;
+pub(crate) struct CodeLensResolve;
 
 impl Request for CodeLensResolve {
     type Params = LspCodeLens;

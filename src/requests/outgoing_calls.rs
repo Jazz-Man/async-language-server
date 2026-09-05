@@ -10,7 +10,7 @@ use super::{
     },
 };
 
-pub struct OutgoingCalls;
+pub(crate) struct OutgoingCalls;
 
 impl Request for OutgoingCalls {
     type Params = LspCallHierarchyOutgoingCallsParams;

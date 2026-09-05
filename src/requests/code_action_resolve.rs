@@ -7,7 +7,7 @@ use super::{
     conversion::{Direction, convert_diagnostic, convert_workspace_edit},
 };
 
-pub struct CodeActionResolve;
+pub(crate) struct CodeActionResolve;
 
 impl Request for CodeActionResolve {
     type Params = LspCodeAction;

@@ -7,7 +7,7 @@ use super::{
     conversion::{Direction, convert_type_hierarchy_item, modify_outgoing_type_hierarchy_items},
 };
 
-pub struct Subtypes;
+pub(crate) struct Subtypes;
 
 impl Request for Subtypes {
     type Params = LspTypeHierarchySubtypesParams;
