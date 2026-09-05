@@ -1,3 +1,11 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::DocumentSymbolParams,
+    response = Option<async_lsp::lsp_types::DocumentSymbolResponse>,
+    document(text_document),
+    outgoing(crate::requests::conversion::modify_outgoing_document_symbols),
+)]
+pub(crate) struct DocumentSymbolRequest;
+
 #[cfg(test)]
 #[allow(
     deprecated,
@@ -6,23 +14,23 @@
 )]
 mod tests {
     use async_lsp::lsp_types::{
-        DocumentSymbol as LspDocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
-        PartialResultParams, SymbolKind, TextDocumentIdentifier, WorkDoneProgressParams,
+        DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, PartialResultParams,
+        SymbolKind, TextDocumentIdentifier, WorkDoneProgressParams,
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::{DocumentSymbol, Request};
+    use crate::requests::{DocumentSymbolRequest, Request};
     use crate::testing::{line_position, same_line, state_with_documents};
 
     conversion_tests! {
-        document_symbol_nested_outgoing_utf8_becomes_utf16: DocumentSymbol {
+        document_symbol_nested_outgoing_utf8_becomes_utf16: DocumentSymbolRequest {
             params: |uri| DocumentSymbolParams {
                 text_document: TextDocumentIdentifier::new(uri),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
             },
             response: |_plain, _emoji| {
-                Some(DocumentSymbolResponse::Nested(vec![LspDocumentSymbol {
+                Some(DocumentSymbolResponse::Nested(vec![DocumentSymbol {
                     name: "f".into(),
                     detail: None,
                     kind: SymbolKind::FUNCTION,
@@ -45,7 +53,7 @@ mod tests {
     fn document_symbol_nested_children_convert_recursively() {
         let (state, _plain, emoji) = state_with_documents();
         let document = state.document(&emoji).expect("emoji document is tracked");
-        let mut response = Some(DocumentSymbolResponse::Nested(vec![LspDocumentSymbol {
+        let mut response = Some(DocumentSymbolResponse::Nested(vec![DocumentSymbol {
             name: "f".into(),
             detail: None,
             kind: SymbolKind::FUNCTION,
@@ -53,7 +61,7 @@ mod tests {
             deprecated: None,
             range: same_line(0, 4, 6),
             selection_range: same_line(0, 4, 5),
-            children: Some(vec![LspDocumentSymbol {
+            children: Some(vec![DocumentSymbol {
                 name: "x".into(),
                 detail: None,
                 kind: SymbolKind::VARIABLE,
@@ -65,7 +73,7 @@ mod tests {
             }]),
         }]));
 
-        <DocumentSymbol as Request>::modify_response(&state, &document, &mut response);
+        <DocumentSymbolRequest as Request>::modify_response(&state, &document, &mut response);
 
         let DocumentSymbolResponse::Nested(symbols) = response.expect("response present") else {
             panic!("expected nested symbols");

@@ -1,3 +1,11 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::SemanticTokensDeltaParams,
+    response = Option<async_lsp::lsp_types::SemanticTokensFullDeltaResult>,
+    document(text_document),
+    outgoing(crate::requests::conversion::modify_outgoing_semantic_tokens_delta_result),
+)]
+pub(crate) struct SemanticTokensFullDeltaRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::{
@@ -8,7 +16,7 @@ mod tests {
         },
     };
 
-    use crate::requests::{Request, SemanticTokensFull, SemanticTokensFullDelta};
+    use crate::requests::{Request, SemanticTokensFullDeltaRequest, SemanticTokensFullRequest};
     use crate::server::{ServerOptions, ServerState};
     use crate::testing::{TestServer, open_document, token, url};
     use crate::text_utils::Encoding;
@@ -54,10 +62,14 @@ mod tests {
             result_id: Some("r1".into()),
             data: vec![token(0, 0, 4), token(0, 4, 3)],
         }));
-        <SemanticTokensFull as Request>::modify_response(&state, &document, &mut seed);
+        <SemanticTokensFullRequest as Request>::modify_response(&state, &document, &mut seed);
 
         let mut response = delta_response();
-        <SemanticTokensFullDelta as Request>::modify_response(&state, &document, &mut response);
+        <SemanticTokensFullDeltaRequest as Request>::modify_response(
+            &state,
+            &document,
+            &mut response,
+        );
         (state, uri, response)
     }
 
@@ -84,7 +96,11 @@ mod tests {
         let mut response = delta_response();
         let expected = response.clone();
 
-        <SemanticTokensFullDelta as Request>::modify_response(&state, &document, &mut response);
+        <SemanticTokensFullDeltaRequest as Request>::modify_response(
+            &state,
+            &document,
+            &mut response,
+        );
 
         assert_eq!(response, expected);
     }

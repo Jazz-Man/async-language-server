@@ -1,10 +1,17 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::RenameFilesParams,
+    response = Option<async_lsp::lsp_types::WorkspaceEdit>,
+    outgoing(crate::requests::conversion::modify_outgoing_workspace_edit),
+)]
+pub(crate) struct WillRenameFilesRequest;
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
     use async_lsp::lsp_types::{TextEdit, WorkspaceEdit};
 
-    use crate::requests::{Request, WillRenameFiles};
+    use crate::requests::{Request, WillRenameFilesRequest};
     use crate::testing::{same_line, state_with_documents};
 
     #[test]
@@ -24,7 +31,7 @@ mod tests {
             ..WorkspaceEdit::default()
         });
 
-        <WillRenameFiles as Request>::modify_response(&state, &document, &mut response);
+        <WillRenameFilesRequest as Request>::modify_response(&state, &document, &mut response);
 
         let edits = response
             .expect("edit present")

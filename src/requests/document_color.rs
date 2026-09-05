@@ -1,8 +1,16 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::DocumentColorParams,
+    response = Vec<async_lsp::lsp_types::ColorInformation>,
+    document(text_document),
+    outgoing(crate::requests::conversion::modify_outgoing_color_informations),
+)]
+pub(crate) struct DocumentColorRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{Color, ColorInformation};
 
-    use crate::requests::{DocumentColor as DocumentColorRequest, Request};
+    use crate::requests::{DocumentColorRequest, Request};
     use crate::testing::{same_line, state_with_documents};
 
     #[test]

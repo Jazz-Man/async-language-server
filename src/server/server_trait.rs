@@ -282,6 +282,171 @@ pub trait Server {
         ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::CodeLens>>>> + Send;
     }
 
+    lsp_method! {
+        /// Handles `textDocument/willSaveWaitUntil` requests from the client.
+        ///
+        /// Returns edits applied to the document before it is saved, or `None`. Requires `will_save_wait_until` enabled in the text-document sync options of [`Server::server_capabilities`].
+        fn will_save_wait_until(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::WillSaveTextDocumentParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::TextEdit>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/documentColor` requests from the client.
+        ///
+        /// Returns all color references found in the document in `params`. Requires a color provider in [`Server::server_capabilities`].
+        fn document_color(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::DocumentColorParams,
+        ) -> impl Future<Output = ServerResult<Vec<async_lsp::lsp_types::ColorInformation>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/colorPresentation` requests from the client.
+        ///
+        /// Returns the presentations for the color at the range in `params`. Sent as the resolve leg of a document color provider.
+        fn color_presentation(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::ColorPresentationParams,
+        ) -> impl Future<Output = ServerResult<Vec<async_lsp::lsp_types::ColorPresentation>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/prepareCallHierarchy` requests from the client.
+        ///
+        /// Returns the call hierarchy items for the symbol at the position in `params`, or `None`. Requires a call hierarchy provider in [`Server::server_capabilities`].
+        fn prepare_call_hierarchy(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::CallHierarchyPrepareParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::CallHierarchyItem>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/prepareTypeHierarchy` requests from the client.
+        ///
+        /// Returns the type hierarchy items for the symbol at the position in `params`, or `None`. Requires a type hierarchy provider in [`Server::server_capabilities`].
+        fn prepare_type_hierarchy(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::TypeHierarchyPrepareParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/moniker` requests from the client.
+        ///
+        /// Returns the symbol monikers at the position in `params`, or `None`. Requires a moniker provider in [`Server::server_capabilities`].
+        fn moniker(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::MonikerParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::Moniker>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `workspace/willCreateFiles` requests from the client.
+        ///
+        /// Returns a workspace edit applied before the files in `params` are created, or `None`. Requires `workspace.fileOperations.willCreate` in [`Server::server_capabilities`].
+        fn will_create_files(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::CreateFilesParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::WorkspaceEdit>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `workspace/willRenameFiles` requests from the client.
+        ///
+        /// Returns a workspace edit applied before the files in `params` are renamed, or `None`. Requires `workspace.fileOperations.willRename` in [`Server::server_capabilities`].
+        fn will_rename_files(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::RenameFilesParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::WorkspaceEdit>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `workspace/willDeleteFiles` requests from the client.
+        ///
+        /// Returns a workspace edit applied before the files in `params` are deleted, or `None`. Requires `workspace.fileOperations.willDelete` in [`Server::server_capabilities`].
+        fn will_delete_files(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::DeleteFilesParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::WorkspaceEdit>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/inlayHint` requests from the client.
+        ///
+        /// Returns inlay hints for the range in `params`, or `None`. Requires an inlay hint provider in [`Server::server_capabilities`].
+        fn inlay_hint(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::InlayHintParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::InlayHint>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/documentSymbol` requests from the client.
+        ///
+        /// Returns the symbol tree of the document in `params` (nested when the client supports it, flat otherwise), or `None`. Requires a document symbol provider in [`Server::server_capabilities`].
+        fn document_symbol(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::DocumentSymbolParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::DocumentSymbolResponse>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `workspace/executeCommand` requests from the client.
+        ///
+        /// Executes the command in `params` and returns an opaque result. Requires an execute command provider in [`Server::server_capabilities`].
+        fn execute_command(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::ExecuteCommandParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::LSPAny>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/semanticTokens/full` requests from the client.
+        ///
+        /// Returns the document's full semantic token stream, or `None`. Token columns and lengths are UTF-8 here and converted to the negotiated encoding on the wire. Requires a semantic tokens provider in [`Server::server_capabilities`].
+        fn semantic_tokens_full(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::SemanticTokensParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::SemanticTokensResult>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/semanticTokens/range` requests from the client.
+        ///
+        /// Returns the semantic token stream for the range in `params`, or `None`. Token columns and lengths are UTF-8 here and converted on the wire. Requires a semantic tokens provider with `range` support in [`Server::server_capabilities`].
+        fn semantic_tokens_range(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::SemanticTokensRangeParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::SemanticTokensRangeResult>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/semanticTokens/full/delta` requests from the client.
+        ///
+        /// Returns edits transforming the previous token stream (identified by `params.previous_result_id`) into the current one, or a full stream when a delta is not practical. Token columns and lengths are UTF-8 here; edits' inserted tokens are converted seeded against the cached previous UTF-8 stream, and flat-array indices pass through unchanged. Requires a semantic tokens provider with `full.delta` support in [`Server::server_capabilities`].
+        fn semantic_tokens_full_delta(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::SemanticTokensDeltaParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::SemanticTokensFullDeltaResult>>> + Send;
+    }
+
     crate::requests::registry::generated_methods!(registry_trait_methods);
     crate::requests::registry::custom_methods!(registry_trait_methods);
     crate::requests::registry::resolve_methods!(registry_trait_resolve_methods);

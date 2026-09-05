@@ -1,10 +1,17 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::DeleteFilesParams,
+    response = Option<async_lsp::lsp_types::WorkspaceEdit>,
+    outgoing(crate::requests::conversion::modify_outgoing_workspace_edit),
+)]
+pub(crate) struct WillDeleteFilesRequest;
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
     use async_lsp::lsp_types::{TextEdit, WorkspaceEdit};
 
-    use crate::requests::{Request, WillDeleteFiles};
+    use crate::requests::{Request, WillDeleteFilesRequest};
     use crate::testing::{same_line, state_with_documents};
 
     #[test]
@@ -24,7 +31,7 @@ mod tests {
             ..WorkspaceEdit::default()
         });
 
-        <WillDeleteFiles as Request>::modify_response(&state, &document, &mut response);
+        <WillDeleteFilesRequest as Request>::modify_response(&state, &document, &mut response);
 
         let edits = response
             .expect("edit present")

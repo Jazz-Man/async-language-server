@@ -1,3 +1,12 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::InlayHintParams,
+    response = Option<Vec<async_lsp::lsp_types::InlayHint>>,
+    document(text_document),
+    incoming_range(range),
+    outgoing(crate::requests::conversion::modify_outgoing_inlay_hints),
+)]
+pub(crate) struct InlayHintRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -6,7 +15,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::{InlayHint as InlayHintRequest, Request};
+    use crate::requests::{InlayHintRequest, Request};
     use crate::testing::{line_position, same_line, state_with_documents};
 
     conversion_tests! {

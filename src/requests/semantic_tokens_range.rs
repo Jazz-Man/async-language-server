@@ -1,3 +1,12 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::SemanticTokensRangeParams,
+    response = Option<async_lsp::lsp_types::SemanticTokensRangeResult>,
+    document(text_document),
+    incoming_range(range),
+    outgoing(crate::requests::conversion::modify_outgoing_semantic_tokens_range_result),
+)]
+pub(crate) struct SemanticTokensRangeRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -6,7 +15,7 @@ mod tests {
         WorkDoneProgressParams,
     };
 
-    use crate::requests::{Request, SemanticTokensRange};
+    use crate::requests::{Request, SemanticTokensRangeRequest};
     use crate::testing::{same_line, state_with_documents, token};
 
     #[test]
@@ -20,7 +29,7 @@ mod tests {
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),
         };
-        <SemanticTokensRange as Request>::modify_params(&state, &document, &mut params);
+        <SemanticTokensRangeRequest as Request>::modify_params(&state, &document, &mut params);
         // UTF-16 column 2 is UTF-8 byte 4 on "🙂abc".
         assert_eq!(params.range, same_line(0, 4, 4));
 
@@ -31,7 +40,7 @@ mod tests {
             result_id: Some("r1".into()),
             data: vec![token(0, 0, 4), token(0, 4, 3)],
         }));
-        <SemanticTokensRange as Request>::modify_response(&state, &document, &mut response);
+        <SemanticTokensRangeRequest as Request>::modify_response(&state, &document, &mut response);
         let Some(SemanticTokensRangeResult::Tokens(tokens)) = response else {
             panic!("expected tokens");
         };
@@ -47,7 +56,7 @@ mod tests {
                 data: vec![token(0, 0, 4), token(0, 4, 3)],
             },
         ));
-        <SemanticTokensRange as Request>::modify_response(&state, &document, &mut response);
+        <SemanticTokensRangeRequest as Request>::modify_response(&state, &document, &mut response);
         let Some(SemanticTokensRangeResult::Partial(partial)) = response else {
             panic!("expected partial result");
         };

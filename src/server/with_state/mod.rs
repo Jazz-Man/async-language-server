@@ -417,6 +417,21 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         folding_range: folding_range @ crate::requests::FoldingRangeRequest,
         linked_editing_range: linked_editing_range @ crate::requests::LinkedEditingRangeRequest,
         code_lens: code_lens @ crate::requests::CodeLensRequest,
+        will_save_wait_until: will_save_wait_until @ crate::requests::WillSaveWaitUntilRequest,
+        document_color: document_color @ crate::requests::DocumentColorRequest,
+        color_presentation: color_presentation @ crate::requests::ColorPresentationRequest,
+        prepare_call_hierarchy: prepare_call_hierarchy @ crate::requests::CallHierarchyPrepareRequest,
+        prepare_type_hierarchy: prepare_type_hierarchy @ crate::requests::TypeHierarchyPrepareRequest,
+        moniker: moniker @ crate::requests::MonikerRequest,
+        will_create_files: will_create_files @ crate::requests::WillCreateFilesRequest,
+        will_rename_files: will_rename_files @ crate::requests::WillRenameFilesRequest,
+        will_delete_files: will_delete_files @ crate::requests::WillDeleteFilesRequest,
+        inlay_hint: inlay_hint @ crate::requests::InlayHintRequest,
+        document_symbol: document_symbol @ crate::requests::DocumentSymbolRequest,
+        execute_command: execute_command @ crate::requests::ExecuteCommandRequest,
+        semantic_tokens_full: semantic_tokens_full @ crate::requests::SemanticTokensFullRequest,
+        semantic_tokens_range: semantic_tokens_range @ crate::requests::SemanticTokensRangeRequest,
+        semantic_tokens_full_delta: semantic_tokens_full_delta @ crate::requests::SemanticTokensFullDeltaRequest,
     }
 }
 

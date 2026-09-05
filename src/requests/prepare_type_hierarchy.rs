@@ -1,3 +1,12 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::TypeHierarchyPrepareParams,
+    response = Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>,
+    document(text_document_position_params.text_document),
+    incoming_position(text_document_position_params.position),
+    outgoing(crate::requests::conversion::modify_outgoing_type_hierarchy_items),
+)]
+pub(crate) struct TypeHierarchyPrepareRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -7,11 +16,11 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::TypeHierarchyPrepare;
+    use crate::requests::TypeHierarchyPrepareRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {
-        prepare_type_hierarchy_items_convert_both_directions: TypeHierarchyPrepare {
+        prepare_type_hierarchy_items_convert_both_directions: TypeHierarchyPrepareRequest {
             params: |uri| TypeHierarchyPrepareParams {
                 text_document_position_params: TextDocumentPositionParams::new(
                     TextDocumentIdentifier::new(uri),

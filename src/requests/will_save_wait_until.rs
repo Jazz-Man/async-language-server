@@ -1,3 +1,11 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::WillSaveTextDocumentParams,
+    response = Option<Vec<async_lsp::lsp_types::TextEdit>>,
+    document(text_document),
+    outgoing(crate::requests::conversion::modify_outgoing_text_edits),
+)]
+pub(crate) struct WillSaveWaitUntilRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
@@ -5,11 +13,11 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::WillSaveWaitUntil;
+    use crate::requests::WillSaveWaitUntilRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {
-        will_save_wait_until_edits_convert_outgoing: WillSaveWaitUntil {
+        will_save_wait_until_edits_convert_outgoing: WillSaveWaitUntilRequest {
             params: |uri| WillSaveTextDocumentParams {
                 text_document: TextDocumentIdentifier::new(uri),
                 reason: TextDocumentSaveReason::MANUAL,

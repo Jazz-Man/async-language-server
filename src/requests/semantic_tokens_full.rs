@@ -1,8 +1,16 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::SemanticTokensParams,
+    response = Option<async_lsp::lsp_types::SemanticTokensResult>,
+    document(text_document),
+    outgoing(crate::requests::conversion::modify_outgoing_semantic_tokens_result),
+)]
+pub(crate) struct SemanticTokensFullRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{SemanticTokens, SemanticTokensResult};
 
-    use crate::requests::{Request, SemanticTokensFull};
+    use crate::requests::{Request, SemanticTokensFullRequest};
     use crate::testing::{state_with_documents, token};
 
     #[test]
@@ -17,7 +25,7 @@ mod tests {
             data: vec![token(0, 0, 4), token(0, 4, 3)],
         }));
 
-        <SemanticTokensFull as Request>::modify_response(&state, &document, &mut response);
+        <SemanticTokensFullRequest as Request>::modify_response(&state, &document, &mut response);
 
         let Some(SemanticTokensResult::Tokens(tokens)) = response else {
             panic!("expected tokens");

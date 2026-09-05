@@ -1,11 +1,20 @@
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::ColorPresentationParams,
+    response = Vec<async_lsp::lsp_types::ColorPresentation>,
+    document(text_document),
+    incoming_range(range),
+    outgoing(crate::requests::conversion::modify_outgoing_color_presentations),
+)]
+pub(crate) struct ColorPresentationRequest;
+
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
-        Color, ColorPresentation as LspColorPresentation, ColorPresentationParams,
-        PartialResultParams, TextDocumentIdentifier, TextEdit, WorkDoneProgressParams,
+        Color, ColorPresentation, ColorPresentationParams, PartialResultParams,
+        TextDocumentIdentifier, TextEdit, WorkDoneProgressParams,
     };
 
-    use crate::requests::{ColorPresentation as ColorPresentationRequest, Request};
+    use crate::requests::{ColorPresentationRequest, Request};
     use crate::testing::{same_line, state_with_documents};
 
     #[test]
@@ -28,7 +37,7 @@ mod tests {
         <ColorPresentationRequest as Request>::modify_params(&state, &document, &mut params);
         assert_eq!(params.range, same_line(0, 4, 5));
 
-        let mut response = vec![LspColorPresentation {
+        let mut response = vec![ColorPresentation {
             label: "rgb(255, 0, 0)".into(),
             text_edit: Some(TextEdit {
                 range: same_line(0, 4, 4),
