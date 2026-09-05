@@ -1,46 +1,48 @@
-use async_lsp::lsp_types::{
-    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-};
+use async_lsp::lsp_types::{DocumentDiagnosticReport, DocumentDiagnosticReportResult};
 
 use crate::server::{Document, ServerState};
 
-use super::{
-    Request,
-    conversion::{Direction, convert_diagnostic, modify_outgoing_diagnostic_report_kind_at_url},
+use super::conversion::{
+    Direction, convert_diagnostic, modify_outgoing_diagnostic_report_kind_at_url,
 };
 
-pub(crate) struct DocumentDiagnostics;
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::DocumentDiagnosticParams,
+    response = async_lsp::lsp_types::DocumentDiagnosticReportResult,
+    document(text_document),
+    outgoing(self::convert_response),
+)]
+pub(crate) struct DocumentDiagnosticsRequest;
 
-impl Request for DocumentDiagnostics {
-    type Params = DocumentDiagnosticParams;
-    type Response = DocumentDiagnosticReportResult;
-
-    request_extract_url!(text_document);
-
-    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        match response {
-            DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(report)) => {
-                for diag in &mut report.full_document_diagnostic_report.items {
-                    convert_diagnostic(state, document, diag, Direction::Outgoing);
-                }
-                if let Some(related) = report.related_documents.as_mut() {
-                    for (uri, report) in related {
-                        modify_outgoing_diagnostic_report_kind_at_url(state, document, uri, report);
-                    }
+/// Converts the report's diagnostics to the client encoding (the outgoing
+/// hook).
+fn convert_response(
+    state: &ServerState,
+    document: &Document,
+    response: &mut DocumentDiagnosticReportResult,
+) {
+    match response {
+        DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(report)) => {
+            for diag in &mut report.full_document_diagnostic_report.items {
+                convert_diagnostic(state, document, diag, Direction::Outgoing);
+            }
+            if let Some(related) = report.related_documents.as_mut() {
+                for (uri, report) in related {
+                    modify_outgoing_diagnostic_report_kind_at_url(state, document, uri, report);
                 }
             }
-            DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Unchanged(report)) => {
-                if let Some(related) = report.related_documents.as_mut() {
-                    for (uri, report) in related {
-                        modify_outgoing_diagnostic_report_kind_at_url(state, document, uri, report);
-                    }
+        }
+        DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Unchanged(report)) => {
+            if let Some(related) = report.related_documents.as_mut() {
+                for (uri, report) in related {
+                    modify_outgoing_diagnostic_report_kind_at_url(state, document, uri, report);
                 }
             }
-            DocumentDiagnosticReportResult::Partial(report) => {
-                if let Some(related) = report.related_documents.as_mut() {
-                    for (uri, report) in related {
-                        modify_outgoing_diagnostic_report_kind_at_url(state, document, uri, report);
-                    }
+        }
+        DocumentDiagnosticReportResult::Partial(report) => {
+            if let Some(related) = report.related_documents.as_mut() {
+                for (uri, report) in related {
+                    modify_outgoing_diagnostic_report_kind_at_url(state, document, uri, report);
                 }
             }
         }
@@ -59,7 +61,7 @@ mod tests {
 
     use crate::testing::{same_line, state_with_documents};
 
-    use super::{DocumentDiagnostics, Request};
+    use crate::requests::{DocumentDiagnosticsRequest, Request};
 
     #[test]
     fn document_diagnostic_related_documents_are_converted_using_their_own_document() {
@@ -85,7 +87,7 @@ mod tests {
             },
         ));
 
-        <DocumentDiagnostics as Request>::modify_response(&state, &document, &mut response);
+        <DocumentDiagnosticsRequest as Request>::modify_response(&state, &document, &mut response);
 
         let DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(report)) =
             response

@@ -1,34 +1,38 @@
-use async_lsp::lsp_types::SelectionRangeParams as LspSelectionRangeParams;
+use async_lsp::lsp_types::SelectionRangeParams;
 
 use crate::server::{Document, ServerState};
 
-use super::{
-    Request,
-    conversion::{Direction, convert_position, convert_range},
-};
+use super::conversion::{Direction, convert_position, convert_range};
 
-pub(crate) struct SelectionRange;
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::SelectionRangeParams,
+    response = Option<Vec<async_lsp::lsp_types::SelectionRange>>,
+    document(text_document),
+    incoming_custom(self::convert_params),
+    outgoing(self::convert_response),
+)]
+pub(crate) struct SelectionRangeRequest;
 
-impl Request for SelectionRange {
-    type Params = LspSelectionRangeParams;
-    type Response = Option<Vec<async_lsp::lsp_types::SelectionRange>>;
-
-    request_extract_url!(text_document);
-
-    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        for position in &mut params.positions {
-            convert_position(state, document, position, Direction::Incoming);
-        }
+/// Converts the selection positions to UTF-8 (the incoming hook).
+fn convert_params(state: &ServerState, document: &Document, params: &mut SelectionRangeParams) {
+    for position in &mut params.positions {
+        convert_position(state, document, position, Direction::Incoming);
     }
+}
 
-    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        let Some(chains) = response else { return };
-        for chain in chains {
-            let mut current = Some(chain);
-            while let Some(node) = current {
-                convert_range(state, document, &mut node.range, Direction::Outgoing);
-                current = node.parent.as_deref_mut();
-            }
+/// Converts each selection chain's ranges to the client encoding (the
+/// outgoing hook).
+fn convert_response(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<Vec<async_lsp::lsp_types::SelectionRange>>,
+) {
+    let Some(chains) = response else { return };
+    for chain in chains {
+        let mut current = Some(chain);
+        while let Some(node) = current {
+            convert_range(state, document, &mut node.range, Direction::Outgoing);
+            current = node.parent.as_deref_mut();
         }
     }
 }
@@ -36,13 +40,13 @@ impl Request for SelectionRange {
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
-        PartialResultParams, SelectionRange as LspSelectionRange, SelectionRangeParams,
-        TextDocumentIdentifier, WorkDoneProgressParams,
+        PartialResultParams, SelectionRange, SelectionRangeParams, TextDocumentIdentifier,
+        WorkDoneProgressParams,
     };
 
     use crate::testing::{line_position, same_line, state_with_documents};
 
-    use super::{Request, SelectionRange};
+    use crate::requests::{Request, SelectionRangeRequest};
 
     #[test]
     fn selection_range_positions_and_chains_convert() {
@@ -55,20 +59,20 @@ mod tests {
             partial_result_params: PartialResultParams::default(),
         };
 
-        <SelectionRange as Request>::modify_params(&state, &document, &mut params);
+        <SelectionRangeRequest as Request>::modify_params(&state, &document, &mut params);
 
         assert_eq!(params.positions[0], line_position(0, 4));
         assert_eq!(params.positions[1], line_position(0, 5));
 
-        let mut response = Some(vec![LspSelectionRange {
+        let mut response = Some(vec![SelectionRange {
             range: same_line(0, 4, 5),
-            parent: Some(Box::new(LspSelectionRange {
+            parent: Some(Box::new(SelectionRange {
                 range: same_line(0, 4, 4),
                 parent: None,
             })),
         }]);
 
-        <SelectionRange as Request>::modify_response(&state, &document, &mut response);
+        <SelectionRangeRequest as Request>::modify_response(&state, &document, &mut response);
 
         let chains = response.expect("chains present");
         assert_eq!(chains[0].range, same_line(0, 2, 3));

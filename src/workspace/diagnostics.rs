@@ -423,7 +423,7 @@ where
             ));
         }
 
-        <crate::requests::DocumentDiagnostics as Request>::modify_response(
+        <crate::requests::DocumentDiagnosticsRequest as Request>::modify_response(
             &state,
             &doc,
             &mut result,

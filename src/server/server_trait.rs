@@ -447,6 +447,61 @@ pub trait Server {
         ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::SemanticTokensFullDeltaResult>>> + Send;
     }
 
+    lsp_method! {
+        /// Handles `textDocument/completion` requests from the client.
+        ///
+        /// Returns completion items at the position in `params`, or `None`. Requires a completion provider in [`Server::server_capabilities`].
+        fn completion(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::CompletionParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::CompletionResponse>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/codeAction` requests from the client.
+        ///
+        /// Returns code actions available for the range in `params`, or `None`. Requires a code action provider in [`Server::server_capabilities`].
+        fn code_action(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::CodeActionParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::CodeActionResponse>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/diagnostic` requests from the client.
+        ///
+        /// Returns the diagnostics for the document in `params`. The document's current snapshot is available through `state.document(&params.text_document.uri)`. Requires a diagnostic provider in [`Server::server_capabilities`].
+        fn document_diagnostics(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::DocumentDiagnosticParams,
+        ) -> impl Future<Output = ServerResult<async_lsp::lsp_types::DocumentDiagnosticReportResult>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/selectionRange` requests from the client.
+        ///
+        /// Returns the selection-range chains for the positions in `params`, or `None`; `positions[i]` must be contained in `result[i].range`. Requires a selection range provider in [`Server::server_capabilities`].
+        fn selection_range(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::SelectionRangeParams,
+        ) -> impl Future<Output = ServerResult<Option<Vec<async_lsp::lsp_types::SelectionRange>>>> + Send;
+    }
+
+    lsp_method! {
+        /// Handles `textDocument/inlineValue` requests from the client.
+        ///
+        /// Returns a single inline value computed for the range in `params`, or `None`. Requires an inline value provider in [`Server::server_capabilities`].
+        fn inline_value(
+            &self,
+            _state: ServerState,
+            _params: async_lsp::lsp_types::InlineValueParams,
+        ) -> impl Future<Output = ServerResult<Option<async_lsp::lsp_types::InlineValue>>> + Send;
+    }
+
     crate::requests::registry::generated_methods!(registry_trait_methods);
     crate::requests::registry::custom_methods!(registry_trait_methods);
     crate::requests::registry::resolve_methods!(registry_trait_resolve_methods);

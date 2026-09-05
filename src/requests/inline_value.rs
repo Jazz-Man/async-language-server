@@ -1,52 +1,55 @@
-use async_lsp::lsp_types::InlineValueParams as LspInlineValueParams;
+use async_lsp::lsp_types::InlineValueParams;
 
 use crate::server::{Document, ServerState};
 
-use super::{
-    Request,
-    conversion::{Direction, convert_range},
-};
+use super::conversion::{Direction, convert_range};
 
-pub(crate) struct InlineValue;
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::InlineValueParams,
+    response = Option<async_lsp::lsp_types::InlineValue>,
+    document(text_document),
+    incoming_custom(self::convert_params),
+    outgoing(self::convert_response),
+)]
+pub(crate) struct InlineValueRequest;
 
-impl Request for InlineValue {
-    type Params = LspInlineValueParams;
-    type Response = Option<async_lsp::lsp_types::InlineValue>;
+/// Converts the value range and stopped location to UTF-8 (the incoming
+/// hook).
+fn convert_params(state: &ServerState, document: &Document, params: &mut InlineValueParams) {
+    convert_range(state, document, &mut params.range, Direction::Incoming);
+    convert_range(
+        state,
+        document,
+        &mut params.context.stopped_location,
+        Direction::Incoming,
+    );
+}
 
-    request_extract_url!(text_document);
-
-    fn modify_params(state: &ServerState, document: &Document, params: &mut Self::Params) {
-        convert_range(state, document, &mut params.range, Direction::Incoming);
-        convert_range(
-            state,
-            document,
-            &mut params.context.stopped_location,
-            Direction::Incoming,
-        );
-    }
-
-    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        let Some(value) = response else { return };
-        let range = match value {
-            async_lsp::lsp_types::InlineValue::Text(v) => &mut v.range,
-            async_lsp::lsp_types::InlineValue::VariableLookup(v) => &mut v.range,
-            async_lsp::lsp_types::InlineValue::EvaluatableExpression(v) => &mut v.range,
-        };
-        convert_range(state, document, range, Direction::Outgoing);
-    }
+/// Converts the inline value's range to the client encoding (the outgoing
+/// hook).
+fn convert_response(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<async_lsp::lsp_types::InlineValue>,
+) {
+    let Some(value) = response else { return };
+    let range = match value {
+        async_lsp::lsp_types::InlineValue::Text(v) => &mut v.range,
+        async_lsp::lsp_types::InlineValue::VariableLookup(v) => &mut v.range,
+        async_lsp::lsp_types::InlineValue::EvaluatableExpression(v) => &mut v.range,
+    };
+    convert_range(state, document, range, Direction::Outgoing);
 }
 
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
-        InlineValue as LspInlineValue, InlineValueContext, InlineValueParams, InlineValueText,
+        InlineValue, InlineValueContext, InlineValueParams, InlineValueText,
         TextDocumentIdentifier, WorkDoneProgressParams,
     };
 
-    use crate::requests::InlineValue;
+    use crate::requests::{InlineValueRequest, Request};
     use crate::testing::{same_line, state_with_documents};
-
-    use super::Request;
 
     #[test]
     fn inline_value_ranges_convert_both_directions() {
@@ -62,19 +65,19 @@ mod tests {
             work_done_progress_params: WorkDoneProgressParams::default(),
         };
 
-        <InlineValue as Request>::modify_params(&state, &document, &mut params);
+        <InlineValueRequest as Request>::modify_params(&state, &document, &mut params);
 
         assert_eq!(params.range, same_line(0, 4, 5));
         assert_eq!(params.context.stopped_location, same_line(0, 5, 6));
 
-        let mut response = Some(LspInlineValue::Text(InlineValueText {
+        let mut response = Some(InlineValue::Text(InlineValueText {
             range: same_line(0, 4, 6),
             text: "x".into(),
         }));
 
-        <InlineValue as Request>::modify_response(&state, &document, &mut response);
+        <InlineValueRequest as Request>::modify_response(&state, &document, &mut response);
 
-        let LspInlineValue::Text(value) = response.expect("value present") else {
+        let InlineValue::Text(value) = response.expect("value present") else {
             panic!("text variant present");
         };
         assert_eq!(value.range, same_line(0, 2, 4));

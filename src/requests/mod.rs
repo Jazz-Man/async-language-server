@@ -13,27 +13,6 @@ macro_rules! request_extract_url {
     };
 }
 
-/// Implements [`Request::modify_params`] inside an existing `impl Request`
-/// block, for a request whose params carry one incoming position at the
-/// given field path, e.g. `text_document_position.position`: the generated
-/// body delegates to `convert_position` with `Direction::Incoming`.
-macro_rules! request_modify_params_position {
-    ($($segment:ident).*) => {
-        fn modify_params(
-            state: &crate::server::ServerState,
-            document: &crate::server::Document,
-            params: &mut Self::Params,
-        ) {
-            crate::requests::conversion::convert_position(
-                state,
-                document,
-                &mut params $(.$segment)*,
-                crate::requests::conversion::Direction::Incoming,
-            );
-        }
-    };
-}
-
 /// Stamps `Request` impls for the registry's generated rows.
 macro_rules! registry_request_impls {
     ( $(
@@ -122,18 +101,18 @@ mod will_rename_files;
 mod will_save_wait_until;
 mod workspace_symbol_resolve;
 
-pub(crate) use code_action::CodeAction;
+pub(crate) use code_action::CodeActionRequest;
 pub(crate) use code_action_resolve::CodeActionResolve;
 pub(crate) use code_lens::CodeLensRequest;
 pub(crate) use code_lens_resolve::CodeLensResolve;
 pub(crate) use color_presentation::ColorPresentationRequest;
-pub(crate) use completion::Completion;
+pub(crate) use completion::CompletionRequest;
 pub(crate) use completion_resolve::CompletionResolve;
 pub(crate) use conversion::{Direction, convert_resolve_item};
 pub(crate) use declaration::DeclarationRequest;
 pub(crate) use definition::DefinitionRequest;
 pub(crate) use document_color::DocumentColorRequest;
-pub(crate) use document_diagnostics::DocumentDiagnostics;
+pub(crate) use document_diagnostics::DocumentDiagnosticsRequest;
 pub(crate) use document_format::DocumentFormatRequest;
 pub(crate) use document_highlight::DocumentHighlightRequest;
 pub(crate) use document_link::DocumentLinkRequest;
@@ -147,7 +126,7 @@ pub(crate) use implementation::ImplementationRequest;
 pub(crate) use incoming_calls::IncomingCalls;
 pub(crate) use inlay_hint::InlayHintRequest;
 pub(crate) use inlay_hint_resolve::InlayHintResolve;
-pub(crate) use inline_value::InlineValue;
+pub(crate) use inline_value::InlineValueRequest;
 pub(crate) use linked_editing_range::LinkedEditingRangeRequest;
 pub(crate) use moniker::MonikerRequest;
 pub(crate) use on_type_formatting::OnTypeFormattingRequest;
@@ -157,7 +136,7 @@ pub(crate) use prepare_type_hierarchy::TypeHierarchyPrepareRequest;
 pub(crate) use references::ReferencesRequest;
 pub(crate) use rename::RenameRequest;
 pub(crate) use rename_prepare::RenamePrepareRequest;
-pub(crate) use selection_range::SelectionRange;
+pub(crate) use selection_range::SelectionRangeRequest;
 pub(crate) use semantic_tokens_full::SemanticTokensFullRequest;
 pub(crate) use semantic_tokens_full_delta::SemanticTokensFullDeltaRequest;
 pub(crate) use semantic_tokens_range::SemanticTokensRangeRequest;

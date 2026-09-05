@@ -432,6 +432,11 @@ impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithSta
         semantic_tokens_full: semantic_tokens_full @ crate::requests::SemanticTokensFullRequest,
         semantic_tokens_range: semantic_tokens_range @ crate::requests::SemanticTokensRangeRequest,
         semantic_tokens_full_delta: semantic_tokens_full_delta @ crate::requests::SemanticTokensFullDeltaRequest,
+        completion: completion @ crate::requests::CompletionRequest,
+        code_action: code_action @ crate::requests::CodeActionRequest,
+        document_diagnostics: document_diagnostic @ crate::requests::DocumentDiagnosticsRequest,
+        selection_range: selection_range @ crate::requests::SelectionRangeRequest,
+        inline_value: inline_value @ crate::requests::InlineValueRequest,
     }
 }
 

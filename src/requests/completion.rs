@@ -1,37 +1,37 @@
-use async_lsp::lsp_types::{
-    CompletionParams as LspCompletionParams, CompletionResponse as LspCompletionResponse,
-};
+use async_lsp::lsp_types::CompletionResponse;
 
 use crate::server::{Document, ServerState};
 
-use super::{
-    Request,
-    conversion::{Direction, convert_completion_text_edit, convert_text_edit},
-};
+use super::conversion::{Direction, convert_completion_text_edit, convert_text_edit};
 
-pub(crate) struct Completion;
+#[lsp_macros::lsp_request(
+    params = async_lsp::lsp_types::CompletionParams,
+    response = Option<async_lsp::lsp_types::CompletionResponse>,
+    document(text_document_position.text_document),
+    incoming_position(text_document_position.position),
+    outgoing(self::convert_response),
+)]
+pub(crate) struct CompletionRequest;
 
-impl Request for Completion {
-    type Params = LspCompletionParams;
-    type Response = Option<LspCompletionResponse>;
-
-    request_extract_url!(text_document_position.text_document);
-    request_modify_params_position!(text_document_position.position);
-
-    fn modify_response(state: &ServerState, document: &Document, response: &mut Self::Response) {
-        if let Some(response) = response.as_mut() {
-            let items = match response {
-                LspCompletionResponse::Array(v) => v,
-                LspCompletionResponse::List(v) => v.items.as_mut(),
-            };
-            for item in items {
-                if let Some(edit) = item.text_edit.as_mut() {
-                    convert_completion_text_edit(state, document, edit, Direction::Outgoing);
-                }
-                if let Some(edits) = item.additional_text_edits.as_mut() {
-                    for edit in edits {
-                        convert_text_edit(state, document, edit, Direction::Outgoing);
-                    }
+/// Converts completion edits in the response back to the client encoding
+/// (the outgoing hook).
+fn convert_response(
+    state: &ServerState,
+    document: &Document,
+    response: &mut Option<CompletionResponse>,
+) {
+    if let Some(response) = response.as_mut() {
+        let items = match response {
+            CompletionResponse::Array(v) => v,
+            CompletionResponse::List(v) => v.items.as_mut(),
+        };
+        for item in items {
+            if let Some(edit) = item.text_edit.as_mut() {
+                convert_completion_text_edit(state, document, edit, Direction::Outgoing);
+            }
+            if let Some(edits) = item.additional_text_edits.as_mut() {
+                for edit in edits {
+                    convert_text_edit(state, document, edit, Direction::Outgoing);
                 }
             }
         }
@@ -48,7 +48,7 @@ mod tests {
 
     use crate::testing::{line_position, same_line, state_with_documents};
 
-    use super::{Completion, Request};
+    use crate::requests::{CompletionRequest, Request};
 
     #[test]
     fn completion_additional_text_edits_are_converted() {
@@ -60,7 +60,7 @@ mod tests {
             ..Default::default()
         }]));
 
-        <Completion as Request>::modify_response(&state, &document, &mut response);
+        <CompletionRequest as Request>::modify_response(&state, &document, &mut response);
 
         let Some(CompletionResponse::Array(items)) = response else {
             panic!("expected completion array");
@@ -72,7 +72,7 @@ mod tests {
     }
 
     conversion_tests! {
-        completion_incoming_utf16_becomes_utf8: Completion {
+        completion_incoming_utf16_becomes_utf8: CompletionRequest {
             params: |uri| CompletionParams {
                 text_document_position: TextDocumentPositionParams::new(
                     TextDocumentIdentifier::new(uri),

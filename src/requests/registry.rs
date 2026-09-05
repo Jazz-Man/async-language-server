@@ -26,26 +26,6 @@ pub(crate) use generated_methods;
 macro_rules! custom_methods {
     ($m:ident) => {
         $m! {
-            completion: completion @ Completion {
-                doc: "Handles `textDocument/completion` requests from the client.\n\nReturns completion items at the position in `params`, or `None`. Requires a completion provider in [`Server::server_capabilities`].",
-                params: async_lsp::lsp_types::CompletionParams,
-                response: Option<async_lsp::lsp_types::CompletionResponse>,
-            }
-            code_action: code_action @ CodeAction {
-                doc: "Handles `textDocument/codeAction` requests from the client.\n\nReturns code actions available for the range in `params`, or `None`. Requires a code action provider in [`Server::server_capabilities`].",
-                params: async_lsp::lsp_types::CodeActionParams,
-                response: Option<async_lsp::lsp_types::CodeActionResponse>,
-            }
-            document_diagnostics: document_diagnostic @ DocumentDiagnostics {
-                doc: "Handles `textDocument/diagnostic` requests from the client.\n\nReturns the diagnostics for the document in `params`. The document's current snapshot is available through `state.document(&params.text_document.uri)`. Requires a diagnostic provider in [`Server::server_capabilities`].",
-                params: async_lsp::lsp_types::DocumentDiagnosticParams,
-                response: async_lsp::lsp_types::DocumentDiagnosticReportResult,
-            }
-            selection_range: selection_range @ SelectionRange {
-                doc: "Handles `textDocument/selectionRange` requests from the client.\n\nReturns the selection-range chains for the positions in `params`, or `None`; `positions[i]` must be contained in `result[i].range`. Requires a selection range provider in [`Server::server_capabilities`].",
-                params: async_lsp::lsp_types::SelectionRangeParams,
-                response: Option<Vec<async_lsp::lsp_types::SelectionRange>>,
-            }
             incoming_calls: incoming_calls @ IncomingCalls {
                 doc: "Handles `callHierarchy/incomingCalls` requests from the client.\n\nReturns the callers of the item in `params`, or `None`. Only issued when the server registered a call hierarchy provider. The item's ranges arrive converted to UTF-8 and return converted to the negotiated encoding, each against the item's own document when tracked.",
                 params: async_lsp::lsp_types::CallHierarchyIncomingCallsParams,
@@ -65,11 +45,6 @@ macro_rules! custom_methods {
                 doc: "Handles `typeHierarchy/subtypes` requests from the client.\n\nReturns the subtypes of the item in `params`, or `None`. Only issued when the server registered a type hierarchy provider. Conversion as per `supertypes`.",
                 params: async_lsp::lsp_types::TypeHierarchySubtypesParams,
                 response: Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>,
-            }
-            inline_value: inline_value @ InlineValue {
-                doc: "Handles `textDocument/inlineValue` requests from the client.\n\nReturns a single inline value computed for the range in `params`, or `None`. Requires an inline value provider in [`Server::server_capabilities`].",
-                params: async_lsp::lsp_types::InlineValueParams,
-                response: Option<async_lsp::lsp_types::InlineValue>,
             }
             symbol: symbol @ Symbol {
                 doc: "Handles `workspace/symbol` requests from the client.\n\nReturns the workspace-wide symbols matching the query, or `None`. Requires a workspace symbol provider in [`Server::server_capabilities`]. Symbol locations convert against their own document when tracked; untracked files are read from disk once per request (cached); unreadable locations pass through unchanged.",
