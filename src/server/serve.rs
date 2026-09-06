@@ -1,15 +1,10 @@
-use std::{
-    num::NonZeroUsize,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use std::num::NonZeroUsize;
 
 use async_lsp::{
     client_monitor::ClientProcessMonitorLayer, concurrency::ConcurrencyLayer,
     panic::CatchUnwindLayer, router::Router, server::LifecycleLayer, tracing::TracingLayer,
 };
 use futures::{AsyncRead, AsyncWrite};
-use tokio::io::ReadBuf;
 use tower::ServiceBuilder;
 
 use crate::{
@@ -25,6 +20,11 @@ const MAX_CONCURRENT_REQUESTS: NonZeroUsize = match NonZeroUsize::new(8) {
 /// Serves a language server over the process standard input and output.
 ///
 /// The server must be clonable, and shareable across threads.
+///
+/// The standard input and output are locked as non-blocking pipes through
+/// async-lsp's `PipeStdin`/`PipeStdout`: this entry point exists on unix
+/// only, and nothing may leave bytes in the std buffered stdin/stdout (the
+/// `print!` family) alongside the server.
 ///
 /// This will automatically attach middleware for:
 ///
@@ -50,25 +50,26 @@ const MAX_CONCURRENT_REQUESTS: NonZeroUsize = match NonZeroUsize::new(8) {
 ///
 /// # Errors
 ///
-/// If the server encounters an I/O error while running.
+/// If the standard input or output cannot be locked as a pipe-like channel
+/// (for example, when redirected to a regular file), or the server
+/// encounters an I/O error while running.
 pub async fn serve<S>(server: S) -> ServerResult<()>
 where
     S: Server + Clone,
     S: Send + Sync + 'static,
 {
-    run_over_streams(
-        server,
-        TokioReader(tokio::io::stdin()),
-        TokioWriter(tokio::io::stdout()),
-    )
-    .await
+    let (stdin, stdout) = (
+        async_lsp::stdio::PipeStdin::lock_tokio()?,
+        async_lsp::stdio::PipeStdout::lock_tokio()?,
+    );
+    run_over_streams(server, stdin, stdout).await
 }
 
 /// Runs the real middleware stack (lifecycle, tracing, concurrency,
 /// panic catching, client-process monitor) over arbitrary futures-trait
 /// byte streams.
 ///
-/// `serve()` runs it over the process stdio; the wire-tier tests
+/// `serve()` runs it over the process stdio pipes; the wire-tier tests
 /// (`src/server/tests/`) drive the same stack over in-memory duplex
 /// pipes, so the tested stack can never drift from the shipped one.
 pub(crate) async fn run_over_streams<S, R, W>(server: S, reader: R, writer: W) -> ServerResult<()>
@@ -96,43 +97,4 @@ where
         .run_buffered(reader, writer)
         .await
         .map_err(Into::into)
-}
-
-/// Bridges any tokio reader to the futures `AsyncRead` the loop speaks.
-pub(crate) struct TokioReader<T>(pub(crate) T);
-
-impl<T: tokio::io::AsyncRead + Unpin> AsyncRead for TokioReader<T> {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<std::io::Result<usize>> {
-        let mut read_buf = ReadBuf::new(buf);
-        match Pin::new(&mut self.get_mut().0).poll_read(cx, &mut read_buf) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(Ok(())) => Poll::Ready(Ok(read_buf.filled().len())),
-            Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
-        }
-    }
-}
-
-/// Bridges any tokio writer to the futures `AsyncWrite` the loop speaks.
-pub(crate) struct TokioWriter<T>(pub(crate) T);
-
-impl<T: tokio::io::AsyncWrite + Unpin> AsyncWrite for TokioWriter<T> {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<std::io::Result<usize>> {
-        Pin::new(&mut self.get_mut().0).poll_write(cx, buf)
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.get_mut().0).poll_flush(cx)
-    }
-
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.get_mut().0).poll_shutdown(cx)
-    }
 }

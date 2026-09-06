@@ -5,23 +5,22 @@
 //! isolated from async-lsp client-path bugs.
 //!
 //! The server's halves of the duplex pipes are bridged to the futures
-//! traits by the generic `TokioReader`/`TokioWriter` adapters in
-//! `serve.rs` — the same ones `serve()` runs process stdio through.
+//! traits by `tokio-util`'s `compat` — the same bridging async-lsp's own
+//! `tests/unit_test.rs` uses.
 
 use std::time::Duration;
 
 use async_lsp::lsp_types::{Hover, HoverContents, HoverParams, MarkedString, Position, Range};
+use futures::AsyncReadExt as _;
 use serde_json::{Value, json};
 use tokio::io::{
     AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream, ReadHalf,
     WriteHalf, split,
 };
+use tokio_util::compat::TokioAsyncReadCompatExt as _;
 
 use crate::error::ServerResult;
-use crate::server::{
-    Server,
-    serve::{TokioReader, TokioWriter, run_over_streams},
-};
+use crate::server::{Server, serve::run_over_streams};
 
 pub(crate) const WIRE_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -198,12 +197,8 @@ where
 {
     let (client_stream, server_stream) = tokio::io::duplex(64 * 1024);
     let (client_read, client_write) = split(client_stream);
-    let (server_read, server_write) = split(server_stream);
-    let handle = tokio::spawn(run_over_streams(
-        server,
-        TokioReader(server_read),
-        TokioWriter(server_write),
-    ));
+    let (server_read, server_write) = server_stream.compat().split();
+    let handle = tokio::spawn(run_over_streams(server, server_read, server_write));
     (
         RawClient {
             reader: BufReader::new(client_read),

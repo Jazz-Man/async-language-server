@@ -1,7 +1,7 @@
 # async-language-server
 
 A higher-level abstraction over [async-lsp] for writing language servers with
-less boilerplate: tokio stdio transport, ropey-based incremental document
+less boilerplate: async-lsp pipe-based stdio transport, ropey-based incremental document
 sync, automatic position-encoding negotiation (UTF-8/16/32), optional
 [tree-sitter] integration, and workspace-wide diagnostics.
 

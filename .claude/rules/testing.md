@@ -56,8 +56,10 @@ instructions in the test's own comment.
   names its local range builder `r`, with types specific to that flavor —
   they are not (and need not be) the shared LSP fixtures.
 - `src/server/testing.rs` — the wire scaffolding: `spawn_wire_server`,
-  `RawClient`, `EchoServer`, `bounded`; `GatedServer` / `PanickingServer`
-  stay local to `src/server/tests/robustness.rs`, their only consumers.
+  `RawClient`, `EchoServer`, `bounded`; the server halves of the duplex
+  cross to the futures traits through `tokio-util`'s `compat`
+  (dev-dependency). `GatedServer` / `PanickingServer` stay local to
+  `src/server/tests/robustness.rs`, their only consumers.
 
 ## Conventions
 

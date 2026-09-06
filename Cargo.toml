@@ -27,7 +27,7 @@ resolver = "2"
 [workspace.dependencies]
 # Shared version pins for workspace members. syn/quote stay local to
 # lsp_macros (sole consumer).
-async-lsp = { version = "0.2.4", default-features = false, features = ["client-monitor", "omni-trait", "tracing"] }
+async-lsp = { version = "0.2.4", default-features = false, features = ["client-monitor", "omni-trait", "stdio", "tokio", "tracing"] }
 dashmap = "6.2.1"
 futures = "0.3.34"
 globset = "0.4.20"
@@ -37,6 +37,7 @@ ropey = "1.6.1"
 serde_json = "1.0.151"
 thiserror = "2.0.20"
 tokio = "1.53.1"
+tokio-util = "0.7"
 tower = "0.5.3"
 tracing = "0.1.44"
 tree-sitter = "0.26.13"
@@ -64,6 +65,7 @@ tree-sitter = { workspace = true, optional = true }
 [dev-dependencies]
 arch-lint = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "time", "sync", "fs", "io-util"] }
+tokio-util = { workspace = true, features = ["compat"] }
 tree-sitter-json = { workspace = true }
 
 [[example]]

@@ -183,7 +183,7 @@ The client half stays tokio-native (`RawClient` reads raw bytes through `BufRead
 - [ ] **Step 4: Run the full default test suite**
 
 Run: `cargo test --workspace`
-Expected: exit 0; 245 passed, 0 failed (210 lib + 1 architecture + 22 lsp_macros + 12 doctests). The 19 wire tests pass unmodified — same `run_over_streams`, same duplex, same assertions.
+Expected: exit 0; 245 passed, 0 failed (210 lib + 1 architecture + 22 lsp_macros + 12 doctests). The 15 wire tests pass unmodified — same `run_over_streams`, same duplex, same assertions.
 
 - [ ] **Step 5: Lint and format**
 

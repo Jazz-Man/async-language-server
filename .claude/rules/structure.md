@@ -18,7 +18,12 @@ Two layers wrap `async-lsp`:
 `serve()` (`src/server/serve.rs`) wires the implementor into async-lsp's `MainLoop`
 behind a tower `ServiceBuilder` stack — `LifecycleLayer`, `TracingLayer`,
 `ConcurrencyLayer(8)`, `CatchUnwindLayer`, `ClientProcessMonitorLayer` — over
-the process standard input and output.
+the process standard input and output, locked as non-blocking pipes through
+async-lsp's `PipeStdin`/`PipeStdout` (unix-only; nothing may leave bytes in
+the std buffered stdin/stdout alongside it). The generic
+`run_over_streams(server, reader, writer)` behind it is the server
+constructor and the internal seam the wire-tier tests drive over duplex
+pipes.
 
 ## The UTF-8 invariant
 

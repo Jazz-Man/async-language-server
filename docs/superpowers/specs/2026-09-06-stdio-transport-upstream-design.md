@@ -63,7 +63,7 @@ I/O on the process fd.
   thoroughly (parent/child over real pipes — lock semantics, non-blocking
   reads, drop releases the locks); inline lib tests cover closed sockets and
   `AnyEvent`. Nothing upstream covers our layer: capability negotiation,
-  dispatch rows, encoding conversion, staleness, stack composition. Our 19
+  dispatch rows, encoding conversion, staleness, stack composition. Our 15
   wire tests stay; deleting them because "upstream is tested" would leave our
   own wiring untested.
 - Adapter consumers (grep-verified): `serve()` and `spawn_wire_server` in
@@ -154,7 +154,7 @@ documented in `serve`'s `# Errors` section.
 ## Rejected alternatives
 
 - **Delete the wire tier** ("upstream already tests it") — upstream tests
-  upstream's machinery; our 19 wire tests cover our stack composition,
+  upstream's machinery; our 15 wire tests cover our stack composition,
   dispatch table, encoding conversion, staleness, and termination. Nothing
   upstream can cover those.
 - **Keep the adapters as `cfg(test)` code** (option B) — 40 lines of test-only
@@ -171,7 +171,7 @@ documented in `serve`'s `# Errors` section.
 
 Zero new tests, zero modified tests. Rationale: the transport is process-global
 (pipe locks on the real stdin/stdout) and cannot be driven from a unit test;
-upstream's `tests/stdio.rs` covers it; our layer is covered by the existing 19
+upstream's `tests/stdio.rs` covers it; our layer is covered by the existing 15
 wire tests, which ride the same `run_over_streams` the shipped `serve()` uses.
 Type-level acceptance of `PipeStd*` by `run_over_streams` is compile-checked by
 `serve`'s own body.

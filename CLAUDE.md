@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Library crate (no binary) that wraps `async-lsp` to make language servers with less boilerplate: tokio stdio transport, ropey-based incremental document sync, automatic position-encoding negotiation (UTF-8/16/32), and optional tree-sitter integration. Personal project, version 0.0.0, not published to crates.io — consumed as a git dependency or fork. Public API lives under `async_language_server::server::*`, with `lsp_types` re-exported at the crate root.
+Library crate (no binary) that wraps `async-lsp` to make language servers with less boilerplate: async-lsp pipe-based stdio transport, ropey-based incremental document sync, automatic position-encoding negotiation (UTF-8/16/32), and optional tree-sitter integration. Personal project, version 0.0.0, not published to crates.io — consumed as a git dependency or fork. Public API lives under `async_language_server::server::*`, with `lsp_types` re-exported at the crate root.
 
 ## Commands
 
