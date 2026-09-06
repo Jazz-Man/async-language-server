@@ -7,9 +7,9 @@ use async_lsp::lsp_types::{
 
 use crate::{
     documents::DocumentMatchers,
-    error::ServerResult,
+    error::{ServerError, ServerResult},
     server::Server,
-    workspace::{WorkspaceWalkConfig, WorkspaceWalker, path_to_url},
+    workspace::{WorkspaceWalkConfig, WorkspaceWalker, for_each_bounded, path_to_url},
 };
 
 use super::server::{OneshotDocument, OneshotServer};
@@ -214,75 +214,75 @@ pub async fn workspace_diagnostics<S>(
 where
     S: Server + Send + Sync + 'static,
 {
+    let width = server.server_options().diagnostics_parallelism();
     let walker = WorkspaceWalker::new(&config.roots, config.walk)?;
-    let documents = discover_documents::<S>(&walker)?;
-
-    let mut server = OneshotServer::new(server);
-    server.initialize_workspace(walker.roots()).await?;
-    for doc in &documents {
-        server.open_document(&doc.document)?;
-    }
-
-    let mut results = Vec::new();
-    for doc in documents {
-        let report = server.document_diagnostics(&doc.document).await?;
-        results.push(DocumentDiagnostics {
-            uri: doc.document.uri,
-            version: doc.document.version,
-            report,
-        });
-    }
-
-    Ok(WorkspaceDiagnosticReport { documents: results })
-}
-
-#[derive(Debug, Clone)]
-struct WorkspaceDocument {
-    path: PathBuf,
-    document: OneshotDocument,
-}
-
-fn discover_documents<S>(walker: &WorkspaceWalker) -> ServerResult<Vec<WorkspaceDocument>>
-where
-    S: Server,
-{
     let matchers = DocumentMatchers::new(S::server_document_matchers());
-    let mut documents = Vec::new();
 
+    let mut paths = Vec::new();
     for path in walker.files()? {
-        if let Some(doc) = workspace_document(path, &matchers)? {
-            documents.push(doc);
+        if matchers.find_path(&path).is_some() {
+            paths.push(path);
         }
     }
+    // The engine restores input order, so sorting the paths preserves the
+    // report's deterministic path order.
+    paths.sort();
 
-    documents.sort_by(|a, b| a.path.cmp(&b.path));
-    Ok(documents)
+    let mut bootstrap = OneshotServer::new(server);
+    bootstrap.initialize_workspace(walker.roots()).await?;
+
+    let results: Result<Vec<Option<DocumentDiagnostics>>, ServerError> =
+        for_each_bounded(paths, width, |path| {
+            let mut server = bootstrap.clone();
+            let matchers = &matchers;
+            async move {
+                let uri = path_to_url(&path)?;
+                let Some(matcher) = matchers.find_path(&path) else {
+                    return Ok(None);
+                };
+                let language_id = matcher
+                    .lang_strings()
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| matcher.name().to_ascii_lowercase());
+                let text = read_document_text(path).await?;
+                let document = OneshotDocument {
+                    uri: uri.clone(),
+                    language_id,
+                    version: 1,
+                    text,
+                };
+                server.open_document(&document)?;
+                let report = server.document_diagnostics(&document).await?;
+                Ok(Some(DocumentDiagnostics {
+                    uri,
+                    version: document.version,
+                    report,
+                }))
+            }
+        })
+        .await;
+
+    let documents = results?.into_iter().flatten().collect();
+    Ok(WorkspaceDiagnosticReport { documents })
 }
 
-fn workspace_document(
-    path: PathBuf,
-    matchers: &DocumentMatchers,
-) -> ServerResult<Option<WorkspaceDocument>> {
-    let uri = path_to_url(&path)?;
-    let Some(matcher) = matchers.find_url(&uri) else {
-        return Ok(None);
-    };
-
-    let language_id = matcher
-        .lang_strings()
-        .first()
-        .cloned()
-        .unwrap_or_else(|| matcher.name().to_ascii_lowercase());
-
-    Ok(Some(WorkspaceDocument {
-        document: OneshotDocument {
-            uri,
-            text: fs::read_to_string(&path)?,
-            language_id,
-            version: 1,
-        },
-        path,
-    }))
+/// Reads one workspace file's text for opening. The disk read runs on the
+/// blocking pool when a tokio runtime is current; the oneshot entry point
+/// also runs on plain executors (`futures::executor::block_on`), where the
+/// read happens inline — bounded by the engine's width either way.
+async fn read_document_text(path: PathBuf) -> ServerResult<String> {
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        // arch-lint: allow(no-sync-io) reason="workspace file IO runs on the blocking pool by design"
+        let text = handle
+            .spawn_blocking(move || fs::read_to_string(&path))
+            .await
+            .map_err(std::io::Error::from)??;
+        Ok(text)
+    } else {
+        // arch-lint: allow(no-sync-io) reason="plain-executor oneshot runs have no runtime to offload to; the read stays bounded by the engine's width"
+        fs::read_to_string(&path).map_err(ServerError::from)
+    }
 }
 
 fn diagnostics_from_report_kind(report: &DocumentDiagnosticReportKind) -> &[Diagnostic] {
@@ -294,14 +294,15 @@ fn diagnostics_from_report_kind(report: &DocumentDiagnosticReportKind) -> &[Diag
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{fs, num::NonZeroUsize, sync::Arc, time::Duration};
 
     use async_lsp::lsp_types::{
         Diagnostic, DocumentDiagnosticParams, FullDocumentDiagnosticReport,
         RelatedFullDocumentDiagnosticReport,
     };
+    use tokio::sync::{Barrier, mpsc};
 
-    use crate::server::{DocumentMatcher, Server, ServerResult, ServerState};
+    use crate::server::{DocumentMatcher, Server, ServerOptions, ServerResult, ServerState};
     use crate::testing::{diagnostic, temp_workspace};
 
     use super::{WorkspaceDiagnosticConfig, workspace_diagnostics};
@@ -315,6 +316,14 @@ mod tests {
                     .with_url_globs(["**/*.test", "*.test"])
                     .with_lang_strings(["test"]),
             ]
+        }
+
+        // Serialized: this fixture's documents report how many documents
+        // the handler observed, which is only deterministic one item at a
+        // time. Concurrent scheduling is pinned by `GatedServer` below.
+        fn server_options(&self) -> ServerOptions {
+            ServerOptions::default()
+                .with_diagnostics_parallelism(NonZeroUsize::new(1).expect("constant is nonzero"))
         }
 
         fn document_diagnostics(
@@ -410,7 +419,7 @@ mod tests {
     }
 
     #[test]
-    fn workspace_diagnostics_opens_documents_before_requests() {
+    fn workspace_diagnostics_opens_documents_per_item() {
         let root = temp_workspace("oneshot", "opened");
         fs::write(root.join("a.test"), "").expect("test file can be written");
         fs::write(root.join("b.test"), "").expect("test file can be written");
@@ -422,11 +431,81 @@ mod tests {
         .expect("workspace diagnostics succeeds");
 
         assert_eq!(report.documents.len(), 2);
-        for doc in &report.documents {
-            let diagnostics = doc.diagnostics();
-            assert_eq!(diagnostics.len(), 1);
-            assert_eq!(diagnostics[0].message, "2 documents");
+        // Serialized by the fixture's width 1, so the handler of the first
+        // document (sorted path order) runs while only it is tracked, and
+        // the second handler sees both.
+        let observed = |suffix: &str| {
+            report
+                .documents
+                .iter()
+                .find(|doc| doc.uri.path().ends_with(suffix))
+                .expect("document is in the report")
+                .diagnostics()[0]
+                .message
+                .clone()
+        };
+        assert_eq!(observed("/a.test"), "1 documents");
+        assert_eq!(observed("/b.test"), "2 documents");
+
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
+
+    /// Records each handler entry and releases only once all three are in
+    /// flight: under any narrower effective width the barrier never
+    /// completes and the run hits the test's timeout instead.
+    struct GatedServer {
+        entries: mpsc::UnboundedSender<()>,
+        barrier: Arc<Barrier>,
+    }
+
+    impl Server for GatedServer {
+        fn server_document_matchers() -> Vec<DocumentMatcher> {
+            vec![DocumentMatcher::new("Gated").with_url_globs(["**/*.gated", "*.gated"])]
         }
+
+        fn server_options(&self) -> ServerOptions {
+            ServerOptions::default()
+                .with_diagnostics_parallelism(NonZeroUsize::new(3).expect("constant is nonzero"))
+        }
+
+        async fn document_diagnostics(
+            &self,
+            _state: ServerState,
+            _params: DocumentDiagnosticParams,
+        ) -> ServerResult<async_lsp::lsp_types::DocumentDiagnosticReportResult> {
+            self.entries.send(()).expect("test channel stays open");
+            self.barrier.wait().await;
+            Ok(full_report(Vec::new()))
+        }
+    }
+
+    #[tokio::test]
+    async fn workspace_diagnostics_runs_documents_concurrently_up_to_width() {
+        let root = temp_workspace("oneshot", "parallel");
+        for name in ["a.gated", "b.gated", "c.gated"] {
+            fs::write(root.join(name), "").expect("gated file can be written");
+        }
+
+        let (entries, mut entry_rx) = mpsc::unbounded_channel();
+        let server = GatedServer {
+            entries,
+            barrier: Arc::new(Barrier::new(3)),
+        };
+
+        let report = tokio::time::timeout(
+            Duration::from_secs(5),
+            workspace_diagnostics(server, WorkspaceDiagnosticConfig::new(&root)),
+        )
+        .await
+        .expect("workspace diagnostics completes - all three documents must run concurrently")
+        .expect("workspace diagnostics succeeds");
+
+        let mut entered = 0;
+        while entry_rx.try_recv().is_ok() {
+            entered += 1;
+        }
+        assert_eq!(entered, 3);
+        assert_eq!(report.documents.len(), 3);
 
         fs::remove_dir_all(root).expect("temp workspace can be removed");
     }

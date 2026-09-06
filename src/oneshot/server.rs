@@ -69,6 +69,16 @@ where
     }
 }
 
+// Manual impl: the inner wrapper holds `S` behind an `Arc`, so cloning
+// needs no `S: Clone` bound (a derive would impose one).
+impl<S: Server> Clone for OneshotServer<S> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct OneshotDocument {
     pub(super) uri: async_lsp::lsp_types::Url,

@@ -93,6 +93,19 @@ impl<T: Server> LanguageServerWithState<T> {
     }
 }
 
+// Manual impl: `Arc<T>` clones regardless of `T: Clone`, so a downstream
+// server need not be clonable. Clones share the interior-mutable document
+// store, so `&mut self` methods on distinct clones run concurrently
+// without interference.
+impl<T: Server> Clone for LanguageServerWithState<T> {
+    fn clone(&self) -> Self {
+        Self {
+            server: Arc::clone(&self.server),
+            state: self.state.clone(),
+        }
+    }
+}
+
 impl<T: Server + Send + Sync + 'static> LanguageServer for LanguageServerWithState<T> {
     type Error = ResponseError;
     type NotifyResult = ControlFlow<async_lsp::Result<()>>;
