@@ -8,26 +8,14 @@
 //! no pure direction pins over a `convert_*` helper remain.
 
 use async_lsp::lsp_types::{
-    CallHierarchyIncomingCall as LspCallHierarchyIncomingCall,
-    CallHierarchyItem as LspCallHierarchyItem,
-    CallHierarchyOutgoingCall as LspCallHierarchyOutgoingCall, CodeLens as LspCodeLens,
-    ColorInformation as LspColorInformation, ColorPresentation as LspColorPresentation,
-    CompletionTextEdit as LspCompletionTextEdit, Diagnostic as LspDiagnostic,
-    DocumentDiagnosticReportKind, DocumentHighlight as LspDocumentHighlight,
-    DocumentLink as LspDocumentLink, DocumentSymbol as LspDocumentSymbol,
-    DocumentSymbolResponse as LspDocumentSymbolResponse, FoldingRange as LspFoldingRange,
-    GotoDefinitionResponse as LspGotoDefinitionResponse, Hover as LspHover,
-    InlayHint as LspInlayHint, InlayHintLabel as LspInlayHintLabel,
-    LinkedEditingRanges as LspLinkedEditingRanges, Location as LspLocation,
-    LocationLink as LspLocationLink, OneOf, ParameterLabel as LspParameterLabel,
-    Position as LspPosition, PrepareRenameResponse as LspPrepareRenameResponse, Range as LspRange,
-    SemanticToken as LspSemanticToken, SemanticTokens as LspSemanticTokens,
-    SemanticTokensEdit as LspSemanticTokensEdit,
-    SemanticTokensFullDeltaResult as LspSemanticTokensFullDeltaResult,
-    SemanticTokensRangeResult as LspSemanticTokensRangeResult,
-    SemanticTokensResult as LspSemanticTokensResult, SignatureHelp as LspSignatureHelp,
-    TextEdit as LspTextEdit, TypeHierarchyItem as LspTypeHierarchyItem, Url,
-    WorkspaceEdit as LspWorkspaceEdit,
+    CallHierarchyIncomingCall, CallHierarchyItem, CallHierarchyOutgoingCall, CodeLens,
+    ColorInformation, ColorPresentation, CompletionTextEdit, Diagnostic,
+    DocumentDiagnosticReportKind, DocumentHighlight, DocumentLink, DocumentSymbol,
+    DocumentSymbolResponse, FoldingRange, GotoDefinitionResponse, Hover, InlayHint, InlayHintLabel,
+    LinkedEditingRanges, Location, LocationLink, OneOf, ParameterLabel, Position,
+    PrepareRenameResponse, Range, SemanticToken, SemanticTokens, SemanticTokensEdit,
+    SemanticTokensFullDeltaResult, SemanticTokensRangeResult, SemanticTokensResult, SignatureHelp,
+    TextEdit, TypeHierarchyItem, Url, WorkspaceEdit,
 };
 
 use crate::{
@@ -54,7 +42,7 @@ pub(crate) enum Direction {
 pub(crate) fn convert_position(
     state: &ServerState,
     document: &Document,
-    position: &mut LspPosition,
+    position: &mut Position,
     direction: Direction,
 ) {
     let (source, target) = match direction {
@@ -68,7 +56,7 @@ pub(crate) fn convert_position_at_url(
     state: &ServerState,
     fallback: &Document,
     url: &Url,
-    position: &mut LspPosition,
+    position: &mut Position,
     direction: Direction,
 ) {
     if url == fallback.url() {
@@ -83,7 +71,7 @@ pub(crate) fn convert_position_at_url(
 pub(crate) fn convert_range(
     state: &ServerState,
     document: &Document,
-    range: &mut LspRange,
+    range: &mut Range,
     direction: Direction,
 ) {
     convert_position(state, document, &mut range.start, direction);
@@ -94,7 +82,7 @@ pub(crate) fn convert_range_at_url(
     state: &ServerState,
     fallback: &Document,
     url: &Url,
-    range: &mut LspRange,
+    range: &mut Range,
     direction: Direction,
 ) {
     convert_position_at_url(state, fallback, url, &mut range.start, direction);
@@ -104,7 +92,7 @@ pub(crate) fn convert_range_at_url(
 pub(crate) fn convert_location(
     state: &ServerState,
     document: &Document,
-    loc: &mut LspLocation,
+    loc: &mut Location,
     direction: Direction,
 ) {
     let uri = loc.uri.clone();
@@ -116,7 +104,7 @@ pub(crate) fn convert_location(
 pub(crate) fn convert_call_hierarchy_item(
     state: &ServerState,
     document: &Document,
-    item: &mut LspCallHierarchyItem,
+    item: &mut CallHierarchyItem,
     direction: Direction,
 ) {
     let uri = item.uri.clone();
@@ -129,7 +117,7 @@ pub(crate) fn convert_call_hierarchy_item(
 pub(crate) fn convert_type_hierarchy_item(
     state: &ServerState,
     document: &Document,
-    item: &mut LspTypeHierarchyItem,
+    item: &mut TypeHierarchyItem,
     direction: Direction,
 ) {
     let uri = item.uri.clone();
@@ -144,7 +132,7 @@ pub(crate) fn convert_type_hierarchy_item(
 pub(crate) fn convert_call_hierarchy_incoming_call(
     state: &ServerState,
     document: &Document,
-    call: &mut LspCallHierarchyIncomingCall,
+    call: &mut CallHierarchyIncomingCall,
     direction: Direction,
 ) {
     convert_call_hierarchy_item(state, document, &mut call.from, direction);
@@ -160,7 +148,7 @@ pub(crate) fn convert_call_hierarchy_incoming_call(
 pub(crate) fn convert_call_hierarchy_outgoing_call(
     state: &ServerState,
     document: &Document,
-    call: &mut LspCallHierarchyOutgoingCall,
+    call: &mut CallHierarchyOutgoingCall,
     direction: Direction,
 ) {
     convert_call_hierarchy_item(state, document, &mut call.to, direction);
@@ -172,7 +160,7 @@ pub(crate) fn convert_call_hierarchy_outgoing_call(
 pub(crate) fn convert_text_edit(
     state: &ServerState,
     document: &Document,
-    edit: &mut LspTextEdit,
+    edit: &mut TextEdit,
     direction: Direction,
 ) {
     convert_range(state, document, &mut edit.range, direction);
@@ -181,12 +169,12 @@ pub(crate) fn convert_text_edit(
 pub(crate) fn convert_completion_text_edit(
     state: &ServerState,
     document: &Document,
-    edit: &mut LspCompletionTextEdit,
+    edit: &mut CompletionTextEdit,
     direction: Direction,
 ) {
     match edit {
-        LspCompletionTextEdit::Edit(edit) => convert_text_edit(state, document, edit, direction),
-        LspCompletionTextEdit::InsertAndReplace(edit) => {
+        CompletionTextEdit::Edit(edit) => convert_text_edit(state, document, edit, direction),
+        CompletionTextEdit::InsertAndReplace(edit) => {
             convert_range(state, document, &mut edit.insert, direction);
             convert_range(state, document, &mut edit.replace, direction);
         }
@@ -245,7 +233,7 @@ pub(crate) fn convert_resolve_item<R, T>(
 pub(crate) fn convert_diagnostic(
     state: &ServerState,
     document: &Document,
-    diag: &mut LspDiagnostic,
+    diag: &mut Diagnostic,
     direction: Direction,
 ) {
     convert_range(state, document, &mut diag.range, direction);
@@ -260,7 +248,7 @@ pub(crate) fn modify_outgoing_diagnostic_at_url(
     state: &ServerState,
     fallback: &Document,
     url: &Url,
-    diag: &mut LspDiagnostic,
+    diag: &mut Diagnostic,
 ) {
     convert_range_at_url(state, fallback, url, &mut diag.range, Direction::Outgoing);
     if let Some(related) = diag.related_information.as_mut() {
@@ -286,7 +274,7 @@ pub(crate) fn modify_outgoing_diagnostic_report_kind_at_url(
 pub(crate) fn modify_outgoing_location_link(
     state: &ServerState,
     document: &Document,
-    link: &mut LspLocationLink,
+    link: &mut LocationLink,
 ) {
     if let Some(origin_range) = link.origin_selection_range.as_mut() {
         convert_range(state, document, origin_range, Direction::Outgoing);
@@ -309,24 +297,24 @@ pub(crate) fn modify_outgoing_location_link(
 }
 
 /// Converts a goto definition/declaration response (both share the
-/// [`LspGotoDefinitionResponse`] type; `GotoDeclarationResponse` is an alias)
+/// [`GotoDefinitionResponse`] type; `GotoDeclarationResponse` is an alias)
 /// from UTF-8 to the client encoding.
 pub(crate) fn modify_outgoing_goto_response(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<LspGotoDefinitionResponse>,
+    response: &mut Option<GotoDefinitionResponse>,
 ) {
     if let Some(response) = response {
         match response {
-            LspGotoDefinitionResponse::Scalar(loc) => {
+            GotoDefinitionResponse::Scalar(loc) => {
                 convert_location(state, document, loc, Direction::Outgoing);
             }
-            LspGotoDefinitionResponse::Array(locations) => {
+            GotoDefinitionResponse::Array(locations) => {
                 for loc in locations.iter_mut() {
                     convert_location(state, document, loc, Direction::Outgoing);
                 }
             }
-            LspGotoDefinitionResponse::Link(links) => {
+            GotoDefinitionResponse::Link(links) => {
                 for link in links.iter_mut() {
                     modify_outgoing_location_link(state, document, link);
                 }
@@ -339,7 +327,7 @@ pub(crate) fn modify_outgoing_goto_response(
 pub(crate) fn modify_outgoing_hover(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<LspHover>,
+    response: &mut Option<Hover>,
 ) {
     if let Some(hover) = response
         && let Some(range) = hover.range.as_mut()
@@ -353,7 +341,7 @@ pub(crate) fn modify_outgoing_hover(
 pub(crate) fn modify_outgoing_locations(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<Vec<LspLocation>>,
+    response: &mut Option<Vec<Location>>,
 ) {
     convert_optional_vec(
         state,
@@ -369,7 +357,7 @@ pub(crate) fn modify_outgoing_locations(
 pub(crate) fn modify_outgoing_document_links(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<Vec<LspDocumentLink>>,
+    response: &mut Option<Vec<DocumentLink>>,
 ) {
     if let Some(links) = response {
         for link in links {
@@ -383,7 +371,7 @@ pub(crate) fn modify_outgoing_document_links(
 pub(crate) fn modify_outgoing_document_highlights(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<Vec<LspDocumentHighlight>>,
+    response: &mut Option<Vec<DocumentHighlight>>,
 ) {
     convert_optional_vec(
         state,
@@ -401,7 +389,7 @@ pub(crate) fn modify_outgoing_document_highlights(
 pub(crate) fn modify_outgoing_folding_ranges(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<Vec<LspFoldingRange>>,
+    response: &mut Option<Vec<FoldingRange>>,
 ) {
     if let Some(ranges) = response {
         for range in ranges {
@@ -413,11 +401,11 @@ pub(crate) fn modify_outgoing_folding_ranges(
 fn convert_folding_range(
     state: &ServerState,
     document: &Document,
-    range: &mut LspFoldingRange,
+    range: &mut FoldingRange,
     direction: Direction,
 ) {
     if let Some(character) = range.start_character.as_mut() {
-        let mut position = LspPosition {
+        let mut position = Position {
             line: range.start_line,
             character: *character,
         };
@@ -425,7 +413,7 @@ fn convert_folding_range(
         *character = position.character;
     }
     if let Some(character) = range.end_character.as_mut() {
-        let mut position = LspPosition {
+        let mut position = Position {
             line: range.end_line,
             character: *character,
         };
@@ -439,7 +427,7 @@ fn convert_folding_range(
 pub(crate) fn modify_outgoing_linked_editing_ranges(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<LspLinkedEditingRanges>,
+    response: &mut Option<LinkedEditingRanges>,
 ) {
     if let Some(ranges) = response {
         for range in &mut ranges.ranges {
@@ -452,7 +440,7 @@ pub(crate) fn modify_outgoing_linked_editing_ranges(
 pub(crate) fn modify_outgoing_code_lenses(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<Vec<LspCodeLens>>,
+    response: &mut Option<Vec<CodeLens>>,
 ) {
     if let Some(lenses) = response {
         for lens in lenses {
@@ -466,7 +454,7 @@ pub(crate) fn modify_outgoing_code_lenses(
 pub(crate) fn modify_outgoing_color_informations(
     state: &ServerState,
     document: &Document,
-    response: &mut Vec<LspColorInformation>,
+    response: &mut Vec<ColorInformation>,
 ) {
     for information in response {
         convert_range(state, document, &mut information.range, Direction::Outgoing);
@@ -477,7 +465,7 @@ pub(crate) fn modify_outgoing_color_informations(
 pub(crate) fn modify_outgoing_color_presentations(
     state: &ServerState,
     document: &Document,
-    response: &mut Vec<LspColorPresentation>,
+    response: &mut Vec<ColorPresentation>,
 ) {
     for presentation in response {
         if let Some(edit) = presentation.text_edit.as_mut() {
@@ -496,7 +484,7 @@ pub(crate) fn modify_outgoing_color_presentations(
 pub(crate) fn modify_outgoing_call_hierarchy_items(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<Vec<LspCallHierarchyItem>>,
+    response: &mut Option<Vec<CallHierarchyItem>>,
 ) {
     convert_optional_vec(
         state,
@@ -512,7 +500,7 @@ pub(crate) fn modify_outgoing_call_hierarchy_items(
 pub(crate) fn modify_outgoing_type_hierarchy_items(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<Vec<LspTypeHierarchyItem>>,
+    response: &mut Option<Vec<TypeHierarchyItem>>,
 ) {
     convert_optional_vec(
         state,
@@ -528,7 +516,7 @@ pub(crate) fn modify_outgoing_type_hierarchy_items(
 pub(crate) fn modify_outgoing_text_edits(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<Vec<LspTextEdit>>,
+    response: &mut Option<Vec<TextEdit>>,
 ) {
     convert_optional_vec(
         state,
@@ -545,7 +533,7 @@ pub(crate) fn modify_outgoing_text_edits(
 pub(crate) fn modify_outgoing_workspace_edit(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<LspWorkspaceEdit>,
+    response: &mut Option<WorkspaceEdit>,
 ) {
     if let Some(edit) = response {
         convert_workspace_edit(state, document, edit, Direction::Outgoing);
@@ -558,15 +546,15 @@ pub(crate) fn modify_outgoing_workspace_edit(
 pub(crate) fn modify_outgoing_prepare_rename_response(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<LspPrepareRenameResponse>,
+    response: &mut Option<PrepareRenameResponse>,
 ) {
     if let Some(response) = response {
         match response {
-            LspPrepareRenameResponse::Range(range)
-            | LspPrepareRenameResponse::RangeWithPlaceholder { range, .. } => {
+            PrepareRenameResponse::Range(range)
+            | PrepareRenameResponse::RangeWithPlaceholder { range, .. } => {
                 convert_range(state, document, range, Direction::Outgoing);
             }
-            LspPrepareRenameResponse::DefaultBehavior { .. } => {}
+            PrepareRenameResponse::DefaultBehavior { .. } => {}
         }
     }
 }
@@ -577,7 +565,7 @@ pub(crate) fn modify_outgoing_prepare_rename_response(
 pub(crate) fn convert_inlay_hint(
     state: &ServerState,
     document: &Document,
-    hint: &mut LspInlayHint,
+    hint: &mut InlayHint,
     direction: Direction,
 ) {
     convert_position(state, document, &mut hint.position, direction);
@@ -586,7 +574,7 @@ pub(crate) fn convert_inlay_hint(
             convert_text_edit(state, document, edit, direction);
         }
     }
-    if let LspInlayHintLabel::LabelParts(parts) = &mut hint.label {
+    if let InlayHintLabel::LabelParts(parts) = &mut hint.label {
         for part in parts {
             if let Some(location) = part.location.as_mut() {
                 convert_location(state, document, location, direction);
@@ -601,7 +589,7 @@ pub(crate) fn convert_inlay_hint(
 pub(crate) fn modify_outgoing_inlay_hints(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<Vec<LspInlayHint>>,
+    response: &mut Option<Vec<InlayHint>>,
 ) {
     let Some(hints) = response else { return };
     for hint in hints {
@@ -611,11 +599,7 @@ pub(crate) fn modify_outgoing_inlay_hints(
 
 /// Converts a nested document-symbol tree's ranges from UTF-8 to the
 /// client encoding.
-fn convert_document_symbol(
-    state: &ServerState,
-    document: &Document,
-    symbol: &mut LspDocumentSymbol,
-) {
+fn convert_document_symbol(state: &ServerState, document: &Document, symbol: &mut DocumentSymbol) {
     convert_range(state, document, &mut symbol.range, Direction::Outgoing);
     convert_range(
         state,
@@ -637,16 +621,16 @@ fn convert_document_symbol(
 pub(crate) fn modify_outgoing_document_symbols(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<LspDocumentSymbolResponse>,
+    response: &mut Option<DocumentSymbolResponse>,
 ) {
     let Some(response) = response else { return };
     match response {
-        LspDocumentSymbolResponse::Flat(symbols) => {
+        DocumentSymbolResponse::Flat(symbols) => {
             for symbol in symbols {
                 convert_location(state, document, &mut symbol.location, Direction::Outgoing);
             }
         }
-        LspDocumentSymbolResponse::Nested(symbols) => {
+        DocumentSymbolResponse::Nested(symbols) => {
             for symbol in symbols {
                 convert_document_symbol(state, document, symbol);
             }
@@ -659,7 +643,7 @@ pub(crate) fn modify_outgoing_document_symbols(
 pub(crate) fn modify_outgoing_signature_help(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<LspSignatureHelp>,
+    response: &mut Option<SignatureHelp>,
 ) {
     let Some(help) = response else { return };
     convert_signature_help_label_offsets(state, document, help, Direction::Outgoing);
@@ -674,7 +658,7 @@ pub(crate) fn convert_signature_help_label_offsets(
     // Label offsets count code units of the label string itself, so no
     // document snapshot takes part in the conversion.
     _document: &Document,
-    help: &mut LspSignatureHelp,
+    help: &mut SignatureHelp,
     direction: Direction,
 ) {
     let (from, to) = match direction {
@@ -686,7 +670,7 @@ pub(crate) fn convert_signature_help_label_offsets(
             continue;
         };
         for parameter in parameters {
-            if let LspParameterLabel::LabelOffsets(offsets) = &mut parameter.label {
+            if let ParameterLabel::LabelOffsets(offsets) = &mut parameter.label {
                 convert_label_offsets(&signature.label, offsets, from, to);
             }
         }
@@ -737,7 +721,7 @@ fn convert_label_offsets(label: &str, offsets: &mut [u32; 2], from: Encoding, to
 pub(crate) fn convert_semantic_tokens_data(
     state: &ServerState,
     document: &Document,
-    data: &mut [LspSemanticToken],
+    data: &mut [SemanticToken],
     direction: Direction,
 ) {
     convert_seeded_token_stream(
@@ -745,11 +729,11 @@ pub(crate) fn convert_semantic_tokens_data(
         document,
         data,
         direction,
-        LspPosition {
+        Position {
             line: 0,
             character: 0,
         },
-        LspPosition {
+        Position {
             line: 0,
             character: 0,
         },
@@ -768,10 +752,10 @@ pub(crate) fn convert_semantic_tokens_data(
 fn convert_seeded_token_stream(
     state: &ServerState,
     document: &Document,
-    data: &mut [LspSemanticToken],
+    data: &mut [SemanticToken],
     direction: Direction,
-    mut previous_source: LspPosition,
-    mut previous_target: LspPosition,
+    mut previous_source: Position,
+    mut previous_target: Position,
 ) {
     let (source, target) = match direction {
         Direction::Incoming => (state.get_position_encoding(), Encoding::UTF8),
@@ -781,7 +765,7 @@ fn convert_seeded_token_stream(
         return;
     }
     for token in data.iter_mut() {
-        let absolute_source = LspPosition {
+        let absolute_source = Position {
             line: previous_source.line.saturating_add(token.delta_line),
             character: if token.delta_line == 0 {
                 previous_source.character.saturating_add(token.delta_start)
@@ -789,7 +773,7 @@ fn convert_seeded_token_stream(
                 token.delta_start
             },
         };
-        let absolute_end_source = LspPosition {
+        let absolute_end_source = Position {
             line: absolute_source.line,
             character: absolute_source.character.saturating_add(token.length),
         };
@@ -826,7 +810,7 @@ fn convert_and_cache_full_stream(
     state: &ServerState,
     url: &Url,
     document: &Document,
-    tokens: &mut LspSemanticTokens,
+    tokens: &mut SemanticTokens,
 ) {
     if let Some(result_id) = tokens.result_id.clone() {
         state.store_semantic_tokens(
@@ -849,14 +833,14 @@ fn convert_and_cache_full_stream(
 pub(crate) fn modify_outgoing_semantic_tokens_result(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<LspSemanticTokensResult>,
+    response: &mut Option<SemanticTokensResult>,
 ) {
     let Some(result) = response else { return };
     match result {
-        LspSemanticTokensResult::Tokens(tokens) => {
+        SemanticTokensResult::Tokens(tokens) => {
             convert_and_cache_full_stream(state, document.url(), document, tokens);
         }
-        LspSemanticTokensResult::Partial(partial) => {
+        SemanticTokensResult::Partial(partial) => {
             convert_semantic_tokens_data(state, document, &mut partial.data, Direction::Outgoing);
         }
     }
@@ -869,14 +853,14 @@ pub(crate) fn modify_outgoing_semantic_tokens_result(
 pub(crate) fn modify_outgoing_semantic_tokens_range_result(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<LspSemanticTokensRangeResult>,
+    response: &mut Option<SemanticTokensRangeResult>,
 ) {
     let Some(result) = response else { return };
     match result {
-        LspSemanticTokensRangeResult::Tokens(tokens) => {
+        SemanticTokensRangeResult::Tokens(tokens) => {
             convert_semantic_tokens_data(state, document, &mut tokens.data, Direction::Outgoing);
         }
-        LspSemanticTokensRangeResult::Partial(partial) => {
+        SemanticTokensRangeResult::Partial(partial) => {
             convert_semantic_tokens_data(state, document, &mut partial.data, Direction::Outgoing);
         }
     }
@@ -899,16 +883,16 @@ pub(crate) fn modify_outgoing_semantic_tokens_range_result(
 pub(crate) fn modify_outgoing_semantic_tokens_delta_result(
     state: &ServerState,
     document: &Document,
-    response: &mut Option<LspSemanticTokensFullDeltaResult>,
+    response: &mut Option<SemanticTokensFullDeltaResult>,
 ) {
     let Some(result) = response else { return };
     let url = document.url();
     let cached = state.cached_semantic_tokens(url);
     match result {
-        LspSemanticTokensFullDeltaResult::Tokens(tokens) => {
+        SemanticTokensFullDeltaResult::Tokens(tokens) => {
             convert_and_cache_full_stream(state, url, document, tokens);
         }
-        LspSemanticTokensFullDeltaResult::TokensDelta(delta) => {
+        SemanticTokensFullDeltaResult::TokensDelta(delta) => {
             // Snapshot the edits BEFORE converting them: the cache splice
             // must apply the server's UTF-8 values, not the client columns
             // `convert_semantic_tokens_edits` rewrites them to.
@@ -925,7 +909,7 @@ pub(crate) fn modify_outgoing_semantic_tokens_delta_result(
                 splice_semantic_tokens_cache(state, url, cached.as_ref(), &original, result_id);
             }
         }
-        LspSemanticTokensFullDeltaResult::PartialTokensDelta { edits } => {
+        SemanticTokensFullDeltaResult::PartialTokensDelta { edits } => {
             // Partial results carry no result_id, so there is nothing to
             // splice the cache with.
             convert_semantic_tokens_edits(state, document, cached.as_ref(), edits);
@@ -944,7 +928,7 @@ fn convert_semantic_tokens_edits(
     state: &ServerState,
     document: &Document,
     cached: Option<&CachedSemanticTokens>,
-    edits: &mut [LspSemanticTokensEdit],
+    edits: &mut [SemanticTokensEdit],
 ) {
     let Some(cached) = cached else {
         tracing::debug!("semantic tokens delta without a cached previous result");
@@ -983,8 +967,8 @@ fn convert_semantic_tokens_edits(
 /// Folds a token prefix's deltas into the absolute position the walk
 /// continues from — the start of the prefix's last token, or the document
 /// origin for an empty prefix.
-fn absolute_position(prefix: &[LspSemanticToken]) -> LspPosition {
-    let mut position = LspPosition {
+fn absolute_position(prefix: &[SemanticToken]) -> Position {
+    let mut position = Position {
         line: 0,
         character: 0,
     };
@@ -1003,7 +987,7 @@ fn absolute_position(prefix: &[LspSemanticToken]) -> LspPosition {
 const SEMANTIC_TOKEN_WIDTH: usize = 5;
 
 /// Flattens a token stream into the wire's five-numbers-per-token array.
-fn semantic_tokens_to_flat(data: &[LspSemanticToken]) -> Vec<u32> {
+fn semantic_tokens_to_flat(data: &[SemanticToken]) -> Vec<u32> {
     data.iter()
         .flat_map(|token| {
             [
@@ -1023,14 +1007,14 @@ fn splice_semantic_tokens_cache(
     state: &ServerState,
     url: &Url,
     cached: Option<&CachedSemanticTokens>,
-    edits: &[LspSemanticTokensEdit],
+    edits: &[SemanticTokensEdit],
     result_id: String,
 ) {
     let Some(cached) = cached else { return };
     let mut flat = semantic_tokens_to_flat(&cached.data);
     // Edits are relative to the same state; apply back-to-front so
     // indices stay valid (the spec's client-side algorithm).
-    let mut sorted: Vec<&LspSemanticTokensEdit> = edits.iter().collect();
+    let mut sorted: Vec<&SemanticTokensEdit> = edits.iter().collect();
     sorted.sort_by_key(|edit| edit.start);
     for edit in sorted.iter().rev() {
         let start = (edit.start as usize).min(flat.len());
@@ -1054,7 +1038,7 @@ fn splice_semantic_tokens_cache(
                 token_type,
                 token_modifiers_bitset,
             ]| {
-                LspSemanticToken {
+                SemanticToken {
                     delta_line,
                     delta_start,
                     length,
@@ -1070,7 +1054,7 @@ fn splice_semantic_tokens_cache(
 pub(crate) fn convert_workspace_edit(
     state: &ServerState,
     document: &Document,
-    edit: &mut LspWorkspaceEdit,
+    edit: &mut WorkspaceEdit,
     direction: Direction,
 ) {
     use async_lsp::lsp_types::{DocumentChangeOperation, DocumentChanges};

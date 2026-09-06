@@ -5,7 +5,9 @@
 
 use std::collections::VecDeque;
 
+// lsp_types::Position/Range — aliased against the crate's own Position (below) and tree-sitter's Range (next line).
 use async_lsp::lsp_types::{Position as LspPosition, Range as LspRange};
+// tree_sitter::Point/Range — aliased against lsp_types' Range; Point follows the same Ts… convention.
 use tree_sitter::{Node, Point as TsPoint, Range as TsRange};
 
 pub use crate::error::QueryError;

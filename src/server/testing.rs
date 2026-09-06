@@ -10,9 +10,7 @@
 
 use std::time::Duration;
 
-use async_lsp::lsp_types::{
-    Hover, HoverContents, HoverParams, MarkedString, Position, Range as LspRange,
-};
+use async_lsp::lsp_types::{Hover, HoverContents, HoverParams, MarkedString, Position, Range};
 use serde_json::{Value, json};
 use tokio::io::{
     AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream, ReadHalf,
@@ -175,7 +173,7 @@ pub(crate) struct EchoServer;
 pub(crate) fn echo_hover(position: Position) -> Option<Hover> {
     Some(Hover {
         contents: HoverContents::Scalar(MarkedString::String("echo".into())),
-        range: Some(LspRange::new(position, position)),
+        range: Some(Range::new(position, position)),
     })
 }
 

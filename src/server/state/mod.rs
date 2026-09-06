@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use async_lsp::{
     ClientSocket,
-    lsp_types::{SemanticToken as LspSemanticToken, Url},
+    lsp_types::{SemanticToken, Url},
 };
 use dashmap::DashMap;
 
@@ -49,7 +49,7 @@ enum DocumentOrigin {
 #[derive(Debug, Clone)]
 pub(crate) struct CachedSemanticTokens {
     pub(crate) result_id: String,
-    pub(crate) data: Vec<LspSemanticToken>,
+    pub(crate) data: Vec<SemanticToken>,
 }
 
 impl ServerState {

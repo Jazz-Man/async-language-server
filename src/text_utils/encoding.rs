@@ -1,4 +1,4 @@
-use async_lsp::lsp_types::PositionEncodingKind as LspPositionEncoding;
+use async_lsp::lsp_types::PositionEncodingKind;
 
 /// A position encoding supported by this crate.
 ///
@@ -35,11 +35,11 @@ pub enum Encoding {
 impl Encoding {
     /// Converts the encoding into its `lsp_types` counterpart.
     #[must_use]
-    pub const fn into_lsp(self) -> LspPositionEncoding {
+    pub const fn into_lsp(self) -> PositionEncodingKind {
         match self {
-            Self::UTF8 => LspPositionEncoding::UTF8,
-            Self::UTF16 => LspPositionEncoding::UTF16,
-            Self::UTF32 => LspPositionEncoding::UTF32,
+            Self::UTF8 => PositionEncodingKind::UTF8,
+            Self::UTF16 => PositionEncodingKind::UTF16,
+            Self::UTF32 => PositionEncodingKind::UTF32,
         }
     }
 
@@ -59,12 +59,12 @@ impl Encoding {
     ///
     /// Panics if the encoding kind is not one of UTF-8, UTF-16, or UTF-32.
     #[must_use]
-    pub fn from_lsp(encoding: &LspPositionEncoding) -> Self {
-        if encoding == &LspPositionEncoding::UTF8 {
+    pub fn from_lsp(encoding: &PositionEncodingKind) -> Self {
+        if encoding == &PositionEncodingKind::UTF8 {
             Self::UTF8
-        } else if encoding == &LspPositionEncoding::UTF16 {
+        } else if encoding == &PositionEncodingKind::UTF16 {
             Self::UTF16
-        } else if encoding == &LspPositionEncoding::UTF32 {
+        } else if encoding == &PositionEncodingKind::UTF32 {
             Self::UTF32
         } else {
             panic!("unsupported position encoding kind: {encoding:?}")
@@ -78,12 +78,12 @@ impl Encoding {
     /// values this crate does not know, and negotiation ignores them
     /// instead of failing.
     #[must_use]
-    pub fn try_from_lsp(encoding: &LspPositionEncoding) -> Option<Self> {
-        if encoding == &LspPositionEncoding::UTF8 {
+    pub fn try_from_lsp(encoding: &PositionEncodingKind) -> Option<Self> {
+        if encoding == &PositionEncodingKind::UTF8 {
             Some(Self::UTF8)
-        } else if encoding == &LspPositionEncoding::UTF16 {
+        } else if encoding == &PositionEncodingKind::UTF16 {
             Some(Self::UTF16)
-        } else if encoding == &LspPositionEncoding::UTF32 {
+        } else if encoding == &PositionEncodingKind::UTF32 {
             Some(Self::UTF32)
         } else {
             None
@@ -97,25 +97,25 @@ impl From<&Encoding> for Encoding {
     }
 }
 
-impl From<&LspPositionEncoding> for Encoding {
-    fn from(encoding: &LspPositionEncoding) -> Self {
+impl From<&PositionEncodingKind> for Encoding {
+    fn from(encoding: &PositionEncodingKind) -> Self {
         Self::from_lsp(encoding)
     }
 }
 
-impl From<LspPositionEncoding> for Encoding {
-    fn from(value: LspPositionEncoding) -> Self {
+impl From<PositionEncodingKind> for Encoding {
+    fn from(value: PositionEncodingKind) -> Self {
         Self::from_lsp(&value)
     }
 }
 
-impl From<&Encoding> for LspPositionEncoding {
+impl From<&Encoding> for PositionEncodingKind {
     fn from(value: &Encoding) -> Self {
         value.into_lsp()
     }
 }
 
-impl From<Encoding> for LspPositionEncoding {
+impl From<Encoding> for PositionEncodingKind {
     fn from(value: Encoding) -> Self {
         value.into_lsp()
     }
@@ -123,9 +123,7 @@ impl From<Encoding> for LspPositionEncoding {
 
 #[cfg(test)]
 mod tests {
-    use async_lsp::lsp_types::PositionEncodingKind;
-
-    use super::{Encoding, LspPositionEncoding};
+    use super::{Encoding, PositionEncodingKind};
 
     #[test]
     fn try_from_lsp_returns_none_for_unknown_kinds() {
@@ -134,15 +132,15 @@ mod tests {
             None
         );
         assert_eq!(
-            Encoding::try_from_lsp(&LspPositionEncoding::UTF8),
+            Encoding::try_from_lsp(&PositionEncodingKind::UTF8),
             Some(Encoding::UTF8)
         );
         assert_eq!(
-            Encoding::try_from_lsp(&LspPositionEncoding::UTF16),
+            Encoding::try_from_lsp(&PositionEncodingKind::UTF16),
             Some(Encoding::UTF16)
         );
         assert_eq!(
-            Encoding::try_from_lsp(&LspPositionEncoding::UTF32),
+            Encoding::try_from_lsp(&PositionEncodingKind::UTF32),
             Some(Encoding::UTF32)
         );
     }

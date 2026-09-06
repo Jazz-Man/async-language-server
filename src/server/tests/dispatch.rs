@@ -1,44 +1,39 @@
-//! Method dispatch over the wire: methods the crate does not wire answer
-//! `-32601`, after params validation; wired methods are answered by the
-//! dispatch engine, never the router default.
+//! Method dispatch over the wire. Three producers answer `-32601`: the
+//! router for a name nothing registered under it ("No such method ..."),
+//! the async-lsp trait default for a registered `lsp_types` method the
+//! impl does not override ("No such method: ...", with a colon), and the
+//! dispatch engine's trait default for a wired method without a `Server`
+//! implementation ("LSP method '...' has not been implemented"). The tests
+//! below pin the producers, not just the code.
 
 use serde_json::{Value, json};
 
 use crate::server::testing::{EchoServer, bounded, spawn_wire_server};
 
 #[tokio::test]
-async fn unwired_methods_return_method_not_found() {
+async fn unknown_methods_answer_method_not_found() {
     let (mut client, server) = spawn_wire_server(EchoServer);
     client.initialize_client(&["utf-16"]).await;
 
-    // One parametrized test over the future surface: methods the crate
-    // does not wire must answer -32601 no matter how many are added.
-    // Params are minimal-but-valid for each method: the router validates
-    // params before dispatch, so garbage params would answer -32602 and
-    // never reach the not-implemented path this test pins.
-    let unwired = [
-        (
-            "textDocument/documentSymbol",
-            json!({ "textDocument": { "uri": "file:///tmp/wire.txt" } }),
-        ),
-        ("workspace/symbol", json!({ "query": "" })),
-        (
-            "textDocument/inlayHint",
-            json!({
-                "textDocument": { "uri": "file:///tmp/wire.txt" },
-                "range": {
-                    "start": { "line": 0, "character": 0 },
-                    "end": { "line": 0, "character": 0 }
-                }
-            }),
-        ),
-    ];
-    for (id, (method, params)) in unwired.into_iter().enumerate() {
-        let response = client
-            .request(i64::try_from(id).expect("small id") + 10, method, params)
-            .await;
-        assert_eq!(response["error"]["code"], -32601, "method {method}");
-    }
+    // A method name no handler is registered under answers the router
+    // default: -32601, message "No such method ...". Every client-to-server
+    // request `lsp_types` defines IS registered — the 48 dispatch rows,
+    // workspace/diagnostic and initialize by the wrapper, shutdown by
+    // the trait default — so only a synthetic name outside `lsp_types`
+    // reaches this reply. The empty params are deliberate: deserialization
+    // lives inside each registered handler, so the router default fires
+    // before params validation and even garbage params cannot turn this
+    // into -32602.
+    let response = client
+        .request(10, "textDocument/nonexistent", json!({}))
+        .await;
+    assert_eq!(response["error"]["code"], -32601);
+    assert!(
+        response["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.starts_with("No such method")),
+        "the router, not the dispatch engine, must answer: {response}"
+    );
 
     drop(client);
     let _ = bounded(server).await;
@@ -50,14 +45,16 @@ async fn wired_methods_dispatch() {
     client.initialize_client(&["utf-16"]).await;
 
     // All 48 `lsp_dispatch!` rows (see `with_state`), by wire name. A
-    // `Server` method without a row is the one gap the compiler cannot
-    // see, and the two -32601 populations differ by producer only: the
-    // router answers an unwired method itself ("No such method: ..."),
-    // while a wired one always reaches the dispatch engine — whose answer
-    // is a result or the trait default ("LSP method '...' has not been
-    // implemented"). A router-default message therefore pins a missing
-    // row. Params stay minimally valid so every request clears router-side
-    // params validation and reaches the engine.
+    // trait method without a row is the one gap the compiler cannot see:
+    // deleting the row drops the impl override, and the method then
+    // answers with one of the two "No such method" producers — the router
+    // for an unregistered name, async-lsp's trait default for a registered
+    // one (with a colon). Neither can fire while the row exists: the
+    // engine then answers with a result or its own trait default ("LSP
+    // method '...' has not been implemented"). The prefix check below
+    // deliberately catches both No-such variants. Params stay minimally
+    // valid so every request clears params validation inside its
+    // registered handler and reaches the engine.
     for (id, (method, params)) in wired_requests().enumerate() {
         let response = client
             .request(i64::try_from(id).expect("small id") + 100, method, params)
@@ -71,7 +68,7 @@ async fn wired_methods_dispatch() {
             let message = response["error"]["message"].as_str().unwrap_or_default();
             assert!(
                 !message.starts_with("No such method"),
-                "no dispatch row for {method}: the router, not the engine, answered"
+                "no dispatch row for {method}: a No-such-method producer answered"
             );
         }
     }

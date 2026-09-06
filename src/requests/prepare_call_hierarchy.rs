@@ -10,8 +10,8 @@ pub(crate) struct CallHierarchyPrepareRequest;
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
-        CallHierarchyItem as LspCallHierarchyItem, CallHierarchyPrepareParams, SymbolKind,
-        TextDocumentIdentifier, TextDocumentPositionParams, WorkDoneProgressParams,
+        CallHierarchyItem, CallHierarchyPrepareParams, SymbolKind, TextDocumentIdentifier,
+        TextDocumentPositionParams, WorkDoneProgressParams,
     };
     use lsp_macros::conversion_tests;
 
@@ -29,7 +29,7 @@ mod tests {
             },
             incoming: |p| p.text_document_position_params.position,
             expects: line_position(0, 4),
-            response: |_plain, emoji| Some(vec![LspCallHierarchyItem {
+            response: |_plain, emoji| Some(vec![CallHierarchyItem {
                 uri: emoji,
                 range: same_line(0, 4, 4),
                 selection_range: same_line(0, 4, 4),

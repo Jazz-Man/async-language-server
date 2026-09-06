@@ -1,3 +1,4 @@
+// tree_sitter::Point/Range — same Ts… naming as tree_sitter.rs, the Ts… half of the RangeExt family.
 use tree_sitter::{Point as TsPosition, Range as TsRange};
 
 use crate::text_utils::RangeError;

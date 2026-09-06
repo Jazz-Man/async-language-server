@@ -109,14 +109,22 @@ Testing adds one piece: a W0 conversion test — `conversion_tests!` rows
 in the `#[cfg(test)] mod tests` block next to the marker struct —
 importing fixtures from `crate::testing` (`state_with_documents` is the
 standard UTF-16 fixture).
-Dispatch needs nothing new: the parametrized wire unknown-method test
-(`unwired_methods_return_method_not_found`) pins `-32601` for every
-method the crate does not wire, so surface growth adds no wire tests.
+Dispatch needs nothing new: the wire unknown-method test
+(`unknown_methods_answer_method_not_found`) pins the router default —
+`-32601` under a method name no handler is registered for. Every
+client-to-server request `lsp_types` defines IS registered (the 48 dispatch rows,
+`workspace/diagnostic` and `initialize` by the wrapper, `shutdown` by
+the trait default), so only a synthetic name outside `lsp_types`
+reaches that reply; surface growth adds no wire tests, and a dispatch
+row lost while the fixture still lists its method fails
+`wired_methods_dispatch` loudly.
 
-Wire-note: an unwired method answers `-32601` only when its params
-deserialize — the router validates params before dispatch, so garbage
-params fail earlier with `-32602`. The parametrized test sends minimally
-valid params per method for exactly that reason.
+Wire-note: params validation lives inside each registered handler, so
+an unknown name answers `-32601` before any deserialization — even
+garbage params cannot turn it into `-32602`. A registered method with
+garbage params, by contrast, fails with `-32602` inside its handler and
+never reaches the engine; the dispatch-row test sends minimally valid
+params for exactly that reason.
 
 Known ceiling of the echo round-trip tests (#2 and #6 in the catalog:
 `utf16_positions_round_trip_through_real_serialization` and

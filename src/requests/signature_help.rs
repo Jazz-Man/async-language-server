@@ -33,8 +33,8 @@ fn convert_context_label_offsets(
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
-        ParameterInformation, ParameterLabel, SignatureHelp as LspSignatureHelp,
-        SignatureHelpContext, SignatureHelpParams, SignatureHelpTriggerKind, SignatureInformation,
+        ParameterInformation, ParameterLabel, SignatureHelp, SignatureHelpContext,
+        SignatureHelpParams, SignatureHelpTriggerKind, SignatureInformation,
         TextDocumentIdentifier, TextDocumentPositionParams, WorkDoneProgressParams,
     };
     use lsp_macros::conversion_tests;
@@ -61,7 +61,7 @@ mod tests {
     fn signature_help_label_offsets_recount_against_the_label_string() {
         let (state, _plain, emoji) = state_with_documents();
         let document = state.document(&emoji).expect("emoji document is tracked");
-        let mut response = Some(LspSignatureHelp {
+        let mut response = Some(SignatureHelp {
             signatures: vec![SignatureInformation {
                 // UTF-8 bytes: 🙂 = 0..4, f = 4, ( = 5, a = 6, ) = 7;
                 // UTF-16 units: 🙂 = 0..2, f = 2, ( = 3, a = 4, ) = 5.
@@ -106,7 +106,7 @@ mod tests {
                 trigger_kind: SignatureHelpTriggerKind::INVOKED,
                 trigger_character: None,
                 is_retrigger: false,
-                active_signature_help: Some(LspSignatureHelp {
+                active_signature_help: Some(SignatureHelp {
                     signatures: vec![SignatureInformation {
                         // Client UTF-16 units: 🙂 = 0..2, f = 2, ( = 3, a = 4, ) = 5;
                         // UTF-8 bytes: 🙂 = 0..4, f = 4, ( = 5, a = 6, ) = 7.

@@ -1,3 +1,4 @@
+// lsp_types::Position — aliased against this module's own Position below.
 use async_lsp::lsp_types::Position as LspPosition;
 
 /// A zero-based line and column position.
@@ -9,6 +10,7 @@ use async_lsp::lsp_types::Position as LspPosition;
 ///
 /// ```
 /// use async_language_server::text_utils::Position;
+/// // aliased against the crate's Position above.
 /// use async_lsp::lsp_types::Position as LspPosition;
 ///
 /// let position = Position { line: 3, col: 7 };
@@ -74,6 +76,7 @@ impl From<Position> for LspPosition {
     }
 }
 
+// tree_sitter::Point — the Ts… alias keeps tree-sitter coordinates distinct from the LSP Position they convert against.
 #[cfg(feature = "tree-sitter")]
 use tree_sitter::Point as TsPoint;
 

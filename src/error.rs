@@ -5,6 +5,7 @@ use thiserror::Error;
 
 type BoxDynError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
+// Facade name for async-lsp's ErrorCode (the wire code newtype inside ResponseError); joins the Server* facade family.
 pub use async_lsp::ErrorCode as ServerErrorCode;
 
 /// Convenience `Result` alias for operations that can fail with a [`ServerError`].

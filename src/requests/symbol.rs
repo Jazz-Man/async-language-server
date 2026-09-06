@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use async_lsp::lsp_types::{
-    Location as LspLocation, OneOf, Url, WorkspaceSymbolResponse as LspWorkspaceSymbolResponse,
-};
+use async_lsp::lsp_types::{Location, OneOf, Url, WorkspaceSymbolResponse};
 
 use crate::server::{Document, ServerState, read_document_from_disk};
 
@@ -28,16 +26,16 @@ pub(crate) struct SymbolRequest;
 /// standalone hook is wired INSTEAD of `outgoing`; the trait default of
 /// `modify_response` delegates here, so dispatch runs it in every state,
 /// including the sole-tracked-document fallback.
-fn convert_locations(state: &ServerState, response: &mut Option<LspWorkspaceSymbolResponse>) {
+fn convert_locations(state: &ServerState, response: &mut Option<WorkspaceSymbolResponse>) {
     let Some(response) = response else { return };
     let mut disk: HashMap<Url, Option<Document>> = HashMap::new();
     match response {
-        LspWorkspaceSymbolResponse::Flat(symbols) => {
+        WorkspaceSymbolResponse::Flat(symbols) => {
             for symbol in symbols {
                 convert_symbol_location(state, &mut disk, &mut symbol.location);
             }
         }
-        LspWorkspaceSymbolResponse::Nested(symbols) => {
+        WorkspaceSymbolResponse::Nested(symbols) => {
             for symbol in symbols {
                 if let OneOf::Left(location) = &mut symbol.location {
                     convert_symbol_location(state, &mut disk, location);
@@ -56,7 +54,7 @@ fn convert_locations(state: &ServerState, response: &mut Option<LspWorkspaceSymb
 fn convert_symbol_location(
     state: &ServerState,
     disk: &mut HashMap<Url, Option<Document>>,
-    location: &mut LspLocation,
+    location: &mut Location,
 ) {
     let uri = location.uri.clone();
     if let Some(document) = state.document(&uri) {
@@ -81,8 +79,8 @@ mod tests {
     use std::fs;
 
     use async_lsp::lsp_types::{
-        Location as LspLocation, OneOf, SymbolInformation, SymbolKind, Url, WorkspaceLocation,
-        WorkspaceSymbol, WorkspaceSymbolResponse,
+        Location, OneOf, SymbolInformation, SymbolKind, Url, WorkspaceLocation, WorkspaceSymbol,
+        WorkspaceSymbolResponse,
     };
 
     use crate::requests::Request;
@@ -100,7 +98,7 @@ mod tests {
             kind: SymbolKind::FUNCTION,
             tags: None,
             deprecated: None,
-            location: LspLocation {
+            location: Location {
                 uri: emoji.clone(),
                 range: same_line(0, 4, 5),
             },
@@ -125,7 +123,7 @@ mod tests {
             kind: SymbolKind::FUNCTION,
             tags: None,
             deprecated: None,
-            location: LspLocation {
+            location: Location {
                 uri: disk_uri,
                 range: same_line(0, 1, 5),
             },
@@ -145,7 +143,7 @@ mod tests {
             kind: SymbolKind::FUNCTION,
             tags: None,
             deprecated: None,
-            location: LspLocation {
+            location: Location {
                 uri: missing_uri,
                 range: same_line(0, 4, 5),
             },
@@ -169,7 +167,7 @@ mod tests {
                 kind: SymbolKind::FUNCTION,
                 tags: None,
                 container_name: None,
-                location: OneOf::Left(LspLocation {
+                location: OneOf::Left(Location {
                     uri: emoji.clone(),
                     range: same_line(0, 4, 5),
                 }),
