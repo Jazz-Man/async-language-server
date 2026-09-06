@@ -28,6 +28,33 @@ impl Server for TestServer {
 }
 
 #[test]
+fn document_clones_keep_their_snapshot_across_changes() {
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    let uri = url("snapshot.txt");
+    open_document(&mut state, uri.clone(), "before");
+
+    let before = state.document(&uri).expect("document is tracked");
+    let text_before = before.text_contents();
+
+    let _ = state.handle_document_change(DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier::new(uri.clone(), 2),
+        content_changes: vec![TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "completely new contents".into(),
+        }],
+    });
+
+    let after = state.document(&uri).expect("document still tracked");
+    assert_eq!(before.text_contents(), text_before);
+    assert_eq!(after.version(), 2);
+    assert_ne!(after.text_contents(), text_before);
+}
+
+#[test]
 fn full_content_change_replaces_document_text() {
     let mut state = ServerState::with_options::<TestServer>(
         ClientSocket::new_closed(),

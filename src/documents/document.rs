@@ -20,8 +20,9 @@ use crate::{
 
 /// A snapshot of a text document tracked by the language server.
 ///
-/// May be cloned somewhat cheaply to take a snapshot
-/// of the current state of the document.
+/// A cheap handle: cloning bumps a refcount. Writes never mutate a shared
+/// inner — the store installs a fresh generation under its guard, so every
+/// outstanding clone keeps the content it was created with.
 ///
 /// Not meant to be updated by external sources, only read,
 /// since the language server should be responsible for
@@ -38,22 +39,95 @@ use crate::{
 /// contents, and incrementally updated thereafter, transparently.
 #[derive(Debug, Clone)]
 pub struct Document {
-    pub(crate) uri: Url,
-    pub(crate) text: Rope,
-    pub(crate) version: i32,
-    pub(crate) language: String,
+    inner: Arc<DocumentInner>,
+}
+
+#[derive(Debug)]
+pub(crate) struct DocumentInner {
+    pub(crate) meta: Arc<DocumentMeta>,
     pub(crate) matcher: Option<Arc<DocumentMatcher>>,
+    pub(crate) version: i32,
+    pub(crate) text: Rope,
     #[cfg(feature = "tree-sitter")]
     pub(crate) tree_sitter_lang: Option<Language>,
     #[cfg(feature = "tree-sitter")]
     pub(crate) tree_sitter_tree: Option<Tree>,
 }
 
+/// Construction-immutable identity: shared untouched across write
+/// generations so a copy-on-write costs refcounts, not string clones.
+#[derive(Debug)]
+pub(crate) struct DocumentMeta {
+    uri: Url,
+    language: String,
+}
+
+/// The tree-sitter half of a document's contents (grammar and parsed tree),
+/// or nothing without the feature — one constructor signature across the
+/// feature gate.
+#[cfg(feature = "tree-sitter")]
+pub(crate) type DocumentSyntax = (Option<Language>, Option<Tree>);
+
+#[cfg(not(feature = "tree-sitter"))]
+pub(crate) type DocumentSyntax = ();
+
 impl Document {
+    /// Builds a document from its flat parts.
+    pub(crate) fn from_parts(
+        uri: Url,
+        language: String,
+        matcher: Option<Arc<DocumentMatcher>>,
+        version: i32,
+        text: Rope,
+        syntax: DocumentSyntax,
+    ) -> Self {
+        Self::from_shared_meta(
+            Arc::new(DocumentMeta { uri, language }),
+            matcher,
+            version,
+            text,
+            syntax,
+        )
+    }
+
+    /// Builds a fresh generation sharing an existing [`DocumentMeta`]: the
+    /// store's copy-on-write install path, costing refcounts instead of
+    /// string clones.
+    pub(crate) fn from_shared_meta(
+        meta: Arc<DocumentMeta>,
+        matcher: Option<Arc<DocumentMatcher>>,
+        version: i32,
+        text: Rope,
+        syntax: DocumentSyntax,
+    ) -> Self {
+        #[cfg(feature = "tree-sitter")]
+        let (tree_sitter_lang, tree_sitter_tree) = syntax;
+        #[cfg(not(feature = "tree-sitter"))]
+        let () = syntax;
+
+        Self {
+            inner: Arc::new(DocumentInner {
+                meta,
+                matcher,
+                version,
+                text,
+                #[cfg(feature = "tree-sitter")]
+                tree_sitter_lang,
+                #[cfg(feature = "tree-sitter")]
+                tree_sitter_tree,
+            }),
+        }
+    }
+
+    /// The shared inner generation, for the store's copy-on-write installs.
+    pub(crate) fn inner_arc(&self) -> &Arc<DocumentInner> {
+        &self.inner
+    }
+
     /// Returns the URL of the document.
     #[must_use]
     pub fn url(&self) -> &Url {
-        &self.uri
+        &self.inner.meta.uri
     }
 
     /// Returns the text of the document, as
@@ -64,14 +138,14 @@ impl Document {
     /// through text, but this method exists as an escape hatch.
     #[must_use]
     pub fn text(&self) -> &Rope {
-        &self.text
+        &self.inner.text
     }
 
     /// Returns a reader over the full text in the document.
     #[must_use]
     pub fn text_reader(&self) -> DocumentReader<'_> {
         DocumentReader {
-            chunks: self.text.chunks(),
+            chunks: self.inner.text.chunks(),
             current: None,
             current_offset: 0,
         }
@@ -83,7 +157,7 @@ impl Document {
     /// for improved performance and less allocations.
     #[must_use]
     pub fn text_contents(&self) -> String {
-        self.text.to_string()
+        self.inner.text.to_string()
     }
 
     /// Returns the full text of the document, as bytes.
@@ -92,7 +166,7 @@ impl Document {
     /// for improved performance and less allocations.
     #[must_use]
     pub fn text_bytes(&self) -> Vec<u8> {
-        self.text.bytes().collect()
+        self.inner.text.bytes().collect()
     }
 
     /// Returns the version of the document.
@@ -101,13 +175,13 @@ impl Document {
     /// each change to the document, including undo/redo.
     #[must_use]
     pub fn version(&self) -> i32 {
-        self.version
+        self.inner.version
     }
 
     /// Returns the language of the document.
     #[must_use]
     pub fn language(&self) -> &str {
-        &self.language
+        &self.inner.meta.language
     }
 
     /// Returns the name of the document matcher that this document
@@ -117,7 +191,7 @@ impl Document {
     /// See [`DocumentMatcher`] for more information.
     #[must_use]
     pub fn matched_name(&self) -> Option<&str> {
-        self.matcher.as_ref().map(|matcher| matcher.name())
+        self.inner.matcher.as_ref().map(|matcher| matcher.name())
     }
 }
 
@@ -126,13 +200,13 @@ impl Document {
     /// Returns `true` if the document has an assigned tree-sitter language, otherwise `false`.
     #[must_use]
     pub fn has_syntax_language(&self) -> bool {
-        self.tree_sitter_lang.is_some()
+        self.inner.tree_sitter_lang.is_some()
     }
 
     /// Returns `true` if the document has a parsed tree-sitter syntax tree, otherwise `false`.
     #[must_use]
     pub fn has_syntax_tree(&self) -> bool {
-        self.tree_sitter_tree.is_some()
+        self.inner.tree_sitter_tree.is_some()
     }
 
     /// Returns the UTF-8 text of a [`Node`].
@@ -142,13 +216,16 @@ impl Document {
     /// Panics if the node's byte range is not within this document.
     #[must_use]
     pub fn node_text(&self, node: Node) -> String {
-        self.text.byte_slice(node.byte_range()).to_string()
+        self.inner.text.byte_slice(node.byte_range()).to_string()
     }
 
     /// Returns a [`Node`] at the root of the syntax tree, if one exists.
     #[must_use]
     pub fn node_at_root(&self) -> Option<Node<'_>> {
-        self.tree_sitter_tree.as_ref().map(|tree| tree.root_node())
+        self.inner
+            .tree_sitter_tree
+            .as_ref()
+            .map(|tree| tree.root_node())
     }
 
     /// Returns a [`Node`] at the given LSP position, if one exists.
@@ -178,14 +255,22 @@ impl Document {
         &self,
         query: impl AsRef<str>,
     ) -> std::result::Result<Vec<DocumentQueryCapture>, QueryError> {
-        let lang = self.tree_sitter_lang.as_ref().ok_or(QueryError::NoTree)?;
-        let tree = self.tree_sitter_tree.as_ref().ok_or(QueryError::NoTree)?;
+        let lang = self
+            .inner
+            .tree_sitter_lang
+            .as_ref()
+            .ok_or(QueryError::NoTree)?;
+        let tree = self
+            .inner
+            .tree_sitter_tree
+            .as_ref()
+            .ok_or(QueryError::NoTree)?;
 
         let query =
             Query::new(lang, query.as_ref()).map_err(|error| QueryError::InvalidQuery { error })?;
         let query_names = query.capture_names();
 
-        let doc_text = self.text.to_string();
+        let doc_text = self.inner.text.to_string();
         let doc_bytes = doc_text.as_bytes();
 
         let mut cursor = QueryCursor::new();
@@ -208,7 +293,7 @@ impl Document {
 
 impl AsRef<Rope> for Document {
     fn as_ref(&self) -> &Rope {
-        &self.text
+        &self.inner.text
     }
 }
 

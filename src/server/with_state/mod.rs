@@ -61,17 +61,18 @@ pub(crate) fn read_document_from_disk(url: &Url) -> Option<Document> {
     let path = url.to_file_path().ok()?;
     // arch-lint: allow(no-sync-io) reason="the dispatch fallback reads one file per request via std::fs, matching the crate's other synchronous disk reads"
     let text = std::fs::read_to_string(path).ok()?;
-    Some(Document {
-        uri: url.clone(),
-        text: Rope::from(text),
-        version: 0,
-        language: String::new(),
-        matcher: None,
-        #[cfg(feature = "tree-sitter")]
-        tree_sitter_lang: None,
-        #[cfg(feature = "tree-sitter")]
-        tree_sitter_tree: None,
-    })
+    #[cfg(feature = "tree-sitter")]
+    let syntax = (None, None);
+    #[cfg(not(feature = "tree-sitter"))]
+    let syntax = ();
+    Some(Document::from_parts(
+        url.clone(),
+        String::new(),
+        None,
+        0,
+        Rope::from(text),
+        syntax,
+    ))
 }
 
 /// The low-level language server implementation that automatically

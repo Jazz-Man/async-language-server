@@ -181,3 +181,23 @@ reason = "file-operations state handlers (handle_files_renamed, handle_files_del
 [[ignore]]
 fingerprint = "3f792e39a2cd77aa"
 reason = "hierarchy convert_params free fns (incoming/outgoing calls, supertypes/subtypes): the item converters take (state, document, &mut Item, Direction) while the lsp_request incoming hook takes the whole params, so a field-extraction wrapper is mandatory; unifying the four would need a field-access trait over four distinct foreign params types — dedup-only ceremony per the typing criterion (successor of e65ad068648fc2a0's impl-method form; family of 3ca1c2536ff13cb7's mirror converter pair)"
+
+[[ignore]]
+fingerprint = "8f2f2ab783a0dc96"
+reason = "builder setters on unrelated types (ServerOptions::with_diagnostics_parallelism, DocumentMatcher::with_lang_grammar): each a one-line move-self field assign on its own type; avoidance analysis — a builder macro for two members is barred by macro-prefer-functions (the macros cycle dismantled exactly this class), a shared setter trait is premature abstraction whose only value is dedup, and reshaping either body to differ syntactically would be code contorted to please the tool (family of 06f46feff88c5331's builder mirror pair)"
+
+[[ignore]]
+fingerprint = "0bf28e4b604afeaa"
+reason = "LongLineServer::document_diagnostics in minimal.rs and batch_diagnostics.rs: the duplication IS the example's lesson — the module doc says 'the same validation logic as minimal.rs, headless'; avoidance analysis — a #[path]-include of one example's server into the other breaks 'each example reads standalone' (5e64d1f8cb621fc2 precedent), moving the toy validator into the library puts policy into plumbing (product.md), a macro is barred by macro-prefer-functions (family of 5e64d1f8cb621fc2 and 6c4db5f43053b240's deliberately-parallel examples)"
+
+[[ignore]]
+fingerprint = "8cc63e9a2c94ab30"
+reason = "oneshot test fixtures' server_options pins (TestServer width 1 for per-item determinism, GatedServer width 3 for the structural concurrency test): each pin is load-bearing for ITS test's determinism and the values differ on purpose; a shared fixture would couple the two widths the tests deliberately separate (family of fe902b81118cdf76's per-suite fixtures)"
+
+[[ignore]]
+fingerprint = "aee8589448a8b248"
+reason = "gated_params in diagnostics.rs' own test module vs workspace_diagnostic_params in with_state/tests.rs: each suite owns its params builder for its fixture; hoisting one shared test helper across the module-under-test's tests and another module's tests couples suites that the per-module test layout keeps separate (fe902b81118cdf76 precedent: fixtures re-declared per suite)"
+
+[[ignore]]
+fingerprint = "b784a964c3143666"
+reason = "server_capabilities impls in examples/batch_diagnostics.rs (LongLineServer) and tests/termination.rs (ConfigurableServer): the example must read standalone (6c4db5f43053b240 precedent) while the test needs its own trait-mandated impl (f83853ca365213c9 capture-server precedent); the shared diagnostic_provider shape is the trait's, not drift"

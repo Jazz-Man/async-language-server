@@ -1,4 +1,4 @@
-use std::ops::ControlFlow;
+use std::{ops::ControlFlow, sync::Arc};
 
 use async_lsp::{
     Result,
@@ -13,7 +13,7 @@ use ropey::Rope;
 use async_lsp::lsp_types::TextDocumentContentChangeEvent;
 
 #[cfg(feature = "tree-sitter")]
-use tree_sitter::{InputEdit, Parser, Point, Tree};
+use tree_sitter::{InputEdit, Language, Parser, Point, Tree};
 
 use super::workspace::url_is_in_roots;
 use super::{DocumentEntry, DocumentOrigin, ServerState};
@@ -55,20 +55,15 @@ impl ServerState {
 
         let matcher = self.matchers.find(&url, &language);
 
+        #[cfg(feature = "tree-sitter")]
+        let syntax = (tree_sitter_lang, tree_sitter_tree);
+        #[cfg(not(feature = "tree-sitter"))]
+        let syntax = ();
+
         self.documents.insert(
             url.clone(),
             DocumentEntry {
-                document: Document {
-                    uri: url,
-                    text: text_rope,
-                    version,
-                    language,
-                    matcher,
-                    #[cfg(feature = "tree-sitter")]
-                    tree_sitter_lang,
-                    #[cfg(feature = "tree-sitter")]
-                    tree_sitter_tree,
-                },
+                document: Document::from_parts(url, language, matcher, version, text_rope, syntax),
                 origin,
                 stamp: None,
             },
@@ -99,7 +94,7 @@ impl ServerState {
             return ControlFlow::Continue(());
         };
 
-        let language = entry.document.language.clone();
+        let language = entry.document.language().to_owned();
         let roots = self.workspace_roots();
         let keep_as_workspace = self.workspace_diagnostics.enabled()
             && self.matchers.find_url(&url).is_some()
@@ -130,8 +125,19 @@ impl ServerState {
         };
 
         entry.origin = DocumentOrigin::Open;
-        let doc = &mut entry.document;
-        doc.version = params.text_document.version;
+
+        // Copy-on-write base: a cheap handle clone. The edits below build a
+        // fresh generation that the store installs under its guard once the
+        // batch settles, so snapshots handed out earlier stay untouched.
+        let base = entry.document.clone();
+        let old = base.inner_arc();
+        let mut text = old.text.clone();
+        let version = params.text_document.version;
+
+        #[cfg(feature = "tree-sitter")]
+        let old_lang = old.tree_sitter_lang.as_ref();
+        #[cfg(feature = "tree-sitter")]
+        let mut tree = old.tree_sitter_tree.clone();
 
         let encoding = self.encoding.as_ref();
 
@@ -142,14 +148,17 @@ impl ServerState {
 
         for change in params.content_changes {
             let Some(range) = change.range else {
-                replace_full_text(doc, &change.text);
+                #[cfg(feature = "tree-sitter")]
+                replace_full_text(old_lang, &mut tree, &mut text, &change.text);
+                #[cfg(not(feature = "tree-sitter"))]
+                replace_full_text(&mut text, &change.text);
                 continue;
             };
 
             // 1. Convert the LSP positions, using their arbitrary encoding,
             //    to what Ropey expects to use for its incremental updates
             let Some((start_char_absolute, end_char_absolute)) =
-                change_char_range(doc, range, *encoding)
+                change_char_range(&text, range, *encoding)
             else {
                 incremental_update_failed = true;
                 break;
@@ -158,28 +167,24 @@ impl ServerState {
             // 3. Perform incremental edit on the syntax tree as well, if enabled
             //    Note that we need to do this before updating the document contents
             #[cfg(feature = "tree-sitter")]
-            if let Some(tree) = doc.tree_sitter_tree.as_mut()
+            if let Some(edited) = tree.as_mut()
                 && let Some(edit) = tree_sitter_edit(
-                    &doc.text,
+                    &text,
                     &change,
                     start_char_absolute,
                     end_char_absolute,
                     *encoding,
                 )
             {
-                tree.edit(&edit);
+                edited.edit(&edit);
                 tree_sitter_incrementally_edited = true;
             }
 
             // 4. Finally, try to incrementally update the document contents
-            if doc
-                .text
+            if text
                 .try_remove(start_char_absolute..end_char_absolute)
                 .is_err()
-                || doc
-                    .text
-                    .try_insert(start_char_absolute, &change.text)
-                    .is_err()
+                || text.try_insert(start_char_absolute, &change.text).is_err()
             {
                 incremental_update_failed = true;
                 break;
@@ -189,25 +194,31 @@ impl ServerState {
         // If the incremental update was successful, and we applied edits to the syntax
         // tree, we must finalize those changes by parsing using tree-sitter once again
         #[cfg(feature = "tree-sitter")]
-        if !incremental_update_failed
-            && tree_sitter_incrementally_edited
-            && let Some(tree) = doc.tree_sitter_tree.as_ref()
-        {
-            #[expect(
-                clippy::expect_used,
-                reason = "invariant: a document carrying a tree always has its parser"
-            )]
-            let mut parser = doc_parser(doc).expect("has tree - must have parser");
-            let updated_tree = parse_rope(&mut parser, doc.text(), Some(tree));
-            doc.tree_sitter_tree = updated_tree;
+        if !incremental_update_failed && tree_sitter_incrementally_edited {
+            finalize_edited_tree(old_lang, &mut tree, &text);
         }
+
+        #[cfg(feature = "tree-sitter")]
+        let syntax = (old.tree_sitter_lang.clone(), tree);
+        #[cfg(not(feature = "tree-sitter"))]
+        let syntax = ();
+
+        // Install the fresh generation under the guard - also on the
+        // failure path, preserving the partial batch state that the
+        // recovery below (re-read or re-parse) is written against.
+        entry.document = Document::from_shared_meta(
+            Arc::clone(&old.meta),
+            old.matcher.clone(),
+            version,
+            text,
+            syntax,
+        );
 
         // If the incremental update failed, we will re-insert the entire file instead
         // Note: we must first drop the document reference to prevent a deadlock
         if incremental_update_failed {
-            let uri = doc.uri.clone();
-            let version = doc.version();
-            let language = doc.language.clone();
+            let uri = base.url().clone();
+            let language = base.language().to_owned();
 
             drop(entry);
 
@@ -246,11 +257,19 @@ impl ServerState {
             // scratch so the tree cannot diverge from the text.
             #[cfg(feature = "tree-sitter")]
             if let Some(mut entry) = self.documents.get_mut(&uri) {
-                let doc = &mut entry.document;
-                let mut parser = doc_parser(doc);
-                doc.tree_sitter_tree = parser
+                let base = entry.document.clone();
+                let old = base.inner_arc();
+                let mut parser = doc_parser(old.tree_sitter_lang.as_ref());
+                let tree = parser
                     .as_mut()
-                    .and_then(|parser| parse_rope(parser, doc.text(), None));
+                    .and_then(|parser| parse_rope(parser, &old.text, None));
+                entry.document = Document::from_shared_meta(
+                    Arc::clone(&old.meta),
+                    old.matcher.clone(),
+                    old.version,
+                    old.text.clone(),
+                    (old.tree_sitter_lang.clone(), tree),
+                );
             }
         }
     }
@@ -277,35 +296,38 @@ impl ServerState {
             self.documents.remove(&url);
             return ControlFlow::Continue(());
         };
-        let doc = &mut entry.document;
-        doc.text = text;
+        let base = entry.document.clone();
+        let old = base.inner_arc();
 
         // The implementor may want to know what, if any, document
         // matcher we may have matched against - so let's save that
-        let matcher = self.matchers.find(doc.url(), doc.language());
-        doc.matcher.clone_from(&matcher);
+        let matcher = self.matchers.find(base.url(), base.language());
 
         // Since we just read the entire file contents, we will also
         // re-create the entire tree-sitter tree using those new contents
         #[cfg(feature = "tree-sitter")]
-        {
-            let mut tree_sitter_lang = matcher.and_then(|m| m.lang_grammar());
+        let mut tree_sitter_lang = matcher.clone().and_then(|m| m.lang_grammar());
 
-            let tree_sitter_tree = if let Some(lang) = tree_sitter_lang.as_ref() {
-                let mut parser = Parser::new();
-                if parser.set_language(lang).is_ok() {
-                    parse_rope(&mut parser, doc.text(), None)
-                } else {
-                    tree_sitter_lang.take();
-                    None
-                }
+        #[cfg(feature = "tree-sitter")]
+        let tree_sitter_tree = if let Some(lang) = tree_sitter_lang.as_ref() {
+            let mut parser = Parser::new();
+            if parser.set_language(lang).is_ok() {
+                parse_rope(&mut parser, &text, None)
             } else {
+                tree_sitter_lang.take();
                 None
-            };
+            }
+        } else {
+            None
+        };
 
-            doc.tree_sitter_lang = tree_sitter_lang;
-            doc.tree_sitter_tree = tree_sitter_tree;
-        }
+        #[cfg(feature = "tree-sitter")]
+        let syntax = (tree_sitter_lang, tree_sitter_tree);
+        #[cfg(not(feature = "tree-sitter"))]
+        let syntax = ();
+
+        entry.document =
+            Document::from_shared_meta(Arc::clone(&old.meta), matcher, old.version, text, syntax);
 
         ControlFlow::Continue(())
     }
@@ -337,7 +359,7 @@ impl ServerState {
             // of the file. NOTE: we must read the contents of the file
             // synchronously, since notification handlers are actually
             // synchronous both according to LSP spec and the async-lsp crate.
-            let language = entry.document.language.clone();
+            let language = entry.document.language().to_owned();
             drop(entry);
             // arch-lint: allow(no-sync-io) reason="LSP notification handlers must stay synchronous per the spec; the watched-files refresh re-reads via std::fs"
             if let Ok(text) = std::fs::read_to_string(event.uri.path()) {
@@ -387,13 +409,27 @@ impl ServerState {
 }
 
 #[cfg(feature = "tree-sitter")]
-fn doc_parser(doc: &Document) -> Option<Parser> {
-    let lang = doc.tree_sitter_lang.as_ref()?;
+fn doc_parser(lang: Option<&Language>) -> Option<Parser> {
+    let lang = lang?;
     let mut parser = Parser::new();
     if parser.set_language(lang).is_ok() {
         Some(parser)
     } else {
         None
+    }
+}
+
+/// Re-parses a tree whose incremental edits were applied to the rope, so
+/// the installed generation cannot diverge from the working text.
+#[cfg(feature = "tree-sitter")]
+fn finalize_edited_tree(lang: Option<&Language>, tree: &mut Option<Tree>, text: &Rope) {
+    if let Some(old_tree) = tree.as_ref() {
+        #[expect(
+            clippy::expect_used,
+            reason = "invariant: a document carrying a tree always has its parser"
+        )]
+        let mut parser = doc_parser(lang).expect("has tree - must have parser");
+        *tree = parse_rope(&mut parser, text, Some(old_tree));
     }
 }
 
@@ -422,34 +458,42 @@ fn parse_rope(parser: &mut Parser, rope: &Rope, old_tree: Option<&Tree>) -> Opti
 /// Replaces a document's whole text (a change with no range) and,
 /// under the tree-sitter feature, re-parses its tree from the new
 /// rope before the text is moved in.
-fn replace_full_text(doc: &mut Document, text: &str) {
-    let text_rope = Rope::from_str(text);
+#[cfg(feature = "tree-sitter")]
+fn replace_full_text(
+    lang: Option<&Language>,
+    tree: &mut Option<Tree>,
+    text: &mut Rope,
+    new_text: &str,
+) {
+    let text_rope = Rope::from_str(new_text);
 
-    #[cfg(feature = "tree-sitter")]
-    {
-        let mut parser = doc_parser(doc);
-        doc.tree_sitter_tree = parser
-            .as_mut()
-            .and_then(|parser| parse_rope(parser, &text_rope, None));
-    }
+    let mut parser = doc_parser(lang);
+    *tree = parser
+        .as_mut()
+        .and_then(|parser| parse_rope(parser, &text_rope, None));
 
-    doc.text = text_rope;
+    *text = text_rope;
+}
+
+#[cfg(not(feature = "tree-sitter"))]
+fn replace_full_text(text: &mut Rope, new_text: &str) {
+    *text = Rope::from_str(new_text);
 }
 
 /// Converts the range of an incremental change, using its arbitrary encoding,
 /// to the char offsets Ropey expects for its incremental updates.
 ///
 /// Returns `None` when either endpoint's line is out of bounds.
-fn change_char_range(doc: &Document, range: Range, encoding: Encoding) -> Option<(usize, usize)> {
-    let start_line_char_offset = doc.text.try_line_to_char(range.start.line as usize).ok()?;
-    let start = position_to_encoding(doc.text(), range.start, encoding, Encoding::UTF32);
+fn change_char_range(text: &Rope, range: Range, encoding: Encoding) -> Option<(usize, usize)> {
+    let start_line_char_offset = text.try_line_to_char(range.start.line as usize).ok()?;
+    let start = position_to_encoding(text, range.start, encoding, Encoding::UTF32);
     let start_char_absolute = start_line_char_offset + start.character as usize;
 
-    let end_line_char_offset = doc.text.try_line_to_char(range.end.line as usize).ok()?;
-    let end = position_to_encoding(doc.text(), range.end, encoding, Encoding::UTF32);
+    let end_line_char_offset = text.try_line_to_char(range.end.line as usize).ok()?;
+    let end = position_to_encoding(text, range.end, encoding, Encoding::UTF32);
     let end_char_absolute = (end_line_char_offset + end.character as usize)
         .max(start_char_absolute)
-        .min(doc.text.len_chars());
+        .min(text.len_chars());
 
     Some((start_char_absolute, end_char_absolute))
 }

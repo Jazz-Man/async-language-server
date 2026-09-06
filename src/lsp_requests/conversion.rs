@@ -49,7 +49,7 @@ pub(crate) fn convert_position(
         Direction::Incoming => (state.get_position_encoding(), Encoding::UTF8),
         Direction::Outgoing => (Encoding::UTF8, state.get_position_encoding()),
     };
-    *position = position_to_encoding(&document.text, *position, source, target);
+    *position = position_to_encoding(document.text(), *position, source, target);
 }
 
 pub(crate) fn convert_position_at_url(
@@ -777,9 +777,10 @@ fn convert_seeded_token_stream(
             line: absolute_source.line,
             character: absolute_source.character.saturating_add(token.length),
         };
-        let absolute_target = position_to_encoding(&document.text, absolute_source, source, target);
+        let absolute_target =
+            position_to_encoding(document.text(), absolute_source, source, target);
         let absolute_end_target =
-            position_to_encoding(&document.text, absolute_end_source, source, target);
+            position_to_encoding(document.text(), absolute_end_source, source, target);
 
         token.delta_line = absolute_target.line.saturating_sub(previous_target.line);
         token.delta_start = if absolute_target.line == previous_target.line {
@@ -948,7 +949,7 @@ fn convert_semantic_tokens_edits(
             .min(cached.data.len());
         let seed_source = absolute_position(&cached.data[..anchor]);
         let seed_target = position_to_encoding(
-            &document.text,
+            document.text(),
             seed_source,
             Encoding::UTF8,
             state.get_position_encoding(),

@@ -63,7 +63,7 @@ impl ServerState {
         let mut urls: Vec<_> = self
             .documents
             .iter()
-            .map(|entry| entry.document.uri.clone())
+            .map(|entry| entry.document.url().clone())
             .collect();
         urls.sort();
         urls
