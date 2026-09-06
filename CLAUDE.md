@@ -33,7 +33,7 @@ The `lsp_dispatch!` table glues each async-lsp method to a `Server` method throu
 
 ### State & documents
 
-`ServerState` (`src/server/state/mod.rs`) is a cheaply-clonable interior-mutable handle: `DashMap` of documents, workspace roots, negotiated encoding, matchers. `Document` (`src/documents/document.rs`) is a snapshot clone wrapping a `ropey::Rope`, plus an optional tree-sitter `Language`/`Tree` under the feature.
+`ServerState` (`src/server/state/mod.rs`) is a cheaply-clonable interior-mutable handle: `DashMap` of documents, workspace roots, negotiated encoding, matchers. `Document` (`src/documents/document.rs`) is a cheap-`Clone` snapshot handle over an `Arc<DocumentInner>` (construction-immutable identity shared across copy-on-write generations — clones keep their snapshot), wrapping a `ropey::Rope` plus an optional tree-sitter `Language`/`Tree` under the feature.
 
 - `didChange` applies incremental edits to the Rope and, with tree-sitter, `tree.edit()` + incremental reparse. If incremental application fails, it falls back to reloading the whole file from disk — notification handlers must stay synchronous per the LSP spec and async-lsp, hence the `std::fs` reads (noted in comments there).
 - Documents carry an origin: `Open` (from the editor) or `Workspace` (loaded from disk). Open documents win over disk state; closing an open document keeps a disk snapshot only when workspace diagnostics are enabled for it.

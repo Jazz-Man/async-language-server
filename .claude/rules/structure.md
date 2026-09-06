@@ -94,16 +94,22 @@ Do not duplicate that logic in handlers.
 `ServerState` (`src/server/state/mod.rs`) is a cheaply-clonable
 interior-mutable handle passed to every handler: a `DashMap` of documents,
 workspace roots, the negotiated encoding, and matchers. `Document`
-(`src/documents/document.rs`) is a snapshot clone wrapping a `ropey::Rope`,
-plus an optional `Language`/`Tree` under the `tree-sitter` feature.
+(`src/documents/document.rs`) is a cheap-`Clone` handle over an
+`Arc<DocumentInner>`: the identity (`Url`, language) lives in a
+construction-immutable `Arc<DocumentMeta>` shared across copy-on-write
+generations, so a clone bumps a refcount and a write installs a fresh
+generation — outstanding clones keep the content they were created with.
+The inner carries a `ropey::Rope` and, under the `tree-sitter` feature,
+an optional `Language`/`Tree`.
 
 Documents carry an origin: `Open` (from the editor) or `Workspace` (loaded
 from disk). Open documents win over disk state; closing an open document
 keeps a disk snapshot only when workspace diagnostics are enabled for it.
 Workspace-origin entries carry a `FileStamp` — `(mtime, size)` — and a
 refresh re-reads a file unless the recorded stamp exactly matches the
-disk's; the reads run on the blocking pool, while tree-sitter parses
-stay on the executor.
+disk's; the stamp probe and the read+parse composite (refresh and oneshot
+alike) run on the blocking pool, keeping file IO and tree-sitter parses
+off the executor.
 
 `didChange` applies incremental edits to the Rope and, with tree-sitter,
 `tree.edit()` + incremental reparse. If incremental application fails, it
@@ -114,9 +120,14 @@ synchronous per the LSP spec and async-lsp, hence the `std::fs` reads there.
 
 `DocumentMatcher` (`src/documents/matcher.rs`) associates documents with a
 named matcher via URL globs and/or language-id strings, optionally carrying
-a tree-sitter grammar — one language per document, not per server.
+a tree-sitter grammar — one language per document, not per server. The
+matcher also owns a per-matcher compiled-query cache: `Document::query`
+compiles once per source string and runs over the rope through a
+`TextProvider` bridge, never materializing a whole-file `String`.
 `WorkspaceWalker` (`src/workspace/walker.rs`) scans roots with the `ignore`
-crate: `.gitignore` respected by default, hidden files skipped.
+crate in parallel (`build_parallel`), collecting entries over an mpsc
+channel and sorting after collection, so output stays deterministic;
+`.gitignore` respected by default, hidden files skipped.
 
 ## Diagnostics surfaces
 

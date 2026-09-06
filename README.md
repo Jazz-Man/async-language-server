@@ -65,6 +65,9 @@ the encoding negotiated with the client — conversions are handled internally.
 - **`DocumentMatcher`** — associates documents with a language by URL globs
   and/or language-id strings, optionally carrying a tree-sitter grammar
   (language-per-document).
+- **`Document`** — a cheap-`Clone` handle: cloning bumps a refcount, and
+  edits install a fresh generation, so every outstanding clone keeps the
+  content it was created with.
 - **`serve()`** — wires your server into async-lsp behind a tower middleware
   stack (tracing, concurrency limit, panic catching, client-process monitor)
   over the process stdio.
