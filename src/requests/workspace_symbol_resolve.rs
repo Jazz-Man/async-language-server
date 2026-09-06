@@ -14,8 +14,8 @@ pub(crate) struct WorkspaceSymbolResolveRequest;
 
 // WorkspaceSymbol doesn't contain a request document: each location
 // below resolves against its own document. The standalone pair is
-// overridden INSTEAD of the anchored hooks — the resolve engine calls it
-// directly when no sole tracked document resolves, and the delegating
+// overridden INSTEAD of the anchored hooks — the resolve dispatch engine
+// calls it directly when no sole tracked document resolves, and the delegating
 // defaults of `modify_params`/`modify_response` keep it running in the
 // sole-document state (where `convert_resolve_item` routes through them).
 

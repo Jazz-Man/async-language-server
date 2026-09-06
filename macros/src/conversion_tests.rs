@@ -1,7 +1,7 @@
 //! `conversion_tests!` — stamp one `#[test]` per row for a request's
-//! conversion hooks. The W0 table harness; grammar and expansion are the
-//! 2026-09-01 `macro_rules!` verbatim, with `$crate` replaced by call-site
-//! `crate::` paths.
+//! conversion hooks. The W0 table harness: each stamped test drives
+//! `modify_params`/`modify_response` through the `crate::testing` fixtures,
+//! and the emitted code uses call-site `crate::` paths.
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -117,8 +117,9 @@ impl Parse for TestTable {
     }
 }
 
-/// Expands the table into one `#[test]` fn per row — the former
-/// `macro_rules!` body verbatim, with `$crate` as call-site `crate`.
+/// Expands the table into one `#[test]` fn per row, each driving the
+/// request's hooks through the `crate::testing` fixtures — the emitted
+/// code uses call-site `crate` paths.
 ///
 /// # Errors
 ///

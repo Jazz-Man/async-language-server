@@ -72,9 +72,8 @@ pub fn lsp_resolve_method(input: TokenStream) -> TokenStream {
 ///
 /// Rows are `our_trait_method : async_lsp_method @ RequestType`; resolve
 /// rows wrap the same triple in `resolve(...)`. Every row expands to one
-/// dispatch method whose body is the former `implement_method!` /
-/// `implement_resolve_method!` engine: version snapshot, encoding
-/// conversion, staleness detection, and the user's `Server` call.
+/// dispatch method whose body runs the dispatch engine: version snapshot,
+/// encoding conversion, staleness detection, and the user's `Server` call.
 #[proc_macro]
 pub fn lsp_dispatch(input: TokenStream) -> TokenStream {
     dispatch::expand(input.into())

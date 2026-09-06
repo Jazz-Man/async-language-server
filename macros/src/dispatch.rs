@@ -1,7 +1,9 @@
 //! `lsp_dispatch!` — stamp the `LanguageServer` dispatch methods for the
 //! request table: one row per method, `resolve(...)` rows for the resolve
-//! family. The engines are the line-for-line successors of the former
-//! `implement_method!` / `implement_resolve_method!` `macro_rules` bodies.
+//! family. Two engines: the URL-anchored one snapshots the document
+//! version, converts params and response, and rejects stale results; the
+//! sole-document one converts resolve params and results against the
+//! single tracked document.
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -103,9 +105,11 @@ fn is_resolve_row(input: ParseStream<'_>) -> bool {
 }
 
 /// The engine for one row: the row kind's core in the shared dispatch
-/// wrapper. The URL-anchored core (42 normal rows) is today's
-/// `implement_method!`, the sole-document core (6 resolve rows) today's
-/// `implement_resolve_method!` — both line-for-line.
+/// wrapper. The URL-anchored core (42 normal rows) snapshots the document
+/// version, converts params and response against the conversion document,
+/// and rejects stale results with `CONTENT_MODIFIED`; the sole-document
+/// core (6 resolve rows) converts against the single tracked document,
+/// falling back to the standalone hooks when none is sole.
 fn engine(row: &DispatchRow) -> TokenStream {
     let DispatchRow {
         trait_method,
@@ -205,8 +209,7 @@ fn engine(row: &DispatchRow) -> TokenStream {
 }
 
 /// The shared dispatch-method wrapper around a core: signature, server and
-/// state capture, pinned async block — verbatim from the `macro_rules`
-/// engines.
+/// state capture, pinned async block.
 fn wrapped(alsp: &Ident, request: &Path, core: &TokenStream) -> TokenStream {
     quote! {
         fn #alsp(

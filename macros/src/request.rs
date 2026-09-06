@@ -87,8 +87,8 @@ fn extract_url_fn(segments: &[Ident]) -> TokenStream {
 }
 
 /// Emits `modify_params` converting exactly the wired incoming hooks —
-/// fully-qualified converter calls, the old `request_modify_params_position!`
-/// bodies' own shape (`macro-absolute-std-paths`), so no imports are needed.
+/// fully-qualified `crate::requests::conversion` converter calls in the
+/// generated body (`macro-absolute-std-paths`), so no imports are needed.
 fn modify_params_fn(
     position: Option<Vec<Ident>>,
     range: Option<Vec<Ident>>,

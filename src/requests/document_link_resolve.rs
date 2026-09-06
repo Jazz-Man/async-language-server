@@ -13,7 +13,7 @@ use super::conversion::{Direction, convert_range};
 pub(crate) struct DocumentLinkResolveRequest;
 
 // DocumentLink doesn't contain a source document URI; the resolve
-// dispatch macro supplies the sole tracked document.
+// dispatch engine supplies the sole tracked document.
 
 /// Converts the link's range to UTF-8 (the incoming hook).
 fn convert_params(state: &ServerState, document: &Document, params: &mut DocumentLink) {

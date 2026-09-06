@@ -13,7 +13,7 @@ use super::conversion::{Direction, convert_inlay_hint};
 pub(crate) struct InlayHintResolveRequest;
 
 // InlayHint doesn't contain a source document URI; the resolve dispatch
-// macro supplies the sole tracked document.
+// engine supplies the sole tracked document.
 
 /// Converts the hint's position, edits, and label-part locations to UTF-8
 /// (the incoming hook).

@@ -1,3 +1,11 @@
+//! Per-request encoding conversion: one file per LSP request — a marker
+//! struct under `#[lsp_request(...)]`, its conversion helpers, and,
+//! typically, inline tests for the hooks. The [`Request`] trait carries the
+//! five hooks
+//! (`extract_url`, the `modify_params`/`modify_response` pair, and the
+//! standalone pair, to which the anchored pair's defaults delegate);
+//! shared machinery lives in `conversion.rs`.
+
 use async_lsp::lsp_types::Url;
 
 use crate::server::{Document, ServerState};
