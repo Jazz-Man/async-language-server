@@ -586,7 +586,7 @@ fn push_related_reports(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, num::NonZeroUsize, sync::Arc, time::Duration};
+    use std::{fs, num::NonZeroUsize, path::PathBuf, sync::Arc, time::Duration};
 
     use async_lsp::{
         ClientSocket,
@@ -708,6 +708,7 @@ mod tests {
         mpsc::UnboundedSender<Url>,
         mpsc::UnboundedReceiver<Url>,
         Arc<Semaphore>,
+        PathBuf,
     ) {
         let root = temp_workspace("workspace_diagnostics", name);
         for file in ["one", "two", "three"] {
@@ -726,7 +727,13 @@ mod tests {
         );
         state.set_workspace_folders([workspace_folder(&root)]);
         let (entered_tx, entered_rx) = mpsc::unbounded_channel();
-        (state, entered_tx, entered_rx, Arc::new(Semaphore::new(0)))
+        (
+            state,
+            entered_tx,
+            entered_rx,
+            Arc::new(Semaphore::new(0)),
+            root,
+        )
     }
 
     fn gated_params() -> WorkspaceDiagnosticParams {
@@ -740,7 +747,7 @@ mod tests {
 
     #[tokio::test]
     async fn width_three_documents_enter_before_any_releases() {
-        let (state, entered_tx, mut entered_rx, gate) =
+        let (state, entered_tx, mut entered_rx, gate, root) =
             gated_setup(NonZeroUsize::new(3).expect("nonzero"), "width-three");
         let server = Arc::new(GatedDiagnosticsServer {
             entered: entered_tx,
@@ -774,11 +781,12 @@ mod tests {
             .expect("task succeeds")
             .expect("diagnostics succeed");
         assert_eq!(items.len(), 3);
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 
     #[tokio::test]
     async fn width_one_runs_documents_one_at_a_time() {
-        let (state, entered_tx, mut entered_rx, gate) =
+        let (state, entered_tx, mut entered_rx, gate, root) =
             gated_setup(NonZeroUsize::new(1).expect("nonzero"), "width-one");
         let server = Arc::new(GatedDiagnosticsServer {
             entered: entered_tx,
@@ -813,5 +821,6 @@ mod tests {
             .expect("task succeeds")
             .expect("diagnostics succeed");
         assert_eq!(items.len(), 3);
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 }

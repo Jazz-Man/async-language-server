@@ -5,7 +5,8 @@
 //!
 //! Run with `cargo bench --bench oneshot_diagnostics`; not part of the CI
 //! battery (`--all-targets` builds and lints it in all feature
-//! configurations).
+//! configurations). The group pins a 10 s measurement time in code, so
+//! `--measurement-time` on the command line will not change it.
 
 use std::{
     io::Write as _,
