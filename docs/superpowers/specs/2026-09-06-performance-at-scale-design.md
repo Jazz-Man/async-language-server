@@ -1,6 +1,6 @@
 # Performance at scale — Design
 
-**Cycle opened:** 2026-09-06 · **Design finalized:** 2026-09-06 · **Branch:** `feature/macros`
+**Cycle opened:** 2026-09-06 · **Design finalized:** 2026-09-06 · **Branch:** `feature/perf`
 **Inputs:** hotspot research
 `docs/superpowers/research/2026-09-06-performance-hotspots-research.md`
 (sonnet[1m], read-only, file:line citations, 15 hotspots / 12 candidates);
