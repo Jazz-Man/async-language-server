@@ -29,6 +29,19 @@
 | `--no-default-features` | 211 |
 | `--all-features` | 245 |
 
+## Amendment (execution-time, 2026-09-06)
+
+Tasks 5 and 6 merged into Task 8. Reason discovered at T5: the knob's
+`ServerState` field/accessor and the `for_each_bounded` engine are
+`pub(crate)` items whose first **non-test** consumers are T8/T9 — rustc's
+`dead_code` fires on them in the plain-lib compilation pass of
+`clippy --all-targets` at T5/T6, and every compliant escape (`#[allow]`,
+public widening, artificial consumers) is forbidden by the constraints.
+T8's implementer receives the T5 + T6 + T8 briefs together and lands the
+knob, the engine, and their first consumers as one green unit. T5's
+initial attempt was reverted cleanly (report in
+`.superpowers/sdd/task-5-report.md`).
+
 ## File Structure
 
 | file | responsibility | task |
