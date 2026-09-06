@@ -1,0 +1,528 @@
+# Performance hotspots research — very large workspaces (10k+ files)
+
+Date: 2026-09-06 · Scope: this crate only (downstream server work excluded) ·
+Method: source read with file:line citations; no benchmarking was run, so all
+cost claims are structural (code-read facts) or labeled `[Inference]`.
+
+Target workload: a language server over tens of thousands of files (PHP
+Symfony core / Magento 2 scale), interactive requests must stay fast, and
+workspace-wide diagnostics must terminate in reasonable time.
+
+Constants used below: `F` = files in the workspace walk, `M` = matching
+(tracked) files, `D` = currently tracked documents, `R` = workspace roots.
+
+---
+
+## Q1. Per-interaction cost map
+
+Everything in this crate runs inside async-lsp's `MainLoop` on the consumer's
+tokio runtime. Notification handlers are synchronous by LSP-spec and
+async-lsp constraint (stated in-code at
+`src/server/state/documents.rs:230-237`), and there is no `spawn_blocking`,
+rayon, `JoinSet`, `buffer_unordered`, or parallel walk anywhere in `src/` or
+`macros/` (grep confirmed: zero matches). So every CPU burst and every
+`std::fs` call below executes on an executor thread. `serve()` bounds
+in-flight requests at 8 via `ConcurrencyLayer`
+(`src/server/serve.rs:15-18`, `:87`), but that bounds request count, not
+executor blocking.
+
+### didOpen
+
+Path: `LanguageServerWithState::did_open` (`src/server/with_state/mod.rs:134-139`)
+→ `handle_document_open` (`src/server/state/documents.rs:75-88`) →
+`insert_document` (`src/server/state/documents.rs:27-73`).
+
+- `params.clone()` before handling (`with_state/mod.rs:136`) clones the full
+  document text `String` — transient 2× text, sync.
+- Two matcher lookups (`documents.rs:36-39` grammar, `:54` matcher); each
+  `DocumentMatchers::find` allocates a lowercased `String` per call
+  (`src/documents/matcher.rs:159-166`).
+- **Full tree-sitter parse at insert** when a grammar matches
+  (`documents.rs:41-52`): `Parser::new()` + `parser.parse(&text, None)` —
+  O(file size) CPU, synchronous, on the executor.
+- `DashMap` insert — O(1).
+
+Scale: O(file size), independent of project size. Sync CPU + one full-text
+clone. Risk: a very large file open stalls the executor for the parse
+duration (`[Inference]` — magnitude depends on grammar).
+
+### didChange
+
+Path: `with_state/mod.rs:148-152` → `handle_document_change`
+(`src/server/state/documents.rs:121-224`).
+
+- `params.clone()` (`with_state/mod.rs:149`) clones every content change's
+  text.
+- Holds the `DashMap` **write guard** for the whole update
+  (`get_mut`, `documents.rs:125`) — including the re-parse below.
+- Per change: `change_char_range` (`documents.rs:410-422`) —
+  `try_line_to_char` (O(log n) rope) + two `position_to_encoding` calls
+  (O(line length)); `tree_sitter_edit` (`documents.rs:430-481`) —
+  O(new-text) fold; rope `try_remove`/`try_insert` (O(log n)).
+- If any change edited the tree: **one incremental re-parse per
+  notification batch** — `parser.parse(doc.text_contents(), Some(tree))`
+  (`documents.rs:197-209`). `text_contents()` materializes the **entire
+  document as a fresh `String`** (`src/documents/document.rs:85-87`) per
+  batch.
+- No-range (full replace) change: full re-parse (`documents.rs:143-152`).
+- Failed incremental update: full reload from disk via `std::fs` +
+  full re-parse (`documents.rs:213-221`, `:229-262`, disk read at `:238`).
+
+Scale: O(file size) per batch, independent of project size; sync CPU, occasional sync IO; holds a map shard's write lock throughout `[Inference]` —
+contention scope is the DashMap shard, not the whole map.
+
+### didClose
+
+Path: `documents.rs:90-119`. `workspace_roots()` clone+sort
+(`src/server/state/workspace.rs:51-59`); `url_is_in_roots`
+(`workspace.rs:145-148`) does `Url::to_file_path()` + `starts_with` per root.
+When workspace diagnostics is enabled and the file matches:
+`std::fs::read_to_string` (`documents.rs:112`) + `insert_document` → full
+rope build + full tree-sitter parse. Sync IO + O(file) CPU on close.
+
+### didSave
+
+Path: `documents.rs:264-317`. The server advertises
+`include_text: Some(true)` (`src/server/with_state/initialize.rs:70-72`), so
+clients send the full text; `params.clone()` (`with_state/mod.rs:156`)
+doubles it; then a fresh `Rope::from_str`, a matcher lookup, and a **full
+re-parse from scratch** (`documents.rs:296-314`). Without text in params:
+`std::fs::read_to_string` fallback (`documents.rs:279`). Sync CPU/IO,
+O(file).
+
+### didChangeWatchedFiles
+
+Path: `documents.rs:319-362`. Per event: `DashMap` get; untracked URIs are
+skipped (`documents.rs:324-328`); Open documents are never touched
+(`:329-332`); tracked Workspace-origin Created/Changed events trigger
+`std::fs::read_to_string` (`documents.rs:349`) + full insert + full parse.
+Serial per-event loop with sync IO per event.
+
+### hover / definition / completion (any URL-anchored request)
+
+The dispatch engine (generated by `lsp_dispatch!`,
+`macros/src/dispatch.rs:155-206`) does, per request:
+
+1. `extract_url` — cheap field access.
+2. Version snapshot: `state.document(url)` — **full `Document` clone #1**
+   (`dispatch.rs:161-164`; clone at `src/server/state/mod.rs:73-76`).
+3. Params conversion document: `conversion_document` — **clone #2**
+   (`dispatch.rs:170`). For an **untracked** file URL this is a
+   synchronous `std::fs::read_to_string` + full `Rope` build
+   (`with_state/mod.rs:47-53`, `:58-76`).
+4. Handler call (`dispatch.rs:176`).
+5. Staleness check: `state.document(url)` — **clone #3**
+   (`dispatch.rs:180-188`); version change ⇒ `CONTENT_MODIFIED` retry.
+6. Response conversion document: `conversion_document` — **clone #4**, and
+   a **second disk read** for untracked file URLs (`dispatch.rs:194-203`).
+
+`Document` clone = `Url` + `language` `String` + `matcher` `Arc` + `Rope`
+clone + `Language`/`Tree` clones (`document.rs:39-50`). Ropey rope clone is
+cheap (shared chunks), `tree_sitter::Tree` clone is a refcounted copy
+`[Inference]` — so a clone is cheap-but-not-free, ×4 per request.
+
+Conversion hooks are effectively free under UTF-8 negotiation:
+`position_to_encoding` early-returns when source == target
+(`src/text_utils/conversions.rs:29-31`); otherwise each converted position
+is O(line length) (`conversions.rs:33-70`).
+
+Scale: O(target document size) + O(1) state lookups — **no total-file
+scaling in the engine itself**. Exceptions where a response's contents
+scale:
+
+- Location-bearing responses (references, call hierarchy, goto): every
+  `Location` conversion resolves its URL via `state.document` — one
+  `Document` clone per location (`src/lsp_requests/conversion.rs:92-100` →
+  `:55-69`).
+- workspace/symbol: per-symbol document resolution — tracked docs cloned
+  per symbol; untracked URLs **read from disk** (cached per request in a
+  `HashMap`) (`src/lsp_requests/symbol.rs:37-71`). A symbol query touching
+  hundreds of untracked files performs that many synchronous reads in the
+  response path.
+- workspace-symbol-resolve: same shape, no per-request cache
+  (`src/lsp_requests/workspace_symbol_resolve.rs:40-54`).
+
+### textDocument/documentDiagnostic
+
+Dispatch row `document_diagnostics @ DocumentDiagnosticsRequest`
+(`with_state/mod.rs:255`). Same 4-clone engine cost; outgoing conversion
+walks every diagnostic and every related-document report
+(`src/lsp_requests/document_diagnostics.rs:19-50`, per-diagnostic
+`convert_diagnostic` at `conversion.rs:233-245`; related documents resolve
+their own tracked docs, `conversion.rs:247-272`). The real cost is the
+downstream handler. Scale: O(diagnostics in response) + engine constant.
+
+### workspace/diagnostic
+
+Path: `workspace_diagnostic` (`src/workspace/diagnostics.rs:240-265`) →
+`workspace_diagnostic_items` (`diagnostics.rs:380-440`).
+
+1. `state.refresh_workspace_documents()` — **re-walks all roots and
+   re-reads/re-parses all matching files on every request** (see Q2).
+2. Serial per-URL loop: `server.document_diagnostics(...).await` one
+   document at a time (`diagnostics.rs:399-432`), with two `Document`
+   clones per URL (`:400`, `:416-418`).
+3. `previous_result_ids` ARE collected into a map and forwarded per
+   document (`diagnostics.rs:389-393`, `:407-412`, params built at
+   `:442-454`) — the downstream server may answer `Unchanged`, but the
+   wrapper itself uses them for nothing: refresh and reads happen
+   regardless.
+4. Per-document staleness: version change ⇒ `CONTENT_MODIFIED` **aborts
+   the entire workspace request** (`diagnostics.rs:416-424`).
+5. Report merge: `push_workspace_report` does a linear
+   `Vec::position` scan per report (`diagnostics.rs:496-511`) — **O(N²)**
+   in the number of reports; each comparison is a `Url` equality.
+   Final sort O(N log N) (`:434-438`).
+
+Scale: O(F) walk + O(M) disk reads + full parses + serial O(M) handler
+awaits + O(N²) merge — per request.
+
+### oneshot batch (`oneshot::workspace_diagnostics`)
+
+Path: `src/oneshot/workspace_diagnostics.rs:210-237`.
+
+- Discovery: walk (sync, single-threaded, collects **all** file paths into
+  a sorted `Vec`, `src/workspace/walker.rs:58-82`), then reads **every
+  matching file's full text into memory up front**
+  (`workspace_document` → `fs::read_to_string`, `:280`; held in
+  `Vec<WorkspaceDocument>`, `:218`) — peak memory ≈ sum of matching file
+  sizes (+ transient clone per open, `src/oneshot/server.rs:50`).
+- `open_document` per doc → `did_open` → eager full tree-sitter parse per
+  doc (`server.rs:44-53` → `documents.rs:27-73`).
+- Diagnostics loop is **fully serial**: `for doc in documents { ... .await }`
+  (`workspace_diagnostics.rs:227-234`); `previous_result_id: None` always
+  (`server.rs:63`). Closed `ClientSocket` (`server.rs:32`) — no transport.
+
+Scale: O(F) walk + O(M) memory + O(M) serial parse+diagnose.
+
+---
+
+## Q2. `refresh_workspace_documents` — full re-walk, full re-read, per request
+
+`src/server/state/workspace.rs:79-127`. Called from exactly one place:
+`workspace_diagnostic_items` (`src/workspace/diagnostics.rs:394-396`) —
+i.e. once per `workspace/diagnostic` request.
+
+What it does per call:
+
+1. `WorkspaceWalker::new` canonicalizes every root (`workspace.rs:89`;
+   `walker.rs:45-51`).
+2. `walker.files()` performs a **single-threaded** `ignore`-crate walk per
+   root and collects **every** file path (not just matching) into a
+   `Vec`, then sorts it (`walker.rs:58-82`; `builder.build()` at `:65` is
+   the single-threaded API; `build_parallel` is never used).
+3. Per walked file: `path_to_url` — URL construction for **every** file
+   including non-matching ones (`workspace.rs:93`), then
+   `matchers.find_url` — a second `Url::to_file_path()` parse plus a
+   linear scan of per-matcher `GlobSet`s (`matcher.rs:168-175`).
+4. Files already tracked as `Open` are skipped (`workspace.rs:99-105`).
+   **Files tracked as `Workspace` origin are NOT skipped**: they fall
+   through to `std::fs::read_to_string` (`workspace.rs:113`) and
+   `insert_document` (`workspace.rs:114`) — a fresh `Rope` plus a **full
+   tree-sitter parse** (`documents.rs:41-52`) — even when nothing changed.
+5. Cleanup `retain` iterates all tracked docs; `url_is_in_roots` per doc
+   does `Url::to_file_path()` + root `starts_with`
+   (`workspace.rs:118-122`, `:145-148`).
+
+**No incrementality exists**: no mtime, no size, no content hash, no
+result ids, no version reuse anywhere in the refresh path (whole-file read
+of the function confirms; the only skip is the Open-origin check at
+`workspace.rs:99-105`). Consequence: every `workspace/diagnostic` request
+pays O(F) walk + O(M) synchronous disk reads + O(M) full parses, then runs
+diagnostics serially over all of it. Two concurrent `workspace/diagnostic`
+requests duplicate the entire refresh (no in-flight coalescing; safety
+comes only from `DashMap` insert idempotence).
+
+---
+
+## Q3. Document store scaling
+
+- All matching workspace files become resident `DocumentEntry` values in
+  `Arc<DashMap<Url, DocumentEntry>>` (`src/server/state/mod.rs:26`, `:34-38`).
+  `DocumentEntry` wraps a `Document` (`src/documents/document.rs:39-50`):
+  full `Rope` text + optional parsed `Tree` + `Language` + matcher + version.
+- **No eviction, no cap, no lazy loading.** Workspace documents are loaded
+  eagerly by refresh and stay resident. Removal happens only on:
+  disabling workspace diagnostics
+  (`state/mod.rs:116-122` → `workspace.rs:129-132`), folder removal
+  (`workspace.rs:134-142`), watched-file deletion
+  (`documents.rs:334-340`), rename/delete notifications
+  (`documents.rs:364-378`), or disappearing from the walk
+  (`workspace.rs:117-122`).
+- `didClose` keeps a disk snapshot when workspace diagnostics is enabled
+  and the file matches (`documents.rs:100-113`).
+- Memory shape per doc: ropey chunks ≈ file size (+ per-chunk overhead)
+  `[Inference]`; a tree-sitter tree typically costs a multiple of the text
+  size `[Inference]`; plus `language` `String` and `Url` allocations per
+  doc. At Magento-2 scale the sum over M files is the dominant memory term
+  `[Inference]` — trees likely dominate text.
+- Second unbounded map: the semantic-tokens delta cache
+  `Arc<DashMap<Url, CachedSemanticTokens>>` — entries are replaced per
+  response but never evicted on document close
+  (`state/mod.rs:31`, `:143-145`).
+- `ServerState::documents()` clones **every** entry
+  (`state/mod.rs:83-88`) — O(D) snapshots per call.
+
+---
+
+## Q4. Tree-sitter lifecycle
+
+- **Parse points** (all eager, all synchronous):
+  - every `insert_document` — didOpen, didClose-keep, watched-file
+    refresh, refresh loads, oneshot open (`documents.rs:35-52`);
+  - didChange batch: `tree.edit()` per change + one incremental re-parse
+    (`documents.rs:166-178`, `:197-209`) with a full-text `String`
+    materialization per batch (`document.rs:85-87`);
+  - full-replace change: full parse (`documents.rs:143-152`);
+  - didSave: full re-parse from scratch (`documents.rs:296-314`);
+  - failed incremental: full re-read + re-parse (`documents.rs:229-262`).
+- **No re-parse-all trigger exists** — trees only refresh per-document via
+  the paths above.
+- `Parser::new()` is called per parse site (`documents.rs:43`, `:301`,
+  `:398`) — a fresh parser allocation per event/file, no reuse
+  `[Inference]` on cost (allocation + language set per instance).
+- `Document::query` recompiles the query string on **every call**
+  (`Query::new`, `document.rs:184-185`) and materializes the full text
+  (`document.rs:188`) — downstream servers calling `doc.query(...)` per
+  hover/completion pay compile + copy per request. No query cache exists.
+
+---
+
+## Q5. Interactive-request machinery (hover/definition)
+
+- Document lookup path: `DashMap` get + full `Document` snapshot clone per
+  lookup (`state/mod.rs:73-76`); the dispatch engine performs four such
+  lookups per request (`macros/src/dispatch.rs:162`, `:170`, `:181`,
+  `:194`) — see Q1.
+- Untracked file URLs cost two synchronous disk reads + two rope builds
+  per request (`dispatch.rs:170`, `:194` → `with_state/mod.rs:58-76`).
+- Staleness snapshot: version compare, `CONTENT_MODIFIED` on mismatch —
+  O(1) (`dispatch.rs:180-188`).
+- Conversion engine: zero-cost when negotiated encoding is UTF-8
+  (early return, `conversions.rs:29-31`); per-position cost is
+  O(line length) otherwise. Response-shaped conversions (locations,
+  diagnostics, edits) are linear in response size, plus one `Document`
+  clone per distinct referenced URL (`conversion.rs:55-100`).
+- URL-less requests through the anchored engine (and every resolve-family
+  request) resolve a "sole document" by calling
+  `state.documents()` — cloning **all** D tracked documents — just to test
+  `len() == 1` (`with_state/mod.rs:47-53`; invoked at `dispatch.rs:126`
+  for resolve rows and `:170`/`:194` for URL-less anchored rows). At D =
+  10k that is 10k `Document` clones per resolve request.
+- Nothing in the interactive path scales with F (total workspace files)
+  except: workspace/symbol per-symbol document resolution
+  (`symbol.rs:37-71`), and any downstream handler that iterates
+  `state.documents()`.
+
+---
+
+## Q6. `ServerOptions` surface today
+
+`src/server/options.rs` — the complete knob list:
+
+- `ServerOptions::with_workspace_diagnostics(impl Into<WorkspaceDiagnostics>)`
+  (`options.rs:20-27`)
+- `WorkspaceDiagnostics`: `Disabled` / `Enabled` (default) /
+  `Configurable(WorkspaceDiagnosticsSetting)` (`options.rs:32-40`), with
+  constructors `disabled()`, `enabled()`, `setting(key)` (`options.rs:44-62`)
+- `WorkspaceDiagnosticsSetting::with_default_enabled(bool)` (`options.rs:74-79`)
+- `ConfigurationKey::new(section)` / `.with_path([...])` (`options.rs:96-108`)
+
+That is all. There are **no** knobs for walk configuration, walk
+parallelism, refresh incrementality, document caps, per-file parse policy,
+or request concurrency (the 8 is a private const, `serve.rs:15-18`).
+
+---
+
+## Q7. Parallelism / serialism inventory, and sync IO in async paths
+
+Serial loops over N documents/files (candidates for bounded parallelism):
+
+| # | Loop | Site | Note |
+|---|------|------|------|
+| 1 | Root walk | `src/workspace/walker.rs:61-78` | single-threaded `build()`; `build_parallel` unused; collects + sorts all paths (`:80`) |
+| 2 | Refresh read/insert | `src/server/state/workspace.rs:92-115` | serial `std::fs` read + full parse per file, on the request's executor thread |
+| 3 | Workspace diagnostics per-doc awaits | `src/workspace/diagnostics.rs:399-432` | sequential `.await`s; no `JoinSet`/`buffer_unordered` |
+| 4 | Oneshot open loop | `src/oneshot/workspace_diagnostics.rs:222-224` | serial did_open per file (each a full parse) |
+| 5 | Oneshot diagnostics loop | `src/oneshot/workspace_diagnostics.rs:227-234` | serial `.await` per doc |
+| 6 | Oneshot discovery reads | `src/oneshot/workspace_diagnostics.rs:252-256` (read at `:280`) | serial sync reads, all contents held in memory |
+| 7 | Watched-files refresh | `src/server/state/documents.rs:323-359` (read at `:349`) | serial sync read+parse per event |
+
+`std::fs` calls inside async request/notification paths (block the
+executor):
+
+| Site | Path |
+|------|------|
+| `src/server/with_state/mod.rs:64` | `read_document_from_disk` — dispatch-engine fallback; up to **twice per request** for untracked file URLs (`dispatch.rs:170`, `:194`) |
+| `src/server/state/workspace.rs:113` | refresh read loop — M reads per workspace/diagnostic request |
+| `src/server/state/documents.rs:112` | didClose keep-snapshot read |
+| `src/server/state/documents.rs:238` | didChange failed-incremental reload |
+| `src/server/state/documents.rs:279` | didSave no-text fallback |
+| `src/server/state/documents.rs:349` | watched-files refresh read |
+| `src/workspace/walker.rs:48` | root canonicalize (per refresh) |
+| `src/server/state/workspace.rs:153` | folder canonicalize (setup only) |
+| `src/oneshot/workspace_diagnostics.rs:280` | discovery read (batch context) |
+
+The notification-handler reads are deliberate (LSP/async-lsp synchronous
+handler constraint, documented at `documents.rs:230-237`, `:273-275`,
+`:342-345`); each carries an `arch-lint` allow. The dispatch-engine reads
+(`with_state/mod.rs:58-76`) are on the request path, not the notification
+constraint path.
+
+Note: the main-crate tokio dependency enables only `io-std` and `rt`
+(`Cargo.toml:59`); `tokio::fs` is dev-deps-only (`Cargo.toml:67`), so
+async IO today would require a feature addition.
+
+---
+
+## Q8. Other hazards at 10k+ files
+
+- **O(N²) workspace-report merge**: `push_workspace_report` linear
+  `position` scan per report (`diagnostics.rs:501-510`). At M = 10k with
+  related reports this is ~10⁸ `Url` comparisons per request.
+- **`url_is_in_roots` per retained doc**: `Url::to_file_path()` parse +
+  allocation + root `starts_with` per doc per refresh
+  (`workspace.rs:118-122`, `:145-148`) — O(D×R) URL parses per request.
+- **`documents()` full-clone for sole-document detection**:
+  `with_state/mod.rs:47-53` — O(D) `Document` clones per resolve/URL-less
+  request (Q5).
+- **Full-text `String` churn per didChange batch**: `text_contents()` in
+  the incremental re-parse (`documents.rs:207` ← `document.rs:85-87`) —
+  allocation + copy of the whole file per batch; same in every full parse
+  site and in `Document::query` (`document.rs:188`).
+- **Notification `params.clone()`**: full text cloned on didOpen
+  (`with_state/mod.rs:136`), didChange (`:149`), didSave with
+  `include_text` (`:156`; the crate advertises `include_text: true`,
+  `initialize.rs:70-72`).
+- **Matcher allocations per call**: `find` lowercases into a fresh
+  `String` (`matcher.rs:159-166`); `find_url` does `Url::to_file_path()`
+  per call (`:168-175`) — so the refresh loop parses each path to a URL
+  and then parses it back to a path: two conversions per file
+  (`workspace.rs:93-94`).
+- **Walk memory**: all F paths collected into one `Vec` and sorted
+  (`walker.rs:58-82`) — tens of thousands of `PathBuf`s per request, even
+  though most don't match any matcher (URL conversion per file happens
+  before matching, `workspace.rs:93-94`).
+- **DashMap write-guard hold during didChange**: the incremental edit +
+  full re-parse run while holding `get_mut` on the entry
+  (`documents.rs:125-221`) — concurrent `document()` reads of *other* URLs
+  in the same shard contend `[Inference]` — DashMap shard scope, not map
+  scope.
+- **Unbounded semantic-tokens cache**: replaced per response, never
+  evicted (`state/mod.rs:143-145`).
+- **Parser allocation per parse**: `Parser::new()` at `documents.rs:43`,
+  `:301`, `:398`; no parser reuse across files/events.
+- **No in-flight coalescing** of concurrent `workspace/diagnostic`
+  requests — each pays the full refresh independently (no lock or
+  generation gate around `refresh_workspace_documents`; the `generation`
+  counter in `diagnostics.rs:131-137` gates configuration, not refresh).
+- **`CONTENT_MODIFIED` aborts the whole workspace/diagnostic request** if
+  any single open document changes mid-scan (`diagnostics.rs:416-424`) —
+  at large M the window for a retry loop is wide `[Inference]` on client
+  retry behavior.
+
+---
+
+## Hotspot inventory
+
+| # | Path | Cost shape | IO/CPU | Scale risk |
+|---|------|-----------|--------|------------|
+| 1 | `refresh_workspace_documents` re-read + re-parse of all M files per request (`workspace.rs:99-115`) | O(F) walk + O(M) reads + O(M) full parses, per request | IO + CPU, sync | **high** |
+| 2 | Serial per-doc diagnostics loop (`diagnostics.rs:399-432`); oneshot twin (`workspace_diagnostics.rs:227-234`) | O(M) sequential awaits | CPU (downstream) + IO | **high** |
+| 3 | O(N²) report merge (`diagnostics.rs:501-510`) | O(N²) `Url` comparisons | CPU | **high** at 10k |
+| 4 | Oneshot: all file contents in memory + serial parse (`workspace_diagnostics.rs:218`, `:222-234`) | O(M) memory, serial CPU/IO | IO + CPU | **high** (batch) |
+| 5 | Dispatch engine: 4 `Document` clones per request; 2 sync disk reads for untracked URLs (`dispatch.rs:162-203`, `with_state/mod.rs:58-76`) | O(doc) ×4 per request | CPU + IO | medium |
+| 6 | Single-threaded walk, collect-all + sort (`walker.rs:58-82`) | O(F) paths | IO | medium |
+| 7 | `documents()` full clone for sole-doc detection (`with_state/mod.rs:47-53`) | O(D) clones per resolve/URL-less request | CPU | medium |
+| 8 | didChange: full-text `String` + re-parse under shard write guard (`documents.rs:207`, `:125`) | O(file) per batch | CPU | medium |
+| 9 | workspace/symbol per-symbol doc clones / disk reads (`symbol.rs:37-71`) | O(symbols) | CPU + IO | medium |
+| 10 | Eager full parse on every insert (open/close/watch/refresh) (`documents.rs:41-52`) | O(file) per file | CPU | medium |
+| 11 | `Document::query` recompiles query + full-text copy per call (`document.rs:184-188`) | O(query + file) per call | CPU | medium (downstream-facing) |
+| 12 | Double URL/path conversion per walked file (`workspace.rs:93-94`, `matcher.rs:168-175`) | O(F) parses | CPU | low |
+| 13 | `url_is_in_roots` retain scan (`workspace.rs:118-148`) | O(D×R) | CPU | low |
+| 14 | Notification `params.clone()` full text (`with_state/mod.rs:136,149,156`) | 2× text transient | CPU/MEM | low |
+| 15 | Unbounded semantic-tokens cache (`state/mod.rs:143-145`) | grows with distinct docs | MEM | low |
+
+---
+
+## Optimization candidates
+
+Ordered by expected scale payoff. Effort: S ≈ hours, M ≈ days, L ≈
+design-level change. All effort/risk values are guesses, not measurements.
+
+1. **Incremental refresh (mtime/size gate)** — in
+   `refresh_workspace_documents`, skip the read+insert for Workspace-origin
+   docs whose `fs::metadata` mtime+size are unchanged since load (store the
+   stamp on `DocumentEntry`). Turns the per-request O(M) read+parse into
+   O(changed). Effort M. Risk: mtime granularity/clock skews — pair with a
+   size check; falls back to re-read on doubt. No API break (internal
+   fields).
+2. **Kill the O(N²) merge** — index reports by `Url` (`HashMap<Url,
+   usize>`) in `push_workspace_report`/`workspace_diagnostic_items`.
+   Effort S. Risk: none; ordering is restored by the final sort that
+   already exists (`diagnostics.rs:434-438`).
+3. **Bounded-parallel workspace diagnostics** — run the per-doc
+   `document_diagnostics` loop over a bounded worker set (semaphore +
+   `JoinSet`, or `buffer_unordered(n)`), same for the oneshot loops.
+   Concurrency limit should reuse a knob next to `MAX_CONCURRENT_REQUESTS`
+   (`serve.rs:15-18`). Effort M. Risk: `CONTENT_MODIFIED` semantics become
+   per-document instead of aborting the whole request; report ordering
+   already normalized by sort.
+4. **Bounded-parallel / async refresh IO** — move the walk + read loop off
+   the executor (`spawn_blocking`) and/or parallelize reads (bounded),
+   possibly `ignore::WalkBuilder::build_parallel`. Effort M. Risk: the
+   synchronous-handler constraint doesn't apply to
+   `workspace_diagnostic_items` (it's an async request handler), but
+   `DashMap` insert contention and memory spike need a bound.
+5. **Oneshot streaming + parallelism** — stream files instead of holding
+   every text in `Vec<WorkspaceDocument>` (`workspace_diagnostics.rs:218`),
+   overlap open+parse+diagnose with a bounded pipeline. Effort M. Risk: low
+   — batch API, deterministic order preserved by result collection.
+6. **Reuse the dispatch snapshot** — compute `conversion_document` once per
+   request and reuse it for params + response conversion, keeping only the
+   cheap version re-read for the staleness check (`dispatch.rs:162-203`).
+   Cuts 4 clones → 1-2 and 2 disk reads → ≤1 for untracked URLs. Effort S
+   (macro edit + tests). Risk: low — staleness still checked against the
+   fresh version.
+7. **`Arc<Document>` storage** — store `Arc<Document>` in `DocumentEntry`
+   so `state.document()` clones an `Arc` (O(1)) instead of the full
+   snapshot; didChange writes via clone-on-write. Makes hotspots 5 and 7
+   near-free. Effort L (touches `ServerState` API surface — `document()`
+   return type — plus downstream servers). Risk: public-surface break;
+   fork distribution model tolerates it but downstream servers must update.
+8. **Avoid full-text `String` in parses** — feed `parser.parse` a ropey
+   chunk reader (`Document::text_reader` already exists,
+   `document.rs:70-78`) instead of `text_contents()` at
+   `documents.rs:149`, `:207`, `:259`, `:303`. Effort S/M. Risk: low —
+   tree-sitter parse accepts a reader; incremental-parse hot path loses a
+   whole-file allocation per batch.
+9. **Cache compiled tree-sitter queries** — offer a per-language/grammar
+   query cache so `Document::query` doesn't recompile per call
+   (`document.rs:184-188`). Effort M (API design: cache lives on grammar,
+   keyed by query string). Risk: memory growth per distinct query; API
+   addition is additive.
+10. **Match before URL conversion in refresh** — run `GlobSet::is_match`
+    on the walked `Path` before building a `Url` for every file
+    (`workspace.rs:93-94`), or build one combined matcher; also stream the
+    walk instead of collect+sort-all. Effort S/M. Risk: ordering
+    (`files()` is sorted; consumers rely on deterministic order —
+    oneshot sorts again at `workspace_diagnostics.rs:258`).
+11. **previousResultIds end-to-end** — make `result_id` a first-class
+    contract (wrapper computes/forwards stable ids) so unchanged documents
+    answer `Unchanged` and skip downstream work. Effort L (needs downstream
+    cooperation; the wrapper already forwards the ids,
+    `diagnostics.rs:389-393`, `:442-454`). Risk: contract design.
+12. **Parser reuse** — keep one `Parser` per language (or per state) instead
+    of `Parser::new()` per parse (`documents.rs:43`, `:301`, `:398`).
+    Effort S. Risk: low; parser instances are not `Sync`, needs per-thread
+    or per-call-site ownership thought `[Inference]`.
+
+### Questions the code could not answer
+
+- Actual per-document memory of a `tree_sitter::Tree` vs its text at PHP
+  scale — not derivable from this code; needs measurement.
+- Whether downstream servers return stable `result_id`s (decides if
+  candidate 11 can pay off) — wrapper-side code cannot show it.
+- The consumer's tokio runtime shape (worker count) — `serve()` never
+  builds a runtime; only `ConcurrencyLayer(8)` is fixed here
+  (`serve.rs:15-18`, `:87`).
