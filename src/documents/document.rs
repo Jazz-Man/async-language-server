@@ -14,7 +14,7 @@ use crate::server::DocumentMatcher;
 #[cfg(feature = "tree-sitter")]
 use crate::{
     error::QueryError,
-    tree_sitter::{Language, Node, Query, QueryCursor, StreamingIterator, Tree},
+    tree_sitter::{Language, Node, QueryCursor, StreamingIterator, TextProvider, Tree},
     tree_sitter_utils::{lsp_position_to_ts_point, ts_range_to_lsp_range},
 };
 
@@ -246,6 +246,15 @@ impl Document {
 
     /// Creates and runs a query for the given query string.
     ///
+    /// The compiled query is cached on the document's matcher, so repeated
+    /// queries with the same source string compile once.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stored tree does not correspond to the current text (a
+    /// bug: every mutation writes text and tree together), and a capture's
+    /// byte range is therefore out of bounds for the rope.
+    ///
     /// # Errors
     ///
     /// Returns [`QueryError::NoTree`] when the document has no tree-sitter
@@ -255,39 +264,64 @@ impl Document {
         &self,
         query: impl AsRef<str>,
     ) -> std::result::Result<Vec<DocumentQueryCapture>, QueryError> {
-        let lang = self
-            .inner
-            .tree_sitter_lang
-            .as_ref()
-            .ok_or(QueryError::NoTree)?;
         let tree = self
             .inner
             .tree_sitter_tree
             .as_ref()
             .ok_or(QueryError::NoTree)?;
 
-        let query =
-            Query::new(lang, query.as_ref()).map_err(|error| QueryError::InvalidQuery { error })?;
+        // A parsed tree implies the document's grammar and its matcher (the
+        // store derives both from the same match), so the cache consult covers
+        // every reachable path; a `None` matcher has no grammar to compile.
+        let query = self
+            .inner
+            .matcher
+            .as_ref()
+            .ok_or(QueryError::NoTree)?
+            .compiled_query(query.as_ref())?;
         let query_names = query.capture_names();
 
-        let doc_text = self.inner.text.to_string();
-        let doc_bytes = doc_text.as_bytes();
-
         let mut cursor = QueryCursor::new();
-        let mut it = cursor.matches(&query, tree.root_node(), doc_bytes);
+        let mut it = cursor.matches(
+            &query,
+            tree.root_node(),
+            RopeText {
+                rope: &self.inner.text,
+            },
+        );
 
         let mut items = Vec::new();
         while let Some(matched) = it.next() {
             for capture in matched.captures {
-                if let Ok(text) = capture.node.utf8_text(doc_bytes) {
-                    let name = query_names[capture.index as usize].to_owned();
-                    let text = text.to_owned();
-                    let range = ts_range_to_lsp_range(capture.node.range());
-                    items.push(DocumentQueryCapture { name, text, range });
-                }
+                let name = query_names[capture.index as usize].to_owned();
+                let text = self
+                    .inner
+                    .text
+                    .byte_slice(capture.node.byte_range())
+                    .chunks()
+                    .collect::<String>();
+                let range = ts_range_to_lsp_range(capture.node.range());
+                items.push(DocumentQueryCapture { name, text, range });
             }
         }
         Ok(items)
+    }
+}
+
+/// Serves tree-sitter's text-provider callbacks from the document's rope,
+/// yielding the requested node's byte range as rope chunks — avoiding the
+/// whole-file `String` that a `&[u8]` provider would require.
+#[cfg(feature = "tree-sitter")]
+struct RopeText<'text> {
+    rope: &'text Rope,
+}
+
+#[cfg(feature = "tree-sitter")]
+impl<'text> TextProvider<&'text str> for RopeText<'text> {
+    type I = ropey::iter::Chunks<'text>;
+
+    fn text(&mut self, node: Node) -> Self::I {
+        self.rope.byte_slice(node.byte_range()).chunks()
     }
 }
 

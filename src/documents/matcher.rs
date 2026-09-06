@@ -4,7 +4,12 @@ use async_lsp::lsp_types::Url;
 use globset::{Glob, GlobSet};
 
 #[cfg(feature = "tree-sitter")]
-use tree_sitter::Language;
+use dashmap::DashMap;
+#[cfg(feature = "tree-sitter")]
+use tree_sitter::{Language, Query};
+
+#[cfg(feature = "tree-sitter")]
+use crate::error::QueryError;
 
 /// Associates documents with a name by URL glob and/or language id.
 ///
@@ -33,6 +38,12 @@ pub struct DocumentMatcher {
     /// The tree-sitter language grammar to associate with the matched document.
     #[cfg(feature = "tree-sitter")]
     lang_grammar: Option<Language>,
+    /// Compiled tree-sitter queries keyed by their source string, compiled
+    /// against this matcher's grammar. The cache has no invalidation path:
+    /// an entry is a pure function of its key and the grammar, and both are
+    /// fixed for the matcher's lifetime.
+    #[cfg(feature = "tree-sitter")]
+    compiled_queries: DashMap<String, Arc<Query>>,
 }
 
 impl DocumentMatcher {
@@ -59,6 +70,8 @@ impl DocumentMatcher {
             lang_strings: Vec::new(),
             #[cfg(feature = "tree-sitter")]
             lang_grammar: None,
+            #[cfg(feature = "tree-sitter")]
+            compiled_queries: DashMap::new(),
         }
     }
 
@@ -101,6 +114,39 @@ impl DocumentMatcher {
     #[cfg(feature = "tree-sitter")]
     pub(crate) fn lang_grammar(&self) -> Option<Language> {
         self.lang_grammar.clone()
+    }
+
+    /// Returns the compiled form of the query source, compiling it against
+    /// this matcher's grammar on first use and serving later calls from the
+    /// per-matcher cache.
+    ///
+    /// The compiled query keeps the grammar alive at the tree-sitter level,
+    /// and the matcher itself owns the grammar — so a cache entry is sound
+    /// for the matcher's lifetime without further bookkeeping.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QueryError::NoTree`] when the matcher carries no
+    /// tree-sitter grammar, and [`QueryError::InvalidQuery`] when the
+    /// query source fails to compile against it.
+    #[cfg(feature = "tree-sitter")]
+    pub(crate) fn compiled_query(&self, source: &str) -> Result<Arc<Query>, QueryError> {
+        if let Some(cached) = self.compiled_queries.get(source) {
+            return Ok(Arc::clone(&cached));
+        }
+
+        let lang = self.lang_grammar.as_ref().ok_or(QueryError::NoTree)?;
+        let query = Query::new(lang, source).map_err(|error| QueryError::InvalidQuery { error })?;
+
+        // A racing caller may insert the same (grammar, source) entry first;
+        // both candidates are identical compilations for immutable inputs,
+        // so either winner is correct and the loser is dropped.
+        Ok(Arc::clone(
+            &self
+                .compiled_queries
+                .entry(source.to_owned())
+                .or_insert(Arc::new(query)),
+        ))
     }
 }
 
@@ -251,6 +297,41 @@ mod tests {
         assert!(matchers.find(&uri, "plaintext").is_none());
 
         fs::remove_dir_all(root).expect("temp dir can be removed");
+    }
+
+    #[cfg(feature = "tree-sitter")]
+    #[test]
+    fn compiled_query_is_cached_per_source_and_reports_compile_errors() {
+        use std::sync::Arc;
+
+        use crate::error::QueryError;
+
+        let matcher =
+            DocumentMatcher::new("json").with_lang_grammar(tree_sitter_json::LANGUAGE.into());
+
+        let first = matcher.compiled_query("(pair) @p").expect("query compiles");
+        let second = matcher.compiled_query("(pair) @p").expect("query compiles");
+        assert!(Arc::ptr_eq(&first, &second), "same source hits the cache");
+
+        let other = matcher
+            .compiled_query("(string) @s")
+            .expect("query compiles");
+        assert!(
+            !Arc::ptr_eq(&first, &other),
+            "distinct sources compile apart"
+        );
+
+        assert!(matches!(
+            matcher.compiled_query("(node"),
+            Err(QueryError::InvalidQuery { .. })
+        ));
+
+        // A grammar-less matcher has nothing to compile against:
+        // the NoTree surface, not a compile failure.
+        assert!(matches!(
+            DocumentMatcher::new("bare").compiled_query("(_)"),
+            Err(QueryError::NoTree)
+        ));
     }
 
     #[cfg(feature = "tree-sitter")]
