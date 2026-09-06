@@ -29,15 +29,16 @@ Choose the lowest tier that can express the assertion. The wire tier
 exists only for what unit tests cannot see: lifecycle gating, staleness
 retry, panic mapping, the concurrency bound, termination, wire encoding.
 
-The concurrency test (`at_most_eight_requests_run_concurrently`, in
+The concurrency test (`at_most_limit_requests_run_concurrently`, in
 `src/server/tests/robustness.rs`) doubles
-as a tripwire for an upstream deadlock: with `ConcurrencyLayer` at
-capacity, async-lsp 0.2.4's `MainLoop` stops polling in-flight tasks
-while waiting for `poll_ready` (oxalica/async-lsp#30), so the ninth
-request never proceeds even after the gates release — the test asserts
-that absence, then aborts the server task because the join handle can
-never complete. When that absence-check fails after an async-lsp upgrade,
-the upstream fix has landed: flip it to asserting recovery, following the
+as a tripwire for an upstream deadlock: the limit it probes comes from
+`available_parallelism()`, and with `ConcurrencyLayer` at capacity,
+async-lsp 0.2.4's `MainLoop` stops polling in-flight tasks while waiting
+for `poll_ready` (oxalica/async-lsp#30), so the overflow request never
+proceeds even after the gates release — the test asserts that absence,
+then aborts the server task because the join handle can never complete.
+When that absence-check fails after an async-lsp upgrade, the upstream
+fix has landed: flip it to asserting recovery, following the
 instructions in the test's own comment.
 
 ## Harness inventory
@@ -74,7 +75,10 @@ instructions in the test's own comment.
   the wire harness) — futures-rs has no timer, so the bound rides the
   `time` feature of the tokio dev-dependency. `processId: null` in test
   `initialize` keeps `ClientProcessMonitorLayer` inert; shutdown asserts
-  the expected EOF instead of hanging.
+  the expected EOF instead of hanging. Parallel-gate tests use the same
+  grammar — fill a bounded pool through channels or semaphores, bound
+  every wait, assert on what entered — never on elapsed time
+  (`for_each_bounded`'s width test, the wire concurrency tripwire).
 - All three feature configurations must compile and pass. Keep shared
   harness code free of tree-sitter API; a test that needs the feature
   gates itself with `#[cfg(feature = "tree-sitter")]`.
@@ -95,7 +99,8 @@ spec-matrix rows, mirror pairs — carries one
 reasoned entry per group in `.dupes-ignore.toml`; a NEW unignored group
 must fail the check, and thresholds are never loosened to hide one. The
 command runs on demand or periodically, outside the per-task battery
-(see `tech.md`).
+(see `tech.md`). The criterion bench (`cargo bench --bench
+oneshot_diagnostics`) also runs on demand, outside the battery.
 
 ## Adding a test for a new `Server` method
 

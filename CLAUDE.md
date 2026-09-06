@@ -19,7 +19,7 @@ Library crate (no binary) that wraps `async-lsp` to make language servers with l
 
 Two layers around async-lsp:
 
-1. **User layer — `Server` trait** (`src/server/server_trait.rs`): implementors override async methods (`hover`, `completion`, `definition`, `document_diagnostics`, ...). All optional; unimplemented ones return `METHOD_NOT_FOUND`. `serve()` (`src/server/serve.rs`) wires the implementor into async-lsp's `MainLoop` behind a tower middleware stack (lifecycle, tracing, concurrency limit of 8, panic catching, client-process monitor) over the process stdio.
+1. **User layer — `Server` trait** (`src/server/server_trait.rs`): implementors override async methods (`hover`, `completion`, `definition`, `document_diagnostics`, ...). All optional; unimplemented ones return `METHOD_NOT_FOUND`. `serve()` (`src/server/serve.rs`) wires the implementor into async-lsp's `MainLoop` behind a tower middleware stack (lifecycle, tracing, a concurrency limit derived from the CPU core count, panic catching, client-process monitor) over the process stdio.
 
 2. **Plumbing — `LanguageServerWithState`** (`src/server/with_state/mod.rs`, initialize flow in `src/server/with_state/initialize.rs`): implements async-lsp's `LanguageServer`. Handles `initialize` (position-encoding negotiation, capability merging, workspace folders) and all document notifications, then forwards requests to the `Server` trait.
 
@@ -44,7 +44,7 @@ The `lsp_dispatch!` table glues each async-lsp method to a `Server` method throu
 
 ### Workspace diagnostics
 
-`src/workspace/diagnostics.rs` implements the `workspace/diagnostic` request: walks roots, loads matching files as `Workspace` documents, runs per-document diagnostics through the same `Server` method, merges related-document reports. Exposure is set via `ServerOptions::with_workspace_diagnostics` — `Disabled` / `Enabled` / `Configurable(setting)`, where the setting is read from client configuration (`initializationOptions`, `workspace/configuration` requests, `didChangeConfiguration`, dynamic registration — each gated on client capabilities).
+`src/workspace/diagnostics.rs` implements the `workspace/diagnostic` request: walks roots, loads matching files as `Workspace` documents, runs per-document diagnostics through the same `Server` method, merges related-document reports. Per-document work goes through a width-bounded batch engine (`src/workspace/parallel.rs`'s `for_each_bounded`) defaulting to the CPU core count and narrowable via `ServerOptions::with_diagnostics_parallelism`. Exposure is set via `ServerOptions::with_workspace_diagnostics` — `Disabled` / `Enabled` / `Configurable(setting)`, where the setting is read from client configuration (`initializationOptions`, `workspace/configuration` requests, `didChangeConfiguration`, dynamic registration — each gated on client capabilities).
 
 ### `oneshot` module
 

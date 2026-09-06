@@ -17,8 +17,9 @@ Two layers wrap `async-lsp`:
 
 `serve()` (`src/server/serve.rs`) wires the implementor into async-lsp's `MainLoop`
 behind a tower `ServiceBuilder` stack — `LifecycleLayer`, `TracingLayer`,
-`ConcurrencyLayer(8)`, `CatchUnwindLayer`, `ClientProcessMonitorLayer` — over
-the process standard input and output, locked as non-blocking pipes through
+`ConcurrencyLayer` (in-flight requests bounded by the CPU core count),
+`CatchUnwindLayer`, `ClientProcessMonitorLayer` — over the
+process standard input and output, locked as non-blocking pipes through
 async-lsp's `PipeStdin`/`PipeStdout` (unix-only; nothing may leave bytes in
 the std buffered stdin/stdout alongside it). The generic
 `run_over_streams(server, reader, writer)` behind it is the server
@@ -99,6 +100,10 @@ plus an optional `Language`/`Tree` under the `tree-sitter` feature.
 Documents carry an origin: `Open` (from the editor) or `Workspace` (loaded
 from disk). Open documents win over disk state; closing an open document
 keeps a disk snapshot only when workspace diagnostics are enabled for it.
+Workspace-origin entries carry a `FileStamp` — `(mtime, size)` — and a
+refresh re-reads a file unless the recorded stamp exactly matches the
+disk's; the reads run on the blocking pool, while tree-sitter parses
+stay on the executor.
 
 `didChange` applies incremental edits to the Rope and, with tree-sitter,
 `tree.edit()` + incremental reparse. If incremental application fails, it
@@ -121,6 +126,13 @@ crate: `.gitignore` respected by default, hidden files skipped.
   reports. Exposure is set via `ServerOptions::with_workspace_diagnostics`:
   `Disabled` / `Enabled` / `Configurable(setting)`, where the setting is read
   from client configuration, each mechanism gated on client capabilities.
+- `src/workspace/parallel.rs` — `for_each_bounded`, the batch engine under
+  workspace diagnostics, refresh loads, and oneshot: at most `width`
+  per-document futures in flight (`futures::buffer_unordered`), results and
+  the propagated error in input order — the serial loop's all-or-nothing
+  outcome, including `CONTENT_MODIFIED`, is preserved. The width comes from
+  `ServerOptions::with_diagnostics_parallelism` and defaults to the CPU
+  core count.
 - `oneshot::workspace_diagnostics()` runs a `Server` over files on disk with
   no LSP client or transport — it drives `LanguageServerWithState` directly
   with a closed `ClientSocket`. CLI-style batch diagnostics.

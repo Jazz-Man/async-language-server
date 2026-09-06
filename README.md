@@ -69,7 +69,10 @@ the encoding negotiated with the client — conversions are handled internally.
   stack (tracing, concurrency limit, panic catching, client-process monitor)
   over the process stdio.
 - **Workspace diagnostics** — `workspace/diagnostic` with walker-based
-  scanning; exposure configured through `ServerOptions`.
+  scanning; exposure configured through `ServerOptions`. Batch work runs
+  through a parallel engine defaulting to the CPU core count
+  (`ServerOptions::with_diagnostics_parallelism` narrows it), with an
+  incremental refresh that skips unchanged files.
 - **`oneshot`** — run a `Server` over files on disk with no LSP client:
   CLI-style batch diagnostics. `server` is the capability layer (implement
   `Server`); `oneshot` is a clientless runner driving the same engine.

@@ -48,6 +48,9 @@ creeping back after the dupes refactor. `dupes.toml` sets the analysis knobs
 (`min_nodes`, `max_exact_duplicates`, `max_near_duplicates`) and `.dupes-ignore.toml` carries one reasoned
 entry per deliberate leftover — together they encode the invariants, so a
 non-ignored group means new duplication, not a threshold to loosen.
+Criterion benches run on demand (`cargo bench --bench oneshot_diagnostics`),
+not in CI: they exist for measuring the batch diagnostics pipeline when
+working on it, not as a gate.
 
 ## Lints
 
