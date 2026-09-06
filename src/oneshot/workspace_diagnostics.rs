@@ -245,17 +245,35 @@ where
                     .first()
                     .cloned()
                     .unwrap_or_else(|| matcher.name().to_ascii_lowercase());
-                let text = read_document_text(path).await?;
-                let document = OneshotDocument {
-                    uri: uri.clone(),
-                    language_id,
-                    version: 1,
-                    text,
+                // The read + open composite runs as one blocking hop when a
+                // tokio runtime is current (`did_open` is synchronous state,
+                // so it is pool-safe); plain-executor oneshot runs have no
+                // runtime to offload to and run it inline — bounded by the
+                // engine's width either way.
+                let open = move || -> ServerResult<(OneshotServer<S>, OneshotDocument)> {
+                    // arch-lint: allow(no-sync-io) reason="workspace file IO runs on the blocking pool by design"
+                    let text = fs::read_to_string(&path)?;
+                    let document = OneshotDocument {
+                        uri,
+                        language_id,
+                        version: 1,
+                        text,
+                    };
+                    server.open_document(&document)?;
+                    Ok((server, document))
                 };
-                server.open_document(&document)?;
+                let (mut server, document) =
+                    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                        handle
+                            .spawn_blocking(open)
+                            .await
+                            .map_err(std::io::Error::from)??
+                    } else {
+                        open()?
+                    };
                 let report = server.document_diagnostics(&document).await?;
                 Ok(Some(DocumentDiagnostics {
-                    uri,
+                    uri: document.uri,
                     version: document.version,
                     report,
                 }))
@@ -265,24 +283,6 @@ where
 
     let documents = results?.into_iter().flatten().collect();
     Ok(WorkspaceDiagnosticReport { documents })
-}
-
-/// Reads one workspace file's text for opening. The disk read runs on the
-/// blocking pool when a tokio runtime is current; the oneshot entry point
-/// also runs on plain executors (`futures::executor::block_on`), where the
-/// read happens inline — bounded by the engine's width either way.
-async fn read_document_text(path: PathBuf) -> ServerResult<String> {
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        // arch-lint: allow(no-sync-io) reason="workspace file IO runs on the blocking pool by design"
-        let text = handle
-            .spawn_blocking(move || fs::read_to_string(&path))
-            .await
-            .map_err(std::io::Error::from)??;
-        Ok(text)
-    } else {
-        // arch-lint: allow(no-sync-io) reason="plain-executor oneshot runs have no runtime to offload to; the read stays bounded by the engine's width"
-        fs::read_to_string(&path).map_err(ServerError::from)
-    }
 }
 
 fn diagnostics_from_report_kind(report: &DocumentDiagnosticReportKind) -> &[Diagnostic] {

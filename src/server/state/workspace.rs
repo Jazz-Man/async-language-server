@@ -152,8 +152,9 @@ fn file_stamp(path: &std::path::Path) -> Option<FileStamp> {
 
 /// Loads one workspace file into the document map: probes the disk stamp
 /// first, skips only an unchanged Workspace-origin entry, then reads the
-/// file and inserts the document, stamping it afterwards. The metadata
-/// probe and the read run on the blocking pool.
+/// file, parses it, and installs the document in one blocking hop,
+/// stamping it afterwards. The metadata probe and the read+parse+install
+/// composite run on the blocking pool.
 async fn load_workspace_document(
     state: ServerState,
     path: PathBuf,
@@ -178,14 +179,18 @@ async fn load_workspace_document(
         .first()
         .cloned()
         .unwrap_or_else(|| matcher.name().to_ascii_lowercase());
-    let text = tokio::task::spawn_blocking({
-        let path = path.clone();
-        // arch-lint: allow(no-sync-io) reason="workspace file IO runs on the blocking pool by design"
-        move || std::fs::read_to_string(&path)
+    tokio::task::spawn_blocking({
+        let state = state.clone();
+        let uri = uri.clone();
+        move || -> std::io::Result<()> {
+            // arch-lint: allow(no-sync-io) reason="workspace file IO runs on the blocking pool by design"
+            let text = std::fs::read_to_string(&path)?;
+            state.insert_document(uri, text, 0, language, DocumentOrigin::Workspace);
+            Ok(())
+        }
     })
     .await
     .map_err(std::io::Error::from)??;
-    state.insert_document(uri.clone(), text, 0, language, DocumentOrigin::Workspace);
     if let Some(mut entry) = state.documents.get_mut(&uri) {
         entry.stamp = stamp;
     }
