@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use async_lsp::lsp_types::Url;
 use globset::{Glob, GlobSet};
@@ -166,18 +166,20 @@ impl DocumentMatchers {
     }
 
     pub(crate) fn find_url(&self, url: &Url) -> Option<Arc<DocumentMatcher>> {
-        url.to_file_path().ok().and_then(|p| {
-            self.globsets
-                .iter()
-                .find(|(globset, _)| globset.is_match(&p))
-                .map(|(_, matcher)| Arc::clone(matcher))
-        })
+        url.to_file_path().ok().and_then(|p| self.find_path(&p))
+    }
+
+    pub(crate) fn find_path(&self, path: &Path) -> Option<Arc<DocumentMatcher>> {
+        self.globsets
+            .iter()
+            .find(|(globset, _)| globset.is_match(path))
+            .map(|(_, matcher)| Arc::clone(matcher))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{fs, path::Path};
 
     use async_lsp::lsp_types::Url;
 
@@ -207,6 +209,19 @@ mod tests {
         assert_eq!(found.name(), "json");
 
         fs::remove_dir_all(root).expect("temp dir can be removed");
+    }
+
+    #[test]
+    fn find_path_matches_url_globs_without_a_url() {
+        let matchers =
+            DocumentMatchers::new([DocumentMatcher::new("demo").with_url_globs(["**/*.demo"])]);
+
+        let found = matchers
+            .find_path(Path::new("/tmp/x/demo.demo"))
+            .expect("matched by path");
+        assert_eq!(found.name(), "demo");
+
+        assert!(matchers.find_path(Path::new("/tmp/x/demo.txt")).is_none());
     }
 
     #[test]

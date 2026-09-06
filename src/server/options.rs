@@ -1,9 +1,12 @@
+use std::num::NonZeroUsize;
+
 use async_lsp::lsp_types::{ConfigurationItem, LSPAny};
 
 /// Options for the language server wrapper.
 #[derive(Debug, Default, Clone)]
 pub struct ServerOptions {
     pub(crate) workspace_diagnostics: WorkspaceDiagnostics,
+    pub(crate) diagnostics_parallelism: Option<NonZeroUsize>,
 }
 
 impl ServerOptions {
@@ -25,6 +28,35 @@ impl ServerOptions {
         self.workspace_diagnostics = workspace_diagnostics.into();
         self
     }
+
+    /// Narrows how many documents the batch diagnostics pipeline works on
+    /// at once. Defaults to the machine's CPU core count.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::num::NonZeroUsize;
+    ///
+    /// use async_language_server::server::ServerOptions;
+    ///
+    /// let options = ServerOptions::default()
+    ///     .with_diagnostics_parallelism(NonZeroUsize::new(2).expect("nonzero"));
+    /// ```
+    #[must_use]
+    pub fn with_diagnostics_parallelism(mut self, width: NonZeroUsize) -> Self {
+        self.diagnostics_parallelism = Some(width);
+        self
+    }
+
+    pub(crate) fn diagnostics_parallelism(&self) -> usize {
+        self.diagnostics_parallelism
+            .map_or_else(default_parallelism, NonZeroUsize::get)
+    }
+}
+
+/// The crate-wide default width: every CPU core, at least one.
+fn default_parallelism() -> usize {
+    std::thread::available_parallelism().map_or(1, NonZeroUsize::get)
 }
 
 /// Controls how workspace diagnostics are made available.
@@ -157,7 +189,7 @@ fn value_at(value: &LSPAny, path: impl IntoIterator<Item = impl AsRef<str>>) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::ConfigurationKey;
+    use super::{ConfigurationKey, ServerOptions};
 
     #[test]
     fn configuration_key_reads_dotted_settings() {
@@ -203,6 +235,24 @@ mod tests {
                 },
             })),
             Some(false)
+        );
+    }
+
+    #[test]
+    fn diagnostics_parallelism_defaults_to_cores_and_is_narrowable() {
+        use std::num::NonZeroUsize;
+
+        let cores = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
+        assert_eq!(ServerOptions::default().diagnostics_parallelism(), cores);
+
+        let narrowed = ServerOptions::default()
+            .with_diagnostics_parallelism(NonZeroUsize::new(2).expect("constant is nonzero"));
+        assert_eq!(narrowed.diagnostics_parallelism(), 2);
+        assert_eq!(
+            narrowed
+                .with_diagnostics_parallelism(NonZeroUsize::new(1).expect("constant is nonzero"))
+                .diagnostics_parallelism(),
+            1
         );
     }
 }

@@ -1,5 +1,3 @@
-use std::num::NonZeroUsize;
-
 use async_lsp::{
     client_monitor::ClientProcessMonitorLayer, concurrency::ConcurrencyLayer,
     panic::CatchUnwindLayer, router::Router, server::LifecycleLayer, tracing::TracingLayer,
@@ -10,11 +8,6 @@ use tower::ServiceBuilder;
 use crate::{
     error::ServerResult,
     server::{LanguageServerWithState, Server},
-};
-
-const MAX_CONCURRENT_REQUESTS: NonZeroUsize = match NonZeroUsize::new(8) {
-    Some(value) => value,
-    None => unreachable!(),
 };
 
 /// Serves a language server over the process standard input and output.
@@ -29,7 +22,7 @@ const MAX_CONCURRENT_REQUESTS: NonZeroUsize = match NonZeroUsize::new(8) {
 /// This will automatically attach middleware for:
 ///
 /// - Tracing metadata for each request
-/// - Maximum concurrency of 8 in-flight LSP requests at a time
+/// - In-flight LSP requests bounded by the CPU core count
 /// - Catching panics and safely returning internal server error statuses
 /// - Client process monitoring and automatic server shutdown when client exits
 ///
@@ -84,7 +77,7 @@ where
             .layer(TracingLayer::default());
 
         builder
-            .layer(ConcurrencyLayer::new(MAX_CONCURRENT_REQUESTS))
+            .layer(ConcurrencyLayer::default())
             .layer(CatchUnwindLayer::default())
             .layer(ClientProcessMonitorLayer::new(client.clone()))
             .service(Router::from_language_server(LanguageServerWithState::new(

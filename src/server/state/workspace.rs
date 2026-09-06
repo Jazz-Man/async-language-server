@@ -1,15 +1,16 @@
-use std::{collections::HashSet, ops::ControlFlow, path::PathBuf};
+use std::{collections::HashSet, ops::ControlFlow, path::PathBuf, sync::Arc};
 
 use async_lsp::{
     Result,
     lsp_types::{DidChangeWorkspaceFoldersParams, Url, WorkspaceFolder},
 };
 
-use super::{DocumentOrigin, ServerState};
+use super::{DocumentOrigin, FileStamp, ServerState};
 
 use crate::{
     error::ServerResult,
-    workspace::{WorkspaceWalkConfig, WorkspaceWalker, path_to_url},
+    server::DocumentMatcher,
+    workspace::{WorkspaceWalkConfig, WorkspaceWalker, for_each_bounded, path_to_url},
 };
 
 impl ServerState {
@@ -76,7 +77,7 @@ impl ServerState {
         }
     }
 
-    pub(crate) fn refresh_workspace_documents(&self) -> ServerResult<Vec<Url>> {
+    pub(crate) async fn refresh_workspace_documents(&self) -> ServerResult<Vec<Url>> {
         if !self.workspace_diagnostics.enabled() {
             return Ok(self.document_urls());
         }
@@ -88,13 +89,13 @@ impl ServerState {
 
         let walker = WorkspaceWalker::new(&roots, WorkspaceWalkConfig::default())?;
         let mut urls = Vec::new();
+        let mut loads = Vec::new();
 
         for path in walker.files()? {
-            let uri = path_to_url(&path)?;
-            let Some(matcher) = self.matchers.find_url(&uri) else {
+            let Some(matcher) = self.matchers.find_path(&path) else {
                 continue;
             };
-
+            let uri = path_to_url(&path)?;
             urls.push(uri.clone());
             if self
                 .documents
@@ -104,15 +105,16 @@ impl ServerState {
                 continue;
             }
 
-            let language = matcher
-                .lang_strings()
-                .first()
-                .cloned()
-                .unwrap_or_else(|| matcher.name().to_ascii_lowercase());
-            // arch-lint: allow(no-sync-io) reason="workspace scanning is a synchronous batch pass over the ignore crate by design"
-            let text = std::fs::read_to_string(&path)?;
-            self.insert_document(uri, text, 0, language, DocumentOrigin::Workspace);
+            loads.push((path, uri, matcher));
         }
+
+        let state = self.clone();
+        let width = state.diagnostics_parallelism();
+        for_each_bounded(loads, width, move |(path, uri, matcher)| {
+            let state = state.clone();
+            async move { load_workspace_document(state, path, uri, matcher).await }
+        })
+        .await?;
 
         let urls: HashSet<_> = urls.into_iter().collect();
         self.documents.retain(|url, entry| {
@@ -142,6 +144,61 @@ impl ServerState {
     }
 }
 
+fn file_stamp(path: &std::path::Path) -> Option<FileStamp> {
+    // arch-lint: allow(no-sync-io) reason="workspace scanning is a synchronous batch pass over the ignore crate by design"
+    let metadata = std::fs::metadata(path).ok()?;
+    Some((metadata.modified().ok()?, metadata.len()))
+}
+
+/// Loads one workspace file into the document map: probes the disk stamp
+/// first, skips only an unchanged Workspace-origin entry, then reads the
+/// file and inserts the document, stamping it afterwards. The metadata
+/// probe and the read run on the blocking pool.
+async fn load_workspace_document(
+    state: ServerState,
+    path: PathBuf,
+    uri: Url,
+    matcher: Arc<DocumentMatcher>,
+) -> ServerResult<()> {
+    let stamp = tokio::task::spawn_blocking({
+        let path = path.clone();
+        move || file_stamp(&path)
+    })
+    .await
+    .ok()
+    .flatten();
+    if state.documents.get(&uri).is_some_and(|entry| {
+        entry.origin == DocumentOrigin::Workspace && stamp_unchanged(entry.stamp, stamp)
+    }) {
+        return Ok(());
+    }
+
+    let language = matcher
+        .lang_strings()
+        .first()
+        .cloned()
+        .unwrap_or_else(|| matcher.name().to_ascii_lowercase());
+    let text = tokio::task::spawn_blocking({
+        let path = path.clone();
+        // arch-lint: allow(no-sync-io) reason="workspace file IO runs on the blocking pool by design"
+        move || std::fs::read_to_string(&path)
+    })
+    .await
+    .map_err(std::io::Error::from)??;
+    state.insert_document(uri.clone(), text, 0, language, DocumentOrigin::Workspace);
+    if let Some(mut entry) = state.documents.get_mut(&uri) {
+        entry.stamp = stamp;
+    }
+    Ok(())
+}
+
+/// Conservative gate: only an exact stamp match on an already-tracked
+/// Workspace-origin document skips the re-read; missing stamps or any
+/// difference re-reads.
+fn stamp_unchanged(entry_stamp: Option<FileStamp>, disk_stamp: Option<FileStamp>) -> bool {
+    matches!((entry_stamp, disk_stamp), (Some(a), Some(b)) if a == b)
+}
+
 pub(super) fn url_is_in_roots(url: &Url, roots: &[PathBuf]) -> bool {
     url.to_file_path()
         .is_ok_and(|path| roots.iter().any(|root| path.starts_with(root)))
@@ -151,4 +208,26 @@ fn workspace_folder_path(folder: &WorkspaceFolder) -> Option<PathBuf> {
     let path = folder.uri.to_file_path().ok()?;
     // arch-lint: allow(no-sync-io) reason="one-time path canonicalization during workspace-folder setup"
     Some(std::fs::canonicalize(&path).unwrap_or(path))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stamp_unchanged;
+
+    #[test]
+    fn stamp_gate_is_conservative() {
+        use std::time::{Duration, SystemTime};
+
+        let now = SystemTime::now();
+        let stamp = (now, 12);
+        assert!(stamp_unchanged(Some(stamp), Some(stamp)));
+        assert!(!stamp_unchanged(
+            Some(stamp),
+            Some((now + Duration::from_secs(1), 12))
+        ));
+        assert!(!stamp_unchanged(Some(stamp), Some((now, 13))));
+        assert!(!stamp_unchanged(None, Some(stamp)));
+        assert!(!stamp_unchanged(Some(stamp), None));
+        assert!(!stamp_unchanged(None, None));
+    }
 }

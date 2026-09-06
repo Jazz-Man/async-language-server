@@ -26,15 +26,21 @@ pub struct ServerState {
     documents: Arc<DashMap<Url, DocumentEntry>>,
     workspace_roots: Arc<DashMap<Url, PathBuf>>,
     workspace_diagnostics: WorkspaceDiagnosticsState,
+    diagnostics_parallelism: usize,
     matchers: DocumentMatchers,
     encoding: Arc<Encoding>,
     semantic_tokens_cache: Arc<DashMap<Url, CachedSemanticTokens>>,
 }
 
+/// Filesystem stamp used to skip re-reading unchanged workspace files:
+/// (modification time, size in bytes). Any doubt re-reads.
+pub(crate) type FileStamp = (std::time::SystemTime, u64);
+
 #[derive(Debug, Clone)]
 struct DocumentEntry {
     document: Document,
     origin: DocumentOrigin,
+    stamp: Option<FileStamp>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,6 +92,26 @@ impl ServerState {
             .map(|entry| entry.document.clone())
             .collect()
     }
+
+    /// Returns the version of the tracked document at `url`, if tracked.
+    ///
+    /// A clone-free probe: unlike [`ServerState::document`], it does not
+    /// snapshot the document.
+    pub(crate) fn document_version(&self, url: &Url) -> Option<i32> {
+        self.documents
+            .get(url)
+            .map(|entry| entry.document.version())
+    }
+
+    /// Returns the sole tracked document when exactly one is tracked.
+    ///
+    /// The resolve-family heuristic: with zero or several tracked
+    /// documents there is no sole document to convert against.
+    pub(crate) fn sole_document(&self) -> Option<Document> {
+        let mut entries = self.documents.iter();
+        let first = entries.next()?.document.clone();
+        entries.next().is_none().then_some(first)
+    }
 }
 
 // Private implementation
@@ -95,6 +121,7 @@ impl ServerState {
         let documents = Arc::new(DashMap::new());
         let workspace_roots = Arc::new(DashMap::new());
         let workspace_diagnostics = WorkspaceDiagnosticsState::new(options);
+        let diagnostics_parallelism = options.diagnostics_parallelism();
         let matchers = DocumentMatchers::new(T::server_document_matchers());
         let encoding = Arc::new(Encoding::default());
         let semantic_tokens_cache = Arc::new(DashMap::new());
@@ -103,6 +130,7 @@ impl ServerState {
             documents,
             workspace_roots,
             workspace_diagnostics,
+            diagnostics_parallelism,
             matchers,
             encoding,
             semantic_tokens_cache,
@@ -111,6 +139,13 @@ impl ServerState {
 
     pub(crate) fn workspace_diagnostics(&self) -> WorkspaceDiagnosticsState {
         self.workspace_diagnostics.clone()
+    }
+
+    /// How many documents the batch diagnostics pipeline may work on at
+    /// once (`ServerOptions::with_diagnostics_parallelism`, defaulting to
+    /// the CPU core count).
+    pub(crate) fn diagnostics_parallelism(&self) -> usize {
+        self.diagnostics_parallelism
     }
 
     pub(crate) fn set_workspace_diagnostics_enabled(&self, enabled: bool) -> bool {

@@ -13,7 +13,7 @@ use ropey::Rope;
 use async_lsp::lsp_types::TextDocumentContentChangeEvent;
 
 #[cfg(feature = "tree-sitter")]
-use tree_sitter::{InputEdit, Parser, Point};
+use tree_sitter::{InputEdit, Parser, Point, Tree};
 
 use super::workspace::url_is_in_roots;
 use super::{DocumentEntry, DocumentOrigin, ServerState};
@@ -38,11 +38,13 @@ impl ServerState {
             .find(&url, language.as_str())
             .and_then(|m| m.lang_grammar());
 
+        let text_rope = Rope::from(text);
+
         #[cfg(feature = "tree-sitter")]
         let tree_sitter_tree = if let Some(lang) = tree_sitter_lang.as_ref() {
             let mut parser = Parser::new();
             if parser.set_language(lang).is_ok() {
-                parser.parse(&text, None)
+                parse_rope(&mut parser, &text_rope, None)
             } else {
                 tree_sitter_lang.take();
                 None
@@ -58,7 +60,7 @@ impl ServerState {
             DocumentEntry {
                 document: Document {
                     uri: url,
-                    text: Rope::from(text),
+                    text: text_rope,
                     version,
                     language,
                     matcher,
@@ -68,6 +70,7 @@ impl ServerState {
                     tree_sitter_tree,
                 },
                 origin,
+                stamp: None,
             },
         );
     }
@@ -139,16 +142,7 @@ impl ServerState {
 
         for change in params.content_changes {
             let Some(range) = change.range else {
-                doc.text = Rope::from_str(&change.text);
-
-                #[cfg(feature = "tree-sitter")]
-                {
-                    let mut parser = doc_parser(doc);
-                    doc.tree_sitter_tree = parser
-                        .as_mut()
-                        .and_then(|parser| parser.parse(doc.text_contents(), None));
-                }
-
+                replace_full_text(doc, &change.text);
                 continue;
             };
 
@@ -204,7 +198,7 @@ impl ServerState {
                 reason = "invariant: a document carrying a tree always has its parser"
             )]
             let mut parser = doc_parser(doc).expect("has tree - must have parser");
-            let updated_tree = parser.parse(doc.text_contents(), Some(tree));
+            let updated_tree = parse_rope(&mut parser, doc.text(), Some(tree));
             doc.tree_sitter_tree = updated_tree;
         }
 
@@ -256,7 +250,7 @@ impl ServerState {
                 let mut parser = doc_parser(doc);
                 doc.tree_sitter_tree = parser
                     .as_mut()
-                    .and_then(|parser| parser.parse(doc.text_contents(), None));
+                    .and_then(|parser| parse_rope(parser, doc.text(), None));
             }
         }
     }
@@ -300,7 +294,7 @@ impl ServerState {
             let tree_sitter_tree = if let Some(lang) = tree_sitter_lang.as_ref() {
                 let mut parser = Parser::new();
                 if parser.set_language(lang).is_ok() {
-                    parser.parse(doc.text_contents(), None)
+                    parse_rope(&mut parser, doc.text(), None)
                 } else {
                     tree_sitter_lang.take();
                     None
@@ -401,6 +395,45 @@ fn doc_parser(doc: &Document) -> Option<Parser> {
     } else {
         None
     }
+}
+
+/// Parses a rope's text through tree-sitter's chunked-input callback,
+/// avoiding the whole-document `String` that `text_contents` would
+/// allocate. The callback serves the chunk containing the requested byte
+/// offset; tree-sitter drives it sequentially and may seek within edited
+/// ranges when an old tree is supplied.
+#[cfg(feature = "tree-sitter")]
+fn parse_rope(parser: &mut Parser, rope: &Rope, old_tree: Option<&Tree>) -> Option<Tree> {
+    parser.parse_with_options(
+        &mut |byte_offset: usize, _point: Point| -> &str {
+            let end = rope.len_bytes();
+            let offset = byte_offset.min(end);
+            if offset == end {
+                return "";
+            }
+            let (chunk, chunk_start, _, _) = rope.chunk_at_byte(offset);
+            &chunk[offset - chunk_start..]
+        },
+        old_tree,
+        None,
+    )
+}
+
+/// Replaces a document's whole text (a change with no range) and,
+/// under the tree-sitter feature, re-parses its tree from the new
+/// rope before the text is moved in.
+fn replace_full_text(doc: &mut Document, text: &str) {
+    let text_rope = Rope::from_str(text);
+
+    #[cfg(feature = "tree-sitter")]
+    {
+        let mut parser = doc_parser(doc);
+        doc.tree_sitter_tree = parser
+            .as_mut()
+            .and_then(|parser| parse_rope(parser, &text_rope, None));
+    }
+
+    doc.text = text_rope;
 }
 
 /// Converts the range of an incremental change, using its arbitrary encoding,

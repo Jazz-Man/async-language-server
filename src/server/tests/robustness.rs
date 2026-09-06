@@ -95,7 +95,7 @@ async fn panicking_handler_returns_structured_error() {
 }
 
 #[tokio::test]
-async fn at_most_eight_requests_run_concurrently() {
+async fn at_most_limit_requests_run_concurrently() {
     let (entered_tx, mut entered_rx) = mpsc::unbounded_channel();
     let (release_tx, release_rx) = watch::channel(false);
     let server_impl = GatedServer {
@@ -105,7 +105,9 @@ async fn at_most_eight_requests_run_concurrently() {
     let (mut client, server) = spawn_wire_server(server_impl);
     client.initialize_client(&["utf-16"]).await;
 
-    for id in 10..19 {
+    let limit = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    // One more request than the layer admits.
+    for id in 0..=i64::try_from(limit).expect("core count fits i64") {
         client
             .send_request(
                 id,
@@ -115,31 +117,33 @@ async fn at_most_eight_requests_run_concurrently() {
             .await;
     }
 
-    for _ in 0..8 {
+    for _ in 0..limit {
         timeout(WIRE_TIMEOUT, entered_rx.recv())
             .await
             .expect("handler entered")
             .expect("signal received");
     }
-    // Absence-check: nothing enters while all eight permits are held.
+    // Absence-check: nothing enters while all the permits are held.
     timeout(Duration::from_millis(250), entered_rx.recv())
         .await
-        .expect_err("the ninth handler must wait for a permit");
+        .expect_err("the overflow handler must wait for a permit");
 
     release_tx.send(true).expect("release sends");
 
-    // Tripwire: the release must NOT admit the ninth handler. With
+    // Tripwire: the release must NOT admit the overflow handler. With
     // ConcurrencyLayer at capacity, async-lsp 0.2.4's MainLoop stops
     // polling in-flight tasks while waiting for poll_ready
     // (https://github.com/oxalica/async-lsp/pull/30), so the gated
     // futures never observe the release and the permits never free.
     // When this absence-check starts failing after an async-lsp
     // upgrade, the upstream fix has landed: flip it to asserting the
-    // ninth handler enters and completes, await the nine responses
+    // overflow handler enters and completes, await all the responses
     // again, and restore the `bounded(server)` teardown.
     timeout(Duration::from_millis(250), entered_rx.recv())
         .await
-        .expect_err("the ninth handler is still blocked after release: did upstream PR #30 land?");
+        .expect_err(
+            "the overflow handler is still blocked after release: did upstream PR #30 land?",
+        );
 
     // Upstream deadlock (see above): the join handle can never complete,
     // so abort the task instead of awaiting it.

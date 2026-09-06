@@ -27,6 +27,7 @@ use crate::{
     server::{
         Server, ServerOptions, ServerState, WorkspaceDiagnostics, WorkspaceDiagnosticsSetting,
     },
+    workspace::for_each_bounded,
 };
 
 #[derive(Debug, Clone)]
@@ -393,50 +394,65 @@ where
         .collect();
     let urls = state
         .refresh_workspace_documents()
+        .await
         .map_err(ResponseError::from)?;
-    let mut items = Vec::new();
 
-    for url in urls {
-        let Some(doc) = state.document(&url) else {
-            continue;
-        };
-        let version = doc.version();
-        let mut result = server
-            .document_diagnostics(
-                state.clone(),
-                document_diagnostic_params(
-                    url.clone(),
-                    identifier.clone(),
-                    previous_result_ids.get(&url).cloned(),
-                ),
-            )
-            .await
-            .map_err(ResponseError::from)?;
+    let width = state.diagnostics_parallelism();
+    let state_for_items = state.clone();
+    let item_sinks = for_each_bounded(urls, width, move |url| {
+        let server = Arc::clone(&server);
+        let state = state_for_items.clone();
+        let identifier = identifier.clone();
+        let previous = previous_result_ids.get(&url).cloned();
+        async move {
+            let Some(doc) = state.document(&url) else {
+                return Ok(WorkspaceReportSink::default());
+            };
+            let version = doc.version();
+            let mut result = server
+                .document_diagnostics(
+                    state.clone(),
+                    document_diagnostic_params(url.clone(), identifier, previous),
+                )
+                .await
+                .map_err(ResponseError::from)?;
 
-        if state
-            .document(&url)
-            .is_some_and(|doc| doc.version() != version)
-        {
-            return Err(ResponseError::new(
-                ErrorCode::CONTENT_MODIFIED,
-                "document was modified during processing",
-            ));
+            if state.document_version(&url).is_some_and(|v| v != version) {
+                return Err(ResponseError::new(
+                    ErrorCode::CONTENT_MODIFIED,
+                    "document was modified during processing",
+                ));
+            }
+
+            <crate::lsp_requests::DocumentDiagnosticsRequest as Request>::modify_response(
+                &state,
+                &doc,
+                &mut result,
+            );
+            let mut sink = WorkspaceReportSink::default();
+            push_workspace_reports_from_document_result(&state, url, result, &mut sink);
+            Ok(sink)
         }
+    })
+    .await?;
 
-        <crate::lsp_requests::DocumentDiagnosticsRequest as Request>::modify_response(
-            &state,
-            &doc,
-            &mut result,
-        );
-        push_workspace_reports_from_document_result(&state, url, result, &mut items);
+    // The engine restored input order, so folding the per-item sinks in
+    // sequence replays the serial loop's push order — every report merges
+    // with the `replace` flag it was pushed with.
+    let mut sink = WorkspaceReportSink::default();
+    for item_sink in item_sinks {
+        for (report, replace) in item_sink.reports {
+            push_workspace_report(&mut sink, report, replace);
+        }
     }
 
-    items.sort_by(|a, b| {
+    let mut reports: Vec<_> = sink.reports.into_iter().map(|(report, _)| report).collect();
+    reports.sort_by(|a, b| {
         workspace_report_uri(a)
             .as_str()
             .cmp(workspace_report_uri(b).as_str())
     });
-    Ok(items)
+    Ok(reports)
 }
 
 fn document_diagnostic_params(
@@ -457,12 +473,12 @@ fn push_workspace_reports_from_document_result(
     state: &ServerState,
     uri: Url,
     result: DocumentDiagnosticReportResult,
-    reports: &mut Vec<WorkspaceDocumentDiagnosticReport>,
+    sink: &mut WorkspaceReportSink,
 ) {
     match result {
         DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(report)) => {
             push_workspace_report(
-                reports,
+                sink,
                 WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {
                     version: state.document_workspace_version(&uri),
                     uri,
@@ -470,11 +486,11 @@ fn push_workspace_reports_from_document_result(
                 }),
                 true,
             );
-            push_related_reports(state, report.related_documents, reports);
+            push_related_reports(state, report.related_documents, sink);
         }
         DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Unchanged(report)) => {
             push_workspace_report(
-                reports,
+                sink,
                 WorkspaceDocumentDiagnosticReport::Unchanged(
                     WorkspaceUnchangedDocumentDiagnosticReport {
                         version: state.document_workspace_version(&uri),
@@ -485,28 +501,38 @@ fn push_workspace_reports_from_document_result(
                 ),
                 true,
             );
-            push_related_reports(state, report.related_documents, reports);
+            push_related_reports(state, report.related_documents, sink);
         }
         DocumentDiagnosticReportResult::Partial(report) => {
-            push_related_reports(state, report.related_documents, reports);
+            push_related_reports(state, report.related_documents, sink);
         }
     }
 }
 
+/// Ordered report accumulator with an O(1) URI index: pushes replace or
+/// append by URI in constant time; the final `Vec` order is the insertion
+/// order (the caller's final sort normalizes output). Each report carries
+/// the `replace` flag it was pushed with, so per-item sinks fold into a
+/// shared sink without losing a flag.
+#[derive(Default)]
+struct WorkspaceReportSink {
+    reports: Vec<(WorkspaceDocumentDiagnosticReport, bool)>,
+    index: HashMap<Url, usize>,
+}
+
 fn push_workspace_report(
-    reports: &mut Vec<WorkspaceDocumentDiagnosticReport>,
+    sink: &mut WorkspaceReportSink,
     report: WorkspaceDocumentDiagnosticReport,
     replace: bool,
 ) {
-    if let Some(index) = reports
-        .iter()
-        .position(|existing| workspace_report_uri(existing) == workspace_report_uri(&report))
-    {
+    let uri = workspace_report_uri(&report).clone();
+    if let Some(&position) = sink.index.get(&uri) {
         if replace {
-            reports[index] = report;
+            sink.reports[position] = (report, replace);
         }
     } else {
-        reports.push(report);
+        sink.index.insert(uri, sink.reports.len());
+        sink.reports.push((report, replace));
     }
 }
 
@@ -520,7 +546,7 @@ fn workspace_report_uri(report: &WorkspaceDocumentDiagnosticReport) -> &Url {
 fn push_related_reports(
     state: &ServerState,
     related_documents: Option<HashMap<Url, DocumentDiagnosticReportKind>>,
-    reports: &mut Vec<WorkspaceDocumentDiagnosticReport>,
+    sink: &mut WorkspaceReportSink,
 ) {
     let Some(related_documents) = related_documents else {
         return;
@@ -530,7 +556,7 @@ fn push_related_reports(
         match report {
             DocumentDiagnosticReportKind::Full(report) => {
                 push_workspace_report(
-                    reports,
+                    sink,
                     WorkspaceDocumentDiagnosticReport::Full(
                         WorkspaceFullDocumentDiagnosticReport {
                             version: state.document_workspace_version(&uri),
@@ -543,7 +569,7 @@ fn push_related_reports(
             }
             DocumentDiagnosticReportKind::Unchanged(report) => {
                 push_workspace_report(
-                    reports,
+                    sink,
                     WorkspaceDocumentDiagnosticReport::Unchanged(
                         WorkspaceUnchangedDocumentDiagnosticReport {
                             version: state.document_workspace_version(&uri),
@@ -555,5 +581,237 @@ fn push_related_reports(
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, num::NonZeroUsize, sync::Arc, time::Duration};
+
+    use async_lsp::{
+        ClientSocket,
+        lsp_types::{
+            DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+            PartialResultParams, RelatedFullDocumentDiagnosticReport,
+            UnchangedDocumentDiagnosticReport, WorkDoneProgressParams, WorkspaceDiagnosticParams,
+        },
+    };
+    use tokio::sync::{Semaphore, mpsc};
+
+    use crate::{
+        error::ServerResult,
+        server::{DocumentMatcher, Server, ServerOptions, ServerState, WorkspaceDiagnostics},
+        testing::{temp_workspace, workspace_folder},
+    };
+
+    use super::{
+        FullDocumentDiagnosticReport, Url, WorkspaceDocumentDiagnosticReport,
+        WorkspaceFullDocumentDiagnosticReport, WorkspaceReportSink,
+        WorkspaceUnchangedDocumentDiagnosticReport, push_workspace_report,
+        workspace_diagnostic_items,
+    };
+
+    const ENTRY_TIMEOUT: Duration = Duration::from_secs(5);
+    const ABSENCE_TIMEOUT: Duration = Duration::from_millis(250);
+
+    #[test]
+    fn push_workspace_report_replaces_by_uri_and_appends_new() {
+        let mut sink = WorkspaceReportSink::default();
+        let uri = crate::testing::url("file:///tmp/a.txt");
+        push_workspace_report(
+            &mut sink,
+            WorkspaceDocumentDiagnosticReport::Unchanged(
+                WorkspaceUnchangedDocumentDiagnosticReport {
+                    version: None,
+                    uri: uri.clone(),
+                    unchanged_document_diagnostic_report: UnchangedDocumentDiagnosticReport {
+                        result_id: String::new(),
+                    },
+                },
+            ),
+            false,
+        );
+        push_workspace_report(
+            &mut sink,
+            WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {
+                version: None,
+                uri: uri.clone(),
+                full_document_diagnostic_report: FullDocumentDiagnosticReport::default(),
+            }),
+            true,
+        );
+        let other = crate::testing::url("file:///tmp/b.txt");
+        push_workspace_report(
+            &mut sink,
+            WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {
+                version: None,
+                uri: other,
+                full_document_diagnostic_report: FullDocumentDiagnosticReport::default(),
+            }),
+            false,
+        );
+        push_workspace_report(
+            &mut sink,
+            WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {
+                version: None,
+                uri: uri.clone(),
+                full_document_diagnostic_report: FullDocumentDiagnosticReport::default(),
+            }),
+            false,
+        );
+        // replace=true overwrote the first URI; the new URI appended; the
+        // `replace=false` pushes left one entry per URI — the last one,
+        // over the already-present `uri`, changed nothing at all.
+        assert_eq!(sink.reports.len(), 2);
+    }
+
+    struct GatedDiagnosticsServer {
+        entered: mpsc::UnboundedSender<Url>,
+        gate: Arc<Semaphore>,
+    }
+
+    impl Server for GatedDiagnosticsServer {
+        fn server_document_matchers() -> Vec<DocumentMatcher> {
+            vec![
+                DocumentMatcher::new("Gated")
+                    .with_url_globs(["**/*.diag", "*.diag"])
+                    .with_lang_strings(["diag"]),
+            ]
+        }
+
+        async fn document_diagnostics(
+            &self,
+            _state: ServerState,
+            params: DocumentDiagnosticParams,
+        ) -> ServerResult<DocumentDiagnosticReportResult> {
+            self.entered
+                .send(params.text_document.uri.clone())
+                .expect("entry channel open");
+            self.gate.acquire().await.expect("gate open").forget();
+            Ok(DocumentDiagnosticReportResult::Report(
+                DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+                    related_documents: None,
+                    full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                        result_id: Some(params.text_document.uri.to_string()),
+                        items: Vec::new(),
+                    },
+                }),
+            ))
+        }
+    }
+
+    fn gated_setup(
+        width: NonZeroUsize,
+        name: &str,
+    ) -> (
+        ServerState,
+        mpsc::UnboundedSender<Url>,
+        mpsc::UnboundedReceiver<Url>,
+        Arc<Semaphore>,
+    ) {
+        let root = temp_workspace("workspace_diagnostics", name);
+        for file in ["one", "two", "three"] {
+            fs::write(
+                root.join(format!("{file}.diag")),
+                format!("{file} diagnostics\n"),
+            )
+            .expect("test file can be written");
+        }
+        let options = ServerOptions::default()
+            .with_workspace_diagnostics(WorkspaceDiagnostics::Enabled)
+            .with_diagnostics_parallelism(width);
+        let state = ServerState::with_options::<GatedDiagnosticsServer>(
+            ClientSocket::new_closed(),
+            &options,
+        );
+        state.set_workspace_folders([workspace_folder(&root)]);
+        let (entered_tx, entered_rx) = mpsc::unbounded_channel();
+        (state, entered_tx, entered_rx, Arc::new(Semaphore::new(0)))
+    }
+
+    fn gated_params() -> WorkspaceDiagnosticParams {
+        WorkspaceDiagnosticParams {
+            identifier: None,
+            previous_result_ids: Vec::new(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn width_three_documents_enter_before_any_releases() {
+        let (state, entered_tx, mut entered_rx, gate) =
+            gated_setup(NonZeroUsize::new(3).expect("nonzero"), "width-three");
+        let server = Arc::new(GatedDiagnosticsServer {
+            entered: entered_tx,
+            gate: Arc::clone(&gate),
+        });
+        let items = tokio::spawn(workspace_diagnostic_items(server, state, gated_params()));
+
+        // All three handlers must enter while the gate is closed — the
+        // gate holds zero permits, so nothing has released yet: width 3
+        // runs the whole cohort at once.
+        let mut entered = Vec::new();
+        for _ in 0..3 {
+            let url = tokio::time::timeout(ENTRY_TIMEOUT, entered_rx.recv())
+                .await
+                .expect("handler enters before the timeout")
+                .expect("channel open");
+            entered.push(url);
+        }
+        assert_eq!(entered.len(), 3);
+        assert!(
+            tokio::time::timeout(ABSENCE_TIMEOUT, entered_rx.recv())
+                .await
+                .is_err(),
+            "no fourth document exists to enter"
+        );
+
+        gate.add_permits(3);
+        let items = tokio::time::timeout(ENTRY_TIMEOUT, items)
+            .await
+            .expect("task joins before the timeout")
+            .expect("task succeeds")
+            .expect("diagnostics succeed");
+        assert_eq!(items.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn width_one_runs_documents_one_at_a_time() {
+        let (state, entered_tx, mut entered_rx, gate) =
+            gated_setup(NonZeroUsize::new(1).expect("nonzero"), "width-one");
+        let server = Arc::new(GatedDiagnosticsServer {
+            entered: entered_tx,
+            gate: Arc::clone(&gate),
+        });
+        let items = tokio::spawn(workspace_diagnostic_items(server, state, gated_params()));
+
+        let first = tokio::time::timeout(ENTRY_TIMEOUT, entered_rx.recv())
+            .await
+            .expect("first handler enters")
+            .expect("channel open");
+        // The only width slot is held by the parked first handler: no
+        // second handler may enter until the test opens the gate.
+        assert!(
+            tokio::time::timeout(ABSENCE_TIMEOUT, entered_rx.recv())
+                .await
+                .is_err(),
+            "width 1 must serialize handlers"
+        );
+
+        gate.add_permits(1);
+        let second = tokio::time::timeout(ENTRY_TIMEOUT, entered_rx.recv())
+            .await
+            .expect("second handler enters after the release")
+            .expect("channel open");
+        assert_ne!(first, second);
+
+        gate.add_permits(2);
+        let items = tokio::time::timeout(ENTRY_TIMEOUT, items)
+            .await
+            .expect("task joins before the timeout")
+            .expect("task succeeds")
+            .expect("diagnostics succeed");
+        assert_eq!(items.len(), 3);
     }
 }

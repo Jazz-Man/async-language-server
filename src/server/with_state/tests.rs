@@ -789,8 +789,8 @@ fn initialize_prefers_utf32_over_utf16() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn configurable_workspace_diagnostics_can_be_toggled() {
+#[tokio::test]
+async fn configurable_workspace_diagnostics_can_be_toggled() {
     let root = temp_workspace("workspace", "configurable-diagnostics");
     let file = root.join("a.test");
     fs::write(&file, "disk").expect("test file can be written");
@@ -876,8 +876,8 @@ fn configurable_workspace_diagnostics_can_be_toggled() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn configurable_workspace_diagnostics_read_initialization_options() {
+#[tokio::test]
+async fn configurable_workspace_diagnostics_read_initialization_options() {
     let root = temp_workspace("workspace", "configurable-diagnostics-init");
     fs::write(root.join("a.test"), "disk").expect("test file can be written");
 
@@ -909,8 +909,8 @@ fn configurable_workspace_diagnostics_read_initialization_options() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn workspace_diagnostics_report_unopened_documents_without_versions() {
+#[tokio::test]
+async fn workspace_diagnostics_report_unopened_documents_without_versions() {
     let root = temp_workspace("workspace", "workspace-diagnostics");
     let file = root.join("a.test");
     fs::write(&file, "disk").expect("test file can be written");
@@ -972,8 +972,8 @@ fn workspace_diagnostics_use_open_document_versions() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn workspace_diagnostics_forward_previous_result_ids() {
+#[tokio::test]
+async fn workspace_diagnostics_forward_previous_result_ids() {
     let root = temp_workspace("workspace", "previous-result-id");
     let file = root.join("a.test");
     fs::write(&file, "disk").expect("test file can be written");
@@ -1010,8 +1010,8 @@ fn workspace_diagnostics_forward_previous_result_ids() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn workspace_folder_changes_are_used_by_workspace_diagnostics() {
+#[tokio::test]
+async fn workspace_folder_changes_are_used_by_workspace_diagnostics() {
     let first = temp_workspace("workspace", "workspace-folder-change-first");
     let second = temp_workspace("workspace", "workspace-folder-change-second");
     fs::write(first.join("a.test"), "first").expect("test file can be written");
@@ -1046,8 +1046,8 @@ fn workspace_folder_changes_are_used_by_workspace_diagnostics() {
     fs::remove_dir_all(second).expect("temp workspace can be removed");
 }
 
-#[test]
-fn workspace_diagnostics_prefer_direct_reports_over_related_reports() {
+#[tokio::test]
+async fn workspace_diagnostics_prefer_direct_reports_over_related_reports() {
     let root = temp_workspace("workspace", "related-reports");
     fs::write(root.join("a.test"), "source").expect("test file can be written");
     fs::write(root.join("b.test"), "direct").expect("test file can be written");
@@ -1452,8 +1452,8 @@ fn untracked_url_converts_against_disk() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn notification_hooks_run_after_the_internal_handlers() {
+#[tokio::test]
+async fn notification_hooks_run_after_the_internal_handlers() {
     // The watched file loads as a Workspace document through the real
     // workspace path, so the did_change_watched_files hook can observe the
     // already-refreshed snapshot.
@@ -1479,6 +1479,7 @@ fn notification_hooks_run_after_the_internal_handlers() {
     server
         .state
         .refresh_workspace_documents()
+        .await
         .expect("workspace documents can be refreshed");
     assert_eq!(
         server

@@ -46,8 +46,7 @@ const POSITION_ENCODING_PREFERRED_ORDER: [Encoding; 3] = [
 /// resolve-family heuristic), else none.
 fn conversion_document(state: &ServerState, url: Option<&Url>) -> Option<Document> {
     let Some(url) = url else {
-        let documents = state.documents();
-        return (documents.len() == 1).then(|| documents[0].clone());
+        return state.sole_document();
     };
     state.document(url).or_else(|| read_document_from_disk(url))
 }

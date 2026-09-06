@@ -49,8 +49,8 @@ fn full_content_change_replaces_document_text() {
     assert_eq!(state.document(&uri).unwrap().version(), 2);
 }
 
-#[test]
-fn workspace_documents_have_no_lsp_version() {
+#[tokio::test]
+async fn workspace_documents_have_no_lsp_version() {
     let root = temp_workspace("state", "workspace-version");
     let manifest = root.join("a.test");
     fs::write(&manifest, "disk").expect("test file can be written");
@@ -62,6 +62,7 @@ fn workspace_documents_have_no_lsp_version() {
     state.set_workspace_folders([workspace_folder(&root)]);
     let urls = state
         .refresh_workspace_documents()
+        .await
         .expect("workspace documents can be refreshed");
 
     assert_eq!(urls.len(), 1);
@@ -71,8 +72,8 @@ fn workspace_documents_have_no_lsp_version() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn workspace_refresh_preserves_open_documents() {
+#[tokio::test]
+async fn workspace_refresh_preserves_open_documents() {
     let root = temp_workspace("state", "open-document");
     let manifest = root.join("a.test");
     fs::write(&manifest, "disk").expect("test file can be written");
@@ -88,11 +89,73 @@ fn workspace_refresh_preserves_open_documents() {
 
     let urls = state
         .refresh_workspace_documents()
+        .await
         .expect("workspace documents can be refreshed");
 
     assert_eq!(urls, vec![uri.clone()]);
     assert_eq!(state.document(&uri).unwrap().text_contents(), "open");
     assert_eq!(state.document_workspace_version(&uri), Some(1));
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+#[tokio::test]
+async fn workspace_refresh_rereads_changed_files_and_keeps_untouched_ones() {
+    let root = temp_workspace("state", "refresh-stamp-gate");
+    let changed_path = root.join("a.test");
+    fs::write(&changed_path, "short").expect("test file can be written");
+    let stable_path = root.join("b.test");
+    fs::write(&stable_path, "stable").expect("test file can be written");
+    let changed = fs::canonicalize(&changed_path).expect("test file can be canonicalized");
+    let changed_uri = Url::from_file_path(&changed).expect("path can be converted to a URL");
+    let stable = fs::canonicalize(&stable_path).expect("test file can be canonicalized");
+    let stable_uri = Url::from_file_path(&stable).expect("path can be converted to a URL");
+
+    let state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    state.set_workspace_folders([workspace_folder(&root)]);
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("workspace documents can be refreshed");
+    assert_eq!(urls.len(), 2);
+    assert_eq!(
+        state
+            .document(&changed_uri)
+            .expect("changed file is tracked")
+            .text_contents(),
+        "short"
+    );
+
+    // Longer content: the size half of the stamp cannot match, so the gate
+    // must re-read even if the modification time stayed the same.
+    fs::write(&changed_path, "a longer replacement").expect("test file can be written");
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("workspace documents can be refreshed");
+
+    assert_eq!(
+        urls.len(),
+        2,
+        "untouched files stay tracked across refreshes"
+    );
+    assert_eq!(
+        state
+            .document(&changed_uri)
+            .expect("changed file stays tracked")
+            .text_contents(),
+        "a longer replacement"
+    );
+    assert_eq!(
+        state
+            .document(&stable_uri)
+            .expect("untouched file stays tracked")
+            .text_contents(),
+        "stable"
+    );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
@@ -343,8 +406,8 @@ fn document_save_removes_the_document_when_no_text_and_no_file() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn watched_files_change_rereads_mutated_workspace_document() {
+#[tokio::test]
+async fn watched_files_change_rereads_mutated_workspace_document() {
     let root = temp_workspace("state", "watched-changed");
     let path = root.join("a.test");
     fs::write(&path, "before").expect("test file can be written");
@@ -356,6 +419,7 @@ fn watched_files_change_rereads_mutated_workspace_document() {
     state.set_workspace_folders([workspace_folder(&root)]);
     let urls = state
         .refresh_workspace_documents()
+        .await
         .expect("workspace documents can be refreshed");
     let uri = urls[0].clone();
     assert_eq!(state.document(&uri).unwrap().text_contents(), "before");
@@ -374,8 +438,8 @@ fn watched_files_change_rereads_mutated_workspace_document() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn watched_files_delete_drops_the_workspace_document() {
+#[tokio::test]
+async fn watched_files_delete_drops_the_workspace_document() {
     let root = temp_workspace("state", "watched-deleted");
     fs::write(root.join("a.test"), "disk").expect("test file can be written");
 
@@ -386,6 +450,7 @@ fn watched_files_delete_drops_the_workspace_document() {
     state.set_workspace_folders([workspace_folder(&root)]);
     let urls = state
         .refresh_workspace_documents()
+        .await
         .expect("workspace documents can be refreshed");
     let uri = urls[0].clone();
     assert!(state.document(&uri).is_some());
@@ -398,8 +463,8 @@ fn watched_files_delete_drops_the_workspace_document() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn file_rename_and_delete_drop_the_workspace_documents() {
+#[tokio::test]
+async fn file_rename_and_delete_drop_the_workspace_documents() {
     let root = temp_workspace("state", "file-operations");
     fs::write(root.join("a.test"), "a").expect("test file can be written");
     fs::write(root.join("b.test"), "b").expect("test file can be written");
@@ -411,6 +476,7 @@ fn file_rename_and_delete_drop_the_workspace_documents() {
     state.set_workspace_folders([workspace_folder(&root)]);
     let urls = state
         .refresh_workspace_documents()
+        .await
         .expect("workspace documents can be refreshed");
     assert_eq!(urls.len(), 2);
 
@@ -429,8 +495,8 @@ fn file_rename_and_delete_drop_the_workspace_documents() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn open_documents_survive_watched_files_and_file_operations() {
+#[tokio::test]
+async fn open_documents_survive_watched_files_and_file_operations() {
     let root = temp_workspace("state", "open-immunity");
     let path = root.join("a.test");
     fs::write(&path, "disk").expect("test file can be written");
@@ -446,6 +512,7 @@ fn open_documents_survive_watched_files_and_file_operations() {
 
     let urls = state
         .refresh_workspace_documents()
+        .await
         .expect("workspace documents can be refreshed");
     assert_eq!(urls, vec![uri.clone()]);
 
