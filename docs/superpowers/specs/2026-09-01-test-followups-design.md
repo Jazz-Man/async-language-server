@@ -38,7 +38,7 @@ Confirmed against the pinned dependency sources (`async-lsp` 0.2.4,
 ## Change 1 — documentLink/resolve routes through the resolve macro
 
 `src/server/with_state/mod.rs`: move the
-`document_link_resolve => link_resolve @ crate::requests::DocumentLinkResolve`
+`document_link_resolve => link_resolve @ crate::lsp_requests::DocumentLinkResolve`
 line out of the `implement_methods!` table into its own
 `implement_resolve_method!` entry beside `completion_item_resolve` and
 `code_action_resolve`. Conversion then flows through
@@ -47,7 +47,7 @@ server tracks zero or more than one). The staleness check keyed on the
 link target's version disappears — it was keyed on the wrong document, and
 the source document's identity is not recoverable from the params.
 
-`src/requests/document_link_resolve.rs`: delete the `extract_url` override
+`src/lsp_requests/document_link_resolve.rs`: delete the `extract_url` override
 (the trait default returns `None`) and leave the same explanatory comment
 `completion_resolve.rs` carries; `modify_params`/`modify_response` stay as
 they are.
@@ -95,8 +95,8 @@ out-of-range pins:
 
 - Delete `modify_incoming_diagnostic` and `modify_outgoing_diagnostic`
   (pure direction delegates). The three call sites
-  (`src/requests/code_action.rs` ×2,
-  `src/requests/document_diagnostics.rs` ×1) call
+  (`src/lsp_requests/code_action.rs` ×2,
+  `src/lsp_requests/document_diagnostics.rs` ×1) call
   `convert_diagnostic(..., Direction::Incoming/Outgoing)` directly.
 - Rewrite the module doc: `convert_*` helpers are
   direction-parameterized; `modify_*` remains only for fixed-direction

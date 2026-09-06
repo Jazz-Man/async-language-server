@@ -36,18 +36,18 @@ the whole testing pipeline.
 
 ## Phase 1 — pure motion (zero interaction with later phases)
 
-1. Create `src/requests/testing.rs`: the six private helpers from
-   `src/requests/tests.rs` (lines 22–60) moved verbatim, now
+1. Create `src/lsp_requests/testing.rs`: the six private helpers from
+   `src/lsp_requests/tests.rs` (lines 22–60) moved verbatim, now
    `#[cfg(test)] pub(crate)` — `TestServer`, `url`, `p`, `r`,
    `open_document`, `state_with_documents`. In
-   `src/requests/mod.rs`: `#[cfg(test)] mod tests;` →
+   `src/lsp_requests/mod.rs`: `#[cfg(test)] mod tests;` →
    `#[cfg(test)] mod testing;`.
-2. Distribute the 9 tests from `src/requests/tests.rs` as inline
+2. Distribute the 9 tests from `src/lsp_requests/tests.rs` as inline
    `#[cfg(test)] mod tests` blocks per the research migration map (§3.3):
    `definition.rs` (1), `rename.rs` (2), `completion.rs` (1),
    `completion_resolve.rs` (3), `code_action.rs` (1),
    `document_diagnostics.rs` (1). Bodies unchanged; imports via
-   `crate::requests::testing`. Delete `src/requests/tests.rs`.
+   `crate::lsp_requests::testing`. Delete `src/lsp_requests/tests.rs`.
 3. Delete the 9 doctest-duplicated unit tests **[owner — no tests for
    quantity]**: `converts_utf8_columns_to_utf16`
    (`src/text_utils/conversions.rs:88`, identical to the

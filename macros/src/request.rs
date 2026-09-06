@@ -64,7 +64,7 @@ pub(super) fn expand(attr: TokenStream, item: &ItemStruct) -> syn::Result<TokenS
     Ok(quote! {
         #item
 
-        impl crate::requests::Request for #name {
+        impl crate::lsp_requests::Request for #name {
             type Params = #params;
             type Response = #response;
 
@@ -87,7 +87,7 @@ fn extract_url_fn(segments: &[Ident]) -> TokenStream {
 }
 
 /// Emits `modify_params` converting exactly the wired incoming hooks —
-/// fully-qualified `crate::requests::conversion` converter calls in the
+/// fully-qualified `crate::lsp_requests::conversion` converter calls in the
 /// generated body (`macro-absolute-std-paths`), so no imports are needed.
 fn modify_params_fn(
     position: Option<Vec<Ident>>,
@@ -97,21 +97,21 @@ fn modify_params_fn(
     let mut conversions = Vec::new();
     if let Some(segments) = position {
         conversions.push(quote! {
-            crate::requests::conversion::convert_position(
+            crate::lsp_requests::conversion::convert_position(
                 state,
                 document,
                 &mut params.#(#segments).*,
-                crate::requests::conversion::Direction::Incoming,
+                crate::lsp_requests::conversion::Direction::Incoming,
             );
         });
     }
     if let Some(segments) = range {
         conversions.push(quote! {
-            crate::requests::conversion::convert_range(
+            crate::lsp_requests::conversion::convert_range(
                 state,
                 document,
                 &mut params.#(#segments).*,
-                crate::requests::conversion::Direction::Incoming,
+                crate::lsp_requests::conversion::Direction::Incoming,
             );
         });
     }
@@ -439,7 +439,7 @@ mod tests {
         )
         .expect("expands");
         let text = out.to_string();
-        assert!(text.contains("impl crate :: requests :: Request for X"));
+        assert!(text.contains("impl crate :: lsp_requests :: Request for X"));
         assert!(text.contains("type Params = P"));
         assert!(text.contains("type Response = Option < R >"));
         // No hooks wired, so nothing hook-shaped may be emitted: an empty

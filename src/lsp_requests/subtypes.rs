@@ -9,7 +9,7 @@ use super::conversion::{Direction, convert_type_hierarchy_item};
     response = Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>,
     document(item),
     incoming_custom(self::convert_params),
-    outgoing(crate::requests::conversion::modify_outgoing_type_hierarchy_items),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_type_hierarchy_items),
 )]
 pub(crate) struct SubtypesRequest;
 
@@ -29,7 +29,7 @@ mod tests {
         WorkDoneProgressParams,
     };
 
-    use crate::requests::{Request, SubtypesRequest};
+    use crate::lsp_requests::{Request, SubtypesRequest};
     use crate::testing::{same_line, state_with_documents};
 
     fn item(

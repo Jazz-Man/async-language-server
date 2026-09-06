@@ -27,15 +27,15 @@
 ### Task 1: Extract the requests test harness
 
 **Files:**
-- Create: `src/requests/testing.rs`
-- Modify: `src/requests/mod.rs:22-23`
-- Delete: `src/requests/tests.rs`
-- Modify: `src/requests/definition.rs`, `src/requests/rename.rs`, `src/requests/completion.rs`, `src/requests/completion_resolve.rs`, `src/requests/code_action.rs`, `src/requests/document_diagnostics.rs` (append test modules)
+- Create: `src/lsp_requests/testing.rs`
+- Modify: `src/lsp_requests/mod.rs:22-23`
+- Delete: `src/lsp_requests/tests.rs`
+- Modify: `src/lsp_requests/definition.rs`, `src/lsp_requests/rename.rs`, `src/lsp_requests/completion.rs`, `src/lsp_requests/completion_resolve.rs`, `src/lsp_requests/code_action.rs`, `src/lsp_requests/document_diagnostics.rs` (append test modules)
 
 **Interfaces:**
-- Produces: `crate::requests::testing::{TestServer, url, p, r, open_document, state_with_documents}` — `pub(crate)`, `#[cfg(test)]`-gated, signatures identical to today's private helpers.
+- Produces: `crate::lsp_requests::testing::{TestServer, url, p, r, open_document, state_with_documents}` — `pub(crate)`, `#[cfg(test)]`-gated, signatures identical to today's private helpers.
 
-- [ ] **Step 1: Create `src/requests/testing.rs`**
+- [ ] **Step 1: Create `src/lsp_requests/testing.rs`**
 
 ```rust
 //! Test-only baseline for per-request conversion tests.
@@ -96,7 +96,7 @@ pub(crate) fn state_with_documents() -> (ServerState, Url, Url) {
 }
 ```
 
-- [ ] **Step 2: Rewire `src/requests/mod.rs`**
+- [ ] **Step 2: Rewire `src/lsp_requests/mod.rs`**
 
 Replace lines 22-23:
 
@@ -114,16 +114,16 @@ mod testing;
 
 - [ ] **Step 3: Move the nine tests into their request files**
 
-Move each test below VERBATIM from `src/requests/tests.rs` (only the `use` imports change: `use crate::requests::testing::{...}` plus the request types via `super::...` as shown). Append at the end of the destination file:
+Move each test below VERBATIM from `src/lsp_requests/tests.rs` (only the `use` imports change: `use crate::lsp_requests::testing::{...}` plus the request types via `super::...` as shown). Append at the end of the destination file:
 
 | test (tests.rs lines) | destination | imports to add in its `mod tests` |
 |---|---|---|
-| `definition_locations_are_converted_using_their_own_document` (62-77) | `definition.rs` | `use std::collections::HashMap;` not needed; `use async_lsp::lsp_types::{GotoDefinitionResponse, Location};` `use crate::requests::testing::{r, state_with_documents};` `use super::{Definition, Request};` |
-| `workspace_edits_are_converted_using_their_own_document` (79-96) | `rename.rs` | `use std::collections::HashMap;` `use async_lsp::lsp_types::{TextEdit, WorkspaceEdit};` `use crate::requests::testing::{r, state_with_documents};` `use super::{Rename, Request};` |
+| `definition_locations_are_converted_using_their_own_document` (62-77) | `definition.rs` | `use std::collections::HashMap;` not needed; `use async_lsp::lsp_types::{GotoDefinitionResponse, Location};` `use crate::lsp_requests::testing::{r, state_with_documents};` `use super::{Definition, Request};` |
+| `workspace_edits_are_converted_using_their_own_document` (79-96) | `rename.rs` | `use std::collections::HashMap;` `use async_lsp::lsp_types::{TextEdit, WorkspaceEdit};` `use crate::lsp_requests::testing::{r, state_with_documents};` `use super::{Rename, Request};` |
 | `rename_edits_fall_back_to_request_document_when_target_is_unknown` (182-200) | `rename.rs` | same as above plus `url` |
-| `completion_additional_text_edits_are_converted` (98-117) | `completion.rs` | `use async_lsp::lsp_types::{CompletionItem, CompletionResponse, TextEdit};` `use crate::requests::testing::{r, state_with_documents};` `use super::{Completion, Request};` |
-| `code_action_context_diagnostics_are_converted` (119-142) | `code_action.rs` | `use async_lsp::lsp_types::{CodeActionContext, CodeActionParams, Diagnostic, PartialResultParams, TextDocumentIdentifier, WorkDoneProgressParams};` `use crate::requests::testing::{r, state_with_documents};` `use super::{CodeAction, Request};` |
-| `document_diagnostic_related_documents_are_converted_using_their_own_document` (144-180) | `document_diagnostics.rs` | `use std::collections::HashMap;` `use async_lsp::lsp_types::{Diagnostic, DocumentDiagnosticReport, DocumentDiagnosticReportKind, DocumentDiagnosticReportResult, FullDocumentDiagnosticReport, RelatedFullDocumentDiagnosticReport};` `use crate::requests::testing::{r, state_with_documents};` `use super::{DocumentDiagnostics, Request};` |
+| `completion_additional_text_edits_are_converted` (98-117) | `completion.rs` | `use async_lsp::lsp_types::{CompletionItem, CompletionResponse, TextEdit};` `use crate::lsp_requests::testing::{r, state_with_documents};` `use super::{Completion, Request};` |
+| `code_action_context_diagnostics_are_converted` (119-142) | `code_action.rs` | `use async_lsp::lsp_types::{CodeActionContext, CodeActionParams, Diagnostic, PartialResultParams, TextDocumentIdentifier, WorkDoneProgressParams};` `use crate::lsp_requests::testing::{r, state_with_documents};` `use super::{CodeAction, Request};` |
+| `document_diagnostic_related_documents_are_converted_using_their_own_document` (144-180) | `document_diagnostics.rs` | `use std::collections::HashMap;` `use async_lsp::lsp_types::{Diagnostic, DocumentDiagnosticReport, DocumentDiagnosticReportKind, DocumentDiagnosticReportResult, FullDocumentDiagnosticReport, RelatedFullDocumentDiagnosticReport};` `use crate::lsp_requests::testing::{r, state_with_documents};` `use super::{DocumentDiagnostics, Request};` |
 | `resolve_edits_convert_against_the_sole_tracked_document` (202-230) | `completion_resolve.rs` | see block below |
 | `resolve_edits_pass_through_without_a_document` (232-252) | `completion_resolve.rs` | see block below |
 | `resolve_echo_round_trip_is_identity` (254-286) | `completion_resolve.rs` | see block below |
@@ -138,21 +138,21 @@ mod tests {
 
     // For completion_resolve.rs specifically:
     // use async_lsp::lsp_types::{CompletionItem, CompletionTextEdit as LspCompletionTextEdit, TextEdit};
-    // use crate::requests::testing::{open_document, r, state_with_documents, url};
+    // use crate::lsp_requests::testing::{open_document, r, state_with_documents, url};
     // use crate::server::{ServerOptions, ServerState};
     // use crate::text_utils::Encoding;
     // use async_lsp::ClientSocket;
     // use super::{convert_completion_resolve, convert_incoming_completion_resolve};
-    // plus `use super::testing::TestServer;` via `use crate::requests::testing::TestServer;`
+    // plus `use super::testing::TestServer;` via `use crate::lsp_requests::testing::TestServer;`
     // NOTE: the two sole-document tests construct their own state with
     // `ServerState::with_options::<TestServer>(ClientSocket::new_closed(), &ServerOptions::default())`
     // — keep `TestServer` imported for them.
 }
 ```
 
-Bodies are copied from `src/requests/tests.rs` unchanged, with exactly two textual adjustments: `super::convert_completion_resolve` → `convert_completion_resolve` (already in scope via the `use super::...`), and `super::convert_incoming_completion_resolve` → `convert_incoming_completion_resolve`.
+Bodies are copied from `src/lsp_requests/tests.rs` unchanged, with exactly two textual adjustments: `super::convert_completion_resolve` → `convert_completion_resolve` (already in scope via the `use super::...`), and `super::convert_incoming_completion_resolve` → `convert_incoming_completion_resolve`.
 
-- [ ] **Step 4: Delete `src/requests/tests.rs`**
+- [ ] **Step 4: Delete `src/lsp_requests/tests.rs`**
 
 - [ ] **Step 5: Verify**
 
@@ -608,7 +608,7 @@ Suggested message: `feat!: RangeExt returns Result<_, RangeError> instead of pan
         _ => unreachable!(),
 ```
 
-- [ ] **Step 2: Fix call sites.** Run `grep -rn "position_to_encoding(" src/` — every call site in `src/requests/conversion.rs` and `src/tree_sitter_utils.rs` (if any) now passes `Encoding` by value; where a call passes `&encoding`, change it to `*encoding` (`Encoding` is `Copy`). The public `From<&Encoding>` impls stay (public API, out of scope).
+- [ ] **Step 2: Fix call sites.** Run `grep -rn "position_to_encoding(" src/` — every call site in `src/lsp_requests/conversion.rs` and `src/tree_sitter_utils.rs` (if any) now passes `Encoding` by value; where a call passes `&encoding`, change it to `*encoding` (`Encoding` is `Copy`). The public `From<&Encoding>` impls stay (public API, out of scope).
 
 - [ ] **Step 3: Verify**
 
@@ -2416,7 +2416,7 @@ Suggested message: `test: split_off boundaries and every RangeError variant trig
 
 **Files:**
 - Create: `src/text_utils/testing.rs`
-- Modify: `src/text_utils/mod.rs`, `src/requests/testing.rs`, `src/text_utils/range_ext/lsp_tests.rs`, `src/server/state/tests.rs`, and the requests test modules importing `p`
+- Modify: `src/text_utils/mod.rs`, `src/lsp_requests/testing.rs`, `src/text_utils/range_ext/lsp_tests.rs`, `src/server/state/tests.rs`, and the requests test modules importing `p`
 
 **Interfaces:**
 - Produces: `crate::text_utils::testing::{p, url}` — `#[cfg(test)] pub(crate)`; `p(line: u32, character: u32) -> lsp_types::Position` (const), `url(path: &str) -> Url` (parses `file:///tmp/{path}`).
@@ -2456,8 +2456,8 @@ Suggested message: `test: split_off boundaries and every RangeError variant trig
 
 **Files:**
 - Create: `src/testing.rs`
-- Modify: `src/lib.rs`, all test modules importing moved helpers, `src/text_utils/mod.rs` (delete testing), `src/requests/mod.rs` (delete testing)
-- Delete: `src/text_utils/testing.rs`, `src/requests/testing.rs`
+- Modify: `src/lib.rs`, all test modules importing moved helpers, `src/text_utils/mod.rs` (delete testing), `src/lsp_requests/mod.rs` (delete testing)
+- Delete: `src/text_utils/testing.rs`, `src/lsp_requests/testing.rs`
 
 **Interfaces:**
 - Produces: `crate::testing::{p, r, same_line, url, TestServer, open_document, state_with_documents, temp_workspace, workspace_folder, diagnostic, json_matchers}` — all `#[cfg(test)] pub(crate)` (module-gated at lib.rs).
@@ -2471,7 +2471,7 @@ Suggested message: `test: split_off boundaries and every RangeError variant trig
 
 ### Task 20f: Collapse conversion.rs incoming/outgoing pairs (dupes refactor R1)
 
-**Files:** `src/requests/conversion.rs` + every Request impl calling the renamed helpers.
+**Files:** `src/lsp_requests/conversion.rs` + every Request impl calling the renamed helpers.
 
 **Design:** the 7 incoming/outgoing pairs differ only in conversion direction (negotiated→UTF8 vs UTF8→negotiated). Introduce `pub(crate) enum Direction { Incoming, Outgoing }` (in conversion.rs) and one fn per shape taking `(state, doc/params, item, direction)`; the encoding pair derives from direction + the negotiated encoding. The `at_url` variants keep their lookup semantics. Public-to-the-crate call sites migrate to the direction form. NO conversion arithmetic may change — the exact same `position_to_encoding` calls with the same (source,target) per direction; the 9 request tests + W2 wire tests (#2, #6) are the guards.
 
@@ -2479,7 +2479,7 @@ Suggested message: `test: split_off boundaries and every RangeError variant trig
 
 ### Task 20g: Shared Goto/Format response converters (dupes refactor R2)
 
-**Files:** `src/requests/declaration.rs`, `definition.rs`, `references.rs`, `document_format.rs`, `document_range_format.rs` (+ a shared spot in `src/requests/conversion.rs`).
+**Files:** `src/lsp_requests/declaration.rs`, `definition.rs`, `references.rs`, `document_format.rs`, `document_range_format.rs` (+ a shared spot in `src/lsp_requests/conversion.rs`).
 
 **Design:** `Declaration::modify_response` ≡ `Definition::modify_response` (19-line copy-paste over `GotoDefinitionResponse`/`GotoDeclarationResponse` variants) → one generic converter over a small local trait abstracting Scalar/Array/Link variant mapping (both lsp_types enums are structurally identical). The References/Format/RangeFormat trio (group 15: `Option<Vec<Location>>` / `Option<Vec<TextEdit>>` shaped) → one shared vec-mapping helper parameterized by the element converter. Signatures of the `Request` impls unchanged.
 
@@ -2487,7 +2487,7 @@ Suggested message: `test: split_off boundaries and every RangeError variant trig
 
 ### Task 20h: Generalize the resolve twins (dupes refactor R3)
 
-**Files:** `src/requests/completion_resolve.rs`, `code_action_resolve.rs` (+ shared helpers in conversion.rs).
+**Files:** `src/lsp_requests/completion_resolve.rs`, `code_action_resolve.rs` (+ shared helpers in conversion.rs).
 
 **Design:** the two modules are structural twins (incoming/outgoing resolve converters + Request impls). Factor the shared skeleton into generic helpers parameterized over the item's editable-text-edits shape (accessor-based; `CompletionItem` vs `CodeAction` edit fields differ structurally). If the generics cost exceeds two modules' duplication, STOP and report — an explicit trade-off judgment, not a forced merge.
 
@@ -2495,7 +2495,7 @@ Suggested message: `test: split_off boundaries and every RangeError variant trig
 
 ### Task 20i: Macro-dedup the three-place boilerplate (dupes refactor R4) + cargo-dupes config
 
-**Files:** `src/requests/mod.rs` (macro), the Request files, `dupes.toml` (new), `.claude/rules/tech.md`.
+**Files:** `src/lsp_requests/mod.rs` (macro), the Request files, `dupes.toml` (new), `.claude/rules/tech.md`.
 
 **Design:** (a) `extract_url` / trivial `modify_params` bodies repeated across 6+ files → a declarative macro in requests/mod.rs (`request_extract_url!(Declaration, References, …)` style; the `modify_params` half is NOT optional — the same path-parameterized in-impl technique covers the trivial incoming-position bodies, and dropping it silently is a review finding); (b) then AUTHOR `dupes.toml` encoding today's post-refactor invariants: `min_nodes = 15`, **NO `exclude_tests`** (owner override: tests are code — deliberate test parallelism gets reasoned ignore entries instead), plus `cargo dupes ignore <fp> --reason "..."` entries for the deliberate leftovers (three-place trait-impl shape where the macro didn't reach, examples parallelism, the deferred W2/W3 pair) — reasons mandatory, never threshold-loosening; (c) one entry in tech.md's battery as an on-demand check (`cargo dupes check`); (d) verification: `cargo dupes check` exit 0, battery green, and the report's remaining groups are all either refactored or ignored-with-reason.
 

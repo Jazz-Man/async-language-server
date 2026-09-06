@@ -3,7 +3,7 @@
     response = Vec<async_lsp::lsp_types::ColorPresentation>,
     document(text_document),
     incoming_range(range),
-    outgoing(crate::requests::conversion::modify_outgoing_color_presentations),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_color_presentations),
 )]
 pub(crate) struct ColorPresentationRequest;
 
@@ -14,7 +14,7 @@ mod tests {
         TextDocumentIdentifier, TextEdit, WorkDoneProgressParams,
     };
 
-    use crate::requests::{ColorPresentationRequest, Request};
+    use crate::lsp_requests::{ColorPresentationRequest, Request};
     use crate::testing::{same_line, state_with_documents};
 
     #[test]

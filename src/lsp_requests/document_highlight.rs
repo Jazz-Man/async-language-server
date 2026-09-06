@@ -3,7 +3,7 @@
     response = Option<Vec<async_lsp::lsp_types::DocumentHighlight>>,
     document(text_document_position_params.text_document),
     incoming_position(text_document_position_params.position),
-    outgoing(crate::requests::conversion::modify_outgoing_document_highlights),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_document_highlights),
 )]
 pub(crate) struct DocumentHighlightRequest;
 
@@ -15,7 +15,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::DocumentHighlightRequest;
+    use crate::lsp_requests::DocumentHighlightRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {

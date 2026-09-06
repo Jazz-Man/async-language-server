@@ -10,7 +10,7 @@ use super::conversion::{Direction, convert_signature_help_label_offsets};
     document(text_document_position_params.text_document),
     incoming_position(text_document_position_params.position),
     incoming_custom(self::convert_context_label_offsets),
-    outgoing(crate::requests::conversion::modify_outgoing_signature_help),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_signature_help),
 )]
 pub(crate) struct SignatureHelpRequest;
 
@@ -39,7 +39,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::{Request, SignatureHelpRequest};
+    use crate::lsp_requests::{Request, SignatureHelpRequest};
     use crate::testing::{line_position, state_with_documents};
 
     conversion_tests! {

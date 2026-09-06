@@ -47,7 +47,7 @@ mod tests {
         PartialResultParams, SymbolKind, WorkDoneProgressParams,
     };
 
-    use crate::requests::{OutgoingCallsRequest, Request};
+    use crate::lsp_requests::{OutgoingCallsRequest, Request};
     use crate::testing::{same_line, state_with_documents};
 
     fn item(

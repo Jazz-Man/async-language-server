@@ -25,11 +25,11 @@
 
 **Files:**
 - Modify: `src/server/with_state/mod.rs` (dispatch tables, lines ~228-249)
-- Modify: `src/requests/document_link_resolve.rs` (drop `extract_url`, add W0 tests)
+- Modify: `src/lsp_requests/document_link_resolve.rs` (drop `extract_url`, add W0 tests)
 - Test: `src/server/with_state/tests.rs` (two dispatch tests + local capture server + driver)
 
 **Interfaces:**
-- Consumes: `implement_resolve_method!` macro (`src/server/with_state/mod.rs:104`) — generates `fn <lsp_method>(&mut self, params) -> BoxFuture<...>` calling `convert_resolve_item::<$request_type, _>` against the sole tracked document; `convert_resolve_item<R, T>(state, Option<&Document>, &mut T, Direction)` from `src/requests/conversion.rs`; `Server::link_resolve(&self, ServerState, DocumentLink) -> impl Future<Output = ServerResult<DocumentLink>> + Send` (`src/server/server_trait.rs:151`, default: echo the link unchanged).
+- Consumes: `implement_resolve_method!` macro (`src/server/with_state/mod.rs:104`) — generates `fn <lsp_method>(&mut self, params) -> BoxFuture<...>` calling `convert_resolve_item::<$request_type, _>` against the sole tracked document; `convert_resolve_item<R, T>(state, Option<&Document>, &mut T, Direction)` from `src/lsp_requests/conversion.rs`; `Server::link_resolve(&self, ServerState, DocumentLink) -> impl Future<Output = ServerResult<DocumentLink>> + Send` (`src/server/server_trait.rs:151`, default: echo the link unchanged).
 - Produces: `documentLink/resolve` dispatched with sole-document conversion; `DocumentLinkResolve::extract_url` gone (trait default returns `None`). No public API change.
 
 - [ ] **Step 1: Write the two failing dispatch tests**
@@ -143,18 +143,18 @@ Expected: BOTH tests FAIL on the `received` assertion.
 In `src/server/with_state/mod.rs`, delete this line from the `implement_methods!` table (line ~240):
 
 ```rust
-        document_link_resolve   => link_resolve          @ crate::requests::DocumentLinkResolve,
+        document_link_resolve   => link_resolve          @ crate::lsp_requests::DocumentLinkResolve,
 ```
 
 and add after the `code_action_resolve` entry (line ~233):
 
 ```rust
     implement_resolve_method!(
-        document_link_resolve => link_resolve @ crate::requests::DocumentLinkResolve
+        document_link_resolve => link_resolve @ crate::lsp_requests::DocumentLinkResolve
     );
 ```
 
-In `src/requests/document_link_resolve.rs`, delete the `extract_url` override (lines 16-18) and leave the sibling's explanatory comment in its place, so the impl reads:
+In `src/lsp_requests/document_link_resolve.rs`, delete the `extract_url` override (lines 16-18) and leave the sibling's explanatory comment in its place, so the impl reads:
 
 ```rust
 impl Request for DocumentLinkResolve {
@@ -184,7 +184,7 @@ Expected: both dispatch tests PASS. (The resolve macro finds the sole document i
 
 - [ ] **Step 5: Add the W0 hook-level pins**
 
-These pin the `Request` hooks directly (the convention every `Request` impl carries). They pass immediately — the hooks are already correct; the bug was dispatch-level. Append to `src/requests/document_link_resolve.rs`:
+These pin the `Request` hooks directly (the convention every `Request` impl carries). They pass immediately — the hooks are already correct; the bug was dispatch-level. Append to `src/lsp_requests/document_link_resolve.rs`:
 
 ```rust
 #[cfg(test)]
@@ -192,7 +192,7 @@ mod tests {
     use async_lsp::ClientSocket;
     use async_lsp::lsp_types::{DocumentLink, Range};
 
-    use crate::requests::{Direction, DocumentLinkResolve, convert_resolve_item};
+    use crate::lsp_requests::{Direction, DocumentLinkResolve, convert_resolve_item};
     use crate::server::{ServerOptions, ServerState};
     use crate::testing::{TestServer, open_document, same_line, state_with_documents, url};
     use crate::text_utils::Encoding;
@@ -444,18 +444,18 @@ Suggested: `fix: tree-sitter RangeExt errors on out-of-range positions like the 
 ### Task 3: conversion.rs states the real criterion
 
 **Files:**
-- Modify: `src/requests/conversion.rs` (module doc lines 1-9; delete `modify_incoming_diagnostic` lines 186-192 and `modify_outgoing_diagnostic` lines 194-200)
-- Modify: `src/requests/code_action.rs` (imports lines 9-13; call sites lines 26, 36)
-- Modify: `src/requests/document_diagnostics.rs` (import line 9; call site line 24)
+- Modify: `src/lsp_requests/conversion.rs` (module doc lines 1-9; delete `modify_incoming_diagnostic` lines 186-192 and `modify_outgoing_diagnostic` lines 194-200)
+- Modify: `src/lsp_requests/code_action.rs` (imports lines 9-13; call sites lines 26, 36)
+- Modify: `src/lsp_requests/document_diagnostics.rs` (import line 9; call site line 24)
 - Modify: `.dupes-ignore.toml` (remove the entry with fingerprint `796b160440b3f2f3`, lines 41-43)
 
 **Interfaces:**
-- Consumes: `convert_diagnostic(&ServerState, &Document, &mut LspDiagnostic, Direction)` (`src/requests/conversion.rs:172`).
+- Consumes: `convert_diagnostic(&ServerState, &Document, &mut LspDiagnostic, Direction)` (`src/lsp_requests/conversion.rs:172`).
 - Produces: two fewer `pub(crate)` helpers; the module doc's criterion matches the surviving `modify_*` set. No behavior change.
 
 - [ ] **Step 1: Rewrite the module doc**
 
-Replace lines 1-9 of `src/requests/conversion.rs`:
+Replace lines 1-9 of `src/lsp_requests/conversion.rs`:
 
 ```rust
 //! Centralized position-encoding conversion for the `Request` hooks.
@@ -470,7 +470,7 @@ Replace lines 1-9 of `src/requests/conversion.rs`:
 
 - [ ] **Step 2: Delete the two delegates and update the call sites**
 
-Delete from `src/requests/conversion.rs`:
+Delete from `src/lsp_requests/conversion.rs`:
 
 ```rust
 pub(crate) fn modify_incoming_diagnostic(
@@ -490,7 +490,7 @@ pub(crate) fn modify_outgoing_diagnostic(
 }
 ```
 
-In `src/requests/code_action.rs`, change the import block to:
+In `src/lsp_requests/code_action.rs`, change the import block to:
 
 ```rust
     conversion::{Direction, convert_diagnostic, convert_range, convert_workspace_edit},
@@ -510,7 +510,7 @@ and the two call sites to:
                         }
 ```
 
-In `src/requests/document_diagnostics.rs`, change the import to:
+In `src/lsp_requests/document_diagnostics.rs`, change the import to:
 
 ```rust
     conversion::{Direction, convert_diagnostic, modify_outgoing_diagnostic_report_kind_at_url},

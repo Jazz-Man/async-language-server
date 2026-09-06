@@ -1,7 +1,7 @@
 #[lsp_macros::lsp_request(
     params = async_lsp::lsp_types::RenameFilesParams,
     response = Option<async_lsp::lsp_types::WorkspaceEdit>,
-    outgoing(crate::requests::conversion::modify_outgoing_workspace_edit),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_workspace_edit),
 )]
 pub(crate) struct WillRenameFilesRequest;
 
@@ -11,7 +11,7 @@ mod tests {
 
     use async_lsp::lsp_types::{TextEdit, WorkspaceEdit};
 
-    use crate::requests::{Request, WillRenameFilesRequest};
+    use crate::lsp_requests::{Request, WillRenameFilesRequest};
     use crate::testing::{same_line, state_with_documents};
 
     #[test]

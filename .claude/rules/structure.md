@@ -25,14 +25,14 @@ the process standard input and output.
 `Server` trait methods always receive and produce **UTF-8** positions, no
 matter which encoding was negotiated with the client (preference order in
 `POSITION_ENCODING_PREFERRED_ORDER` in `src/server/with_state/mod.rs`:
-UTF-8 > UTF-32 > UTF-16). All translation lives in `src/requests/`;
+UTF-8 > UTF-32 > UTF-16). All translation lives in `src/lsp_requests/`;
 handlers never convert encodings themselves.
 
 ## Adding an LSP method touches three places
 
-1. The request file `src/requests/<method>.rs`: a marker struct under
+1. The request file `src/lsp_requests/<method>.rs`: a marker struct under
    `#[lsp_request(...)]` with inline tests, re-exported from
-   `src/requests/mod.rs`.
+   `src/lsp_requests/mod.rs`.
 2. The trait method: an `lsp_method!` / `lsp_resolve_method!` block in
    `src/server/server_trait.rs` with a `///` doc naming the capability it
    requires.
@@ -41,9 +41,9 @@ handlers never convert encodings themselves.
 
 Export any new public types through the `server` module in `src/lib.rs`.
 
-## The `Request` pattern (`src/requests/`)
+## The `Request` pattern (`src/lsp_requests/`)
 
-The `Request` trait lives in `src/requests/mod.rs` and carries five hooks
+The `Request` trait lives in `src/lsp_requests/mod.rs` and carries five hooks
 (`extract_url`, the `modify_params`/`modify_response` pair, the standalone
 pair). Each LSP request lives in its own file as a marker struct under
 `#[lsp_request(...)]`; the attribute fields stamp the hook impls:
@@ -69,11 +69,11 @@ delegate to them so the override runs in every dispatch state.
 
 Write the custom functions as free fns in the request file, reusing the
 existing `convert_*` / `modify_outgoing_*` helpers in
-`src/requests/conversion.rs` (positions, ranges, locations, diagnostics,
+`src/lsp_requests/conversion.rs` (positions, ranges, locations, diagnostics,
 text edits) rather than calling `position_to_encoding` directly — that is
 reuse of existing machinery, not new abstraction. Conversely, do not build
 new abstraction layers for one-off conversions: if no helper fits, add one
-next to the others in `src/requests/conversion.rs`. Conversions stay
+next to the others in `src/lsp_requests/conversion.rs`. Conversions stay
 centralized there. Convert positions in responses against the document the
 position refers to, falling back to the request's own document when that
 URL isn't tracked.
@@ -134,4 +134,4 @@ the wrapper converts them to LSP error responses.
 ---
 _Every change respects the layer split and the UTF-8 invariant: new LSP
 surface goes through the three-place pattern, encoding stays centralized in
-`src/requests/`._
+`src/lsp_requests/`._

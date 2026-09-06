@@ -21,14 +21,14 @@
 
 **Files:**
 - Modify: `src/server_with_state.rs` (both hand-wired resolve methods; tests: new end-to-end pair; TestServer gains an echo impl)
-- Modify: `src/requests.rs` (all four converters take `Option<&Document>`; the three helper-level tests update call sites)
+- Modify: `src/lsp_requests.rs` (all four converters take `Option<&Document>`; the three helper-level tests update call sites)
 
 **Interfaces:**
 - Produces (`pub(crate)`, signature change): `convert_incoming_completion_resolve(state: &ServerState, document: Option<&Document>, response: &mut LspCompletionItem)`, `convert_completion_resolve(state: &ServerState, document: Option<&Document>, response: &mut LspCompletionItem)`, and the two `code_action` twins. The sole-document pick moves to the call sites.
 
 - [ ] **Step 1: Update the converter tests** (they define the new signatures; RED = compile error)
 
-In `src/requests.rs` tests, update the three resolve tests to pass the document explicitly — sole-doc tests:
+In `src/lsp_requests.rs` tests, update the three resolve tests to pass the document explicitly — sole-doc tests:
 
 ```rust
         let document = state.document(&url("only.txt")).expect("sole document is tracked");
@@ -138,11 +138,11 @@ In `src/server_with_state.rs`, both hand-wired methods take `mut params` and gai
         };
 ```
 
-then `crate::requests::convert_incoming_completion_resolve(&state, sole.as_ref(), &mut params);` before, `crate::requests::convert_completion_resolve(&state, sole.as_ref(), &mut result);` after (same shape for `code_action_resolve`).
+then `crate::lsp_requests::convert_incoming_completion_resolve(&state, sole.as_ref(), &mut params);` before, `crate::lsp_requests::convert_completion_resolve(&state, sole.as_ref(), &mut result);` after (same shape for `code_action_resolve`).
 
 - [ ] **Step 4: Retarget the converters**
 
-All four in `src/requests.rs`: new `document: Option<&Document>` parameter; the internal `let documents = state.documents(); let [document] = … else { return; };` pair becomes:
+All four in `src/lsp_requests.rs`: new `document: Option<&Document>` parameter; the internal `let documents = state.documents(); let [document] = … else { return; };` pair becomes:
 
 ```rust
     let Some(document) = document else {
@@ -164,7 +164,7 @@ Expected: all green; the new end-to-end test passes in both arms.
 **Files:**
 - Modify: `src/text_utils/encoding.rs` (delete the inherent `const fn default`; `impl Default` body)
 - Modify: `src/server_state.rs` (tests: inline `with_options` at the `ServerState::new::<…>` sites; delete the `#[cfg(test)]` constructor; ensure `ServerOptions` import)
-- Modify: `src/requests.rs` (tests: same inlining at its three sites)
+- Modify: `src/lsp_requests.rs` (tests: same inlining at its three sites)
 
 **Interfaces:** none public (`Default::default()` remains; const-callability of `Encoding::default()` is dropped, no const callers exist — spec D3).
 
@@ -194,7 +194,7 @@ The doctest's `assert_eq!(Encoding::default(), Encoding::UTF16);` keeps compilin
 
 - [ ] **Step 2: Inline the test constructor**
 
-Replace every `ServerState::new::<TestServer>(ClientSocket::new_closed())` / `::new::<JsonServer>(…)` (ten sites: `src/server_state.rs` ×7, `src/requests.rs` ×3) with:
+Replace every `ServerState::new::<TestServer>(ClientSocket::new_closed())` / `::new::<JsonServer>(…)` (ten sites: `src/server_state.rs` ×7, `src/lsp_requests.rs` ×3) with:
 
 ```rust
 ServerState::with_options::<TestServer>(ClientSocket::new_closed(), &ServerOptions::default())

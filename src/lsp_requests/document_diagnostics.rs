@@ -61,7 +61,7 @@ mod tests {
 
     use crate::testing::{same_line, state_with_documents};
 
-    use crate::requests::{DocumentDiagnosticsRequest, Request};
+    use crate::lsp_requests::{DocumentDiagnosticsRequest, Request};
 
     #[test]
     fn document_diagnostic_related_documents_are_converted_using_their_own_document() {

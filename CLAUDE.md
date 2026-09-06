@@ -25,11 +25,11 @@ Two layers around async-lsp:
 
 ### The UTF-8 invariant (central design)
 
-`Server` trait methods always receive and produce **UTF-8** positions, no matter which encoding was negotiated with the client (preference order UTF-8 > UTF-32 > UTF-16, `POSITION_ENCODING_PREFERRED_ORDER` in `src/server/with_state/mod.rs`). Translation lives in `src/requests/`: each LSP request is a marker struct under `#[lsp_request(...)]` in its own file there, with `extract_url` / `modify_params` (client encoding → UTF-8, before the handler) and `modify_response` (UTF-8 → client encoding, after); the shared `convert_*` / `modify_outgoing_*` helpers live in `src/requests/conversion.rs`. Positions in responses are converted against the document the position refers to, falling back to the request's document when that URL isn't tracked.
+`Server` trait methods always receive and produce **UTF-8** positions, no matter which encoding was negotiated with the client (preference order UTF-8 > UTF-32 > UTF-16, `POSITION_ENCODING_PREFERRED_ORDER` in `src/server/with_state/mod.rs`). Translation lives in `src/lsp_requests/`: each LSP request is a marker struct under `#[lsp_request(...)]` in its own file there, with `extract_url` / `modify_params` (client encoding → UTF-8, before the handler) and `modify_response` (UTF-8 → client encoding, after); the shared `convert_*` / `modify_outgoing_*` helpers live in `src/lsp_requests/conversion.rs`. Positions in responses are converted against the document the position refers to, falling back to the request's document when that URL isn't tracked.
 
 The `lsp_dispatch!` table glues each async-lsp method to a `Server` method through the request's hooks, plus staleness detection: it snapshots the document version before the handler runs and returns `CONTENT_MODIFIED` if the version changed by response time, so clients retry.
 
-**Adding a new LSP method touches three places**: the `#[lsp_request(...)]` struct in a dedicated file under `src/requests/`, the `lsp_method!`/`lsp_resolve_method!` block for the trait method in `src/server/server_trait.rs`, and one row in the `lsp_dispatch!` table in `src/server/with_state/mod.rs`.
+**Adding a new LSP method touches three places**: the `#[lsp_request(...)]` struct in a dedicated file under `src/lsp_requests/`, the `lsp_method!`/`lsp_resolve_method!` block for the trait method in `src/server/server_trait.rs`, and one row in the `lsp_dispatch!` table in `src/server/with_state/mod.rs`.
 
 ### State & documents
 

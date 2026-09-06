@@ -15,7 +15,7 @@
 - The owner commits; the agent never runs git write commands, and NEVER dispatches subagents with worktree isolation — all work happens in the current branch's working tree.
 - Behavior-identical migration: every generated body must be line-for-line today's expansion (the `cargo expand` diff in Task 5 checks it). Zero public-API change (Plan 1 already landed the one approved breaking change).
 - Errors: `syn::Error` with the span of the offending token → `to_compile_error()`. No `panic!`/`expect`/`unwrap` in `lsp_macros` production code (`expect_used`/`unwrap_used` are `deny` via `[workspace.lints]`; allowed in `#[cfg(test)]` per `clippy.toml`).
-- Generated code references call-site paths (`crate::requests::Request`, `crate::server::ServerState`, …) — never `$crate` (proc macros have none) and never `lsp_macros::` items.
+- Generated code references call-site paths (`crate::lsp_requests::Request`, `crate::server::ServerState`, …) — never `$crate` (proc macros have none) and never `lsp_macros::` items.
 - Docs on every public macro (`missing_docs` is deny). English only.
 - Battery (both crates): `cargo build --workspace --all-targets`, `cargo test --workspace` ×3 feature configurations, `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`. Single-macro smoke checks may use `-p lsp_macros` / `-p async-language-server` scoping; every task ends battery-green for what it touched, Task 5 ends with the full battery.
 - On any failure: invoke `superpowers:systematic-debugging` and `no-workarounds`; fix root causes, never suppress.
@@ -33,7 +33,7 @@
 | `macros/src/conversion_tests.rs` | `conversion_tests!`: row grammar of today's `macro_rules!`, `#[test]` emission |
 | `Cargo.toml` (root) | `lsp_macros` path dependency (workspace + member entries) |
 | `src/testing.rs` | definition replaced by a re-export of `lsp_macros::conversion_tests` |
-| `src/requests/hover.rs`, `src/requests/registry.rs`, `src/requests/mod.rs`, `src/server/server_trait.rs`, `src/server/with_state/mod.rs` | the hover vertical slice (Task 5) |
+| `src/lsp_requests/hover.rs`, `src/lsp_requests/registry.rs`, `src/lsp_requests/mod.rs`, `src/server/server_trait.rs`, `src/server/with_state/mod.rs` | the hover vertical slice (Task 5) |
 
 ---
 
@@ -214,7 +214,7 @@ and delete the braces when the real module files arrive. Alternatively declare e
 
 - [ ] **Step 4: The trait-position probe (the plan's first gate)**
 
-In the main crate, add a temporary probe test to `src/requests/mod.rs`'s `#[cfg(test)] mod tests` (create the module if absent; **delete the probe before the task's checkpoint** — it exists only to answer the position question):
+In the main crate, add a temporary probe test to `src/lsp_requests/mod.rs`'s `#[cfg(test)] mod tests` (create the module if absent; **delete the probe before the task's checkpoint** — it exists only to answer the position question):
 
 ```rust
     #[test]
@@ -403,7 +403,7 @@ pub(super) fn expand(attr: TokenStream2, item: ItemStruct) -> syn::Result<TokenS
                     document: &crate::server::Document,
                     params: &mut Self::Params,
                 ) {
-                    use crate::requests::conversion::{Direction, convert_position, convert_range};
+                    use crate::lsp_requests::conversion::{Direction, convert_position, convert_range};
                     #(#standard)*
                     #(#custom)*
                 }
@@ -438,7 +438,7 @@ pub(super) fn expand(attr: TokenStream2, item: ItemStruct) -> syn::Result<TokenS
     Ok(quote! {
         #item
 
-        impl crate::requests::Request for #name {
+        impl crate::lsp_requests::Request for #name {
             type Params = #params;
             type Response = #response;
 
@@ -554,7 +554,7 @@ pub(super) fn field_path(expr: &Expr) -> syn::Result<Vec<Ident>> {
 }
 ```
 
-(Two subtleties are load-bearing. `parse_type` re-parses the meta value's tokens as a `Type` because syn reads attribute values as expressions — `Option<Hover>` would otherwise parse as a comparison chain. And the `use crate::requests::conversion::{…}` inside the emitted `modify_params` keeps the generated body's unqualified `convert_position`/`convert_range`/`Direction` references resolving at the call site.)
+(Two subtleties are load-bearing. `parse_type` re-parses the meta value's tokens as a `Type` because syn reads attribute values as expressions — `Option<Hover>` would otherwise parse as a comparison chain. And the `use crate::lsp_requests::conversion::{…}` inside the emitted `modify_params` keeps the generated body's unqualified `convert_position`/`convert_range`/`Direction` references resolving at the call site.)
 
 - [ ] **Step 2: Entrypoint in `macros/src/lib.rs`**
 
@@ -567,7 +567,7 @@ pub(super) fn field_path(expr: &Expr) -> syn::Result<Vec<Ident>> {
 ///     response = Option<async_lsp::lsp_types::Hover>,
 ///     document(text_document_position_params.text_document),
 ///     incoming_position(text_document_position_params.position),
-///     outgoing(crate::requests::conversion::modify_outgoing_hover),
+///     outgoing(crate::lsp_requests::conversion::modify_outgoing_hover),
 /// )]
 /// pub struct HoverRequest;
 /// ```
@@ -656,11 +656,11 @@ Expected: all green (Task 1's four plus these six).
 
 - [ ] **Step 4: Dogfood — a real conversion test through the attribute**
 
-In `src/requests/mod.rs`'s `#[cfg(test)] mod tests` (the module from Task 1; the probe is gone), add:
+In `src/lsp_requests/mod.rs`'s `#[cfg(test)] mod tests` (the module from Task 1; the probe is gone), add:
 
 ```rust
     mod dogfood {
-        use crate::requests::Request;
+        use crate::lsp_requests::Request;
         use crate::testing::state_with_documents;
 
         #[lsp_macros::lsp_request(
@@ -699,7 +699,7 @@ Expected: PASS (the emoji fixture converts UTF-16 column 2 → UTF-8 byte column
 
 Run: `cargo clippy -p lsp_macros --all-targets -- -D warnings && cargo fmt --check && RUSTDOCFLAGS="-D warnings" cargo doc --no-deps -p lsp_macros`
 
-Changed files: `macros/src/lib.rs`, `macros/src/request.rs`, `src/requests/mod.rs` (dogfood test module stays until Plan 3 replaces it with real requests).
+Changed files: `macros/src/lib.rs`, `macros/src/request.rs`, `src/lsp_requests/mod.rs` (dogfood test module stays until Plan 3 replaces it with real requests).
 
 ---
 
@@ -813,17 +813,17 @@ pub(super) fn method(row: &DispatchRow) -> TokenStream2 {
     quote! {
         fn #alsp(
             &mut self,
-            mut params: <#request as crate::requests::Request>::Params,
+            mut params: <#request as crate::lsp_requests::Request>::Params,
         ) -> BoxFuture<
             'static,
-            Result<<#request as crate::requests::Request>::Response, Self::Error>,
+            Result<<#request as crate::lsp_requests::Request>::Response, Self::Error>,
         > {
             let server = Arc::clone(&self.server);
             let state = self.state.clone();
             Box::pin(async move {
                 // 1. Try to extract the URL from the params for document tracking
                 let url: Option<Url> =
-                    <#request as crate::requests::Request>::extract_url(&params);
+                    <#request as crate::lsp_requests::Request>::extract_url(&params);
                 let mut ver: Option<i32> = None;
 
                 // 2. If we got an URL, track the document version
@@ -839,7 +839,7 @@ pub(super) fn method(row: &DispatchRow) -> TokenStream2 {
                 //    sole tracked document for URL-less requests
                 let params_doc = conversion_document(&state, url.as_ref());
                 if let Some(doc) = params_doc.as_ref() {
-                    <#request as crate::requests::Request>::modify_params(
+                    <#request as crate::lsp_requests::Request>::modify_params(
                         &state,
                         doc,
                         &mut params,
@@ -869,14 +869,14 @@ pub(super) fn method(row: &DispatchRow) -> TokenStream2 {
                 //    skipping them.
                 match conversion_document(&state, url.as_ref()) {
                     Some(doc) => {
-                        <#request as crate::requests::Request>::modify_response(
+                        <#request as crate::lsp_requests::Request>::modify_response(
                             &state,
                             &doc,
                             &mut result,
                         );
                     }
                     None => {
-                        <#request as crate::requests::Request>::modify_response_standalone(
+                        <#request as crate::lsp_requests::Request>::modify_response_standalone(
                             &state,
                             &mut result,
                         );
@@ -895,10 +895,10 @@ pub(super) fn resolve_method(row: &DispatchRow) -> TokenStream2 {
     quote! {
         fn #alsp(
             &mut self,
-            mut params: <#request as crate::requests::Request>::Params,
+            mut params: <#request as crate::lsp_requests::Request>::Params,
         ) -> BoxFuture<
             'static,
-            Result<<#request as crate::requests::Request>::Response, Self::Error>,
+            Result<<#request as crate::lsp_requests::Request>::Response, Self::Error>,
         > {
             let server = Arc::clone(&self.server);
             let state = self.state.clone();
@@ -918,7 +918,7 @@ pub(super) fn resolve_method(row: &DispatchRow) -> TokenStream2 {
                         );
                     }
                     None => {
-                        <#request as crate::requests::Request>::modify_params_standalone(
+                        <#request as crate::lsp_requests::Request>::modify_params_standalone(
                             &state,
                             &mut params,
                         );
@@ -935,7 +935,7 @@ pub(super) fn resolve_method(row: &DispatchRow) -> TokenStream2 {
                         );
                     }
                     None => {
-                        <#request as crate::requests::Request>::modify_response_standalone(
+                        <#request as crate::lsp_requests::Request>::modify_response_standalone(
                             &state,
                             &mut result,
                         );
@@ -957,9 +957,9 @@ pub(super) fn resolve_method(row: &DispatchRow) -> TokenStream2 {
 ///
 /// ```ignore
 /// lsp_dispatch! {
-///     hover: hover @ crate::requests::HoverRequest,
-///     rename_prepare: prepare_rename @ crate::requests::RenamePrepareRequest,
-///     resolve(completion_resolve: completion_resolve @ crate::requests::CompletionResolveRequest),
+///     hover: hover @ crate::lsp_requests::HoverRequest,
+///     rename_prepare: prepare_rename @ crate::lsp_requests::RenamePrepareRequest,
+///     resolve(completion_resolve: completion_resolve @ crate::lsp_requests::CompletionResolveRequest),
 /// }
 /// ```
 ///
@@ -988,7 +988,7 @@ mod tests {
 
     #[test]
     fn parses_plain_row() {
-        let r = row(quote! { hover: hover @ crate::requests::HoverRequest });
+        let r = row(quote! { hover: hover @ crate::lsp_requests::HoverRequest });
         assert_eq!(r.trait_method, "hover");
         assert_eq!(r.alsp, "hover");
         assert_eq!(r.request.to_string(), "crate :: requests :: HoverRequest");
@@ -997,7 +997,7 @@ mod tests {
 
     #[test]
     fn parses_diverging_names() {
-        let r = row(quote! { rename_prepare: prepare_rename @ crate::requests::RenamePrepareRequest });
+        let r = row(quote! { rename_prepare: prepare_rename @ crate::lsp_requests::RenamePrepareRequest });
         assert_eq!(r.trait_method, "rename_prepare");
         assert_eq!(r.alsp, "prepare_rename");
     }
@@ -1175,7 +1175,7 @@ pub(super) fn expand(input: TokenStream2) -> syn::Result<TokenStream2> {
         let response = response.map(|(build, extract, returns)| {
             quote! {
                 let mut response = (#build)(_plain.clone(), emoji.clone());
-                <#request as crate::requests::Request>::modify_response(&state, &document, &mut response);
+                <#request as crate::lsp_requests::Request>::modify_response(&state, &document, &mut response);
                 crate::testing::assert_converted_position(
                     &response,
                     #extract,
@@ -1190,7 +1190,7 @@ pub(super) fn expand(input: TokenStream2) -> syn::Result<TokenStream2> {
                 let (state, _plain, emoji) = crate::testing::state_with_documents();
                 let document = state.document(&emoji).expect("emoji document is tracked");
                 let mut params = (#params)(emoji.clone());
-                <#request as crate::requests::Request>::modify_params(&state, &document, &mut params);
+                <#request as crate::lsp_requests::Request>::modify_params(&state, &document, &mut params);
                 #incoming
                 #response
             }
@@ -1203,7 +1203,7 @@ pub(super) fn expand(input: TokenStream2) -> syn::Result<TokenStream2> {
 - [ ] **Step 2: Entrypoint in `macros/src/lib.rs`**
 
 ```rust
-/// Stamps one `#[test]` per row for a [`crate::requests::Request`]'s
+/// Stamps one `#[test]` per row for a [`crate::lsp_requests::Request`]'s
 /// conversion hooks — the table-driven W0 harness.
 ///
 /// Row grammar (both the `incoming`/`expects` pair and the
@@ -1298,21 +1298,21 @@ Changed files: `macros/src/lib.rs`, `macros/src/conversion_tests.rs`, `src/testi
 ### Task 5: The hover vertical slice
 
 **Files:**
-- Modify: `src/requests/registry.rs` (delete the hover row)
-- Rewrite: `src/requests/hover.rs` (struct + attribute; tests keep their rows)
+- Modify: `src/lsp_requests/registry.rs` (delete the hover row)
+- Rewrite: `src/lsp_requests/hover.rs` (struct + attribute; tests keep their rows)
 - Modify: `src/server/server_trait.rs` (the `lsp_method!` block)
 - Modify: `src/server/with_state/mod.rs` (the one-row `lsp_dispatch!` invocation)
-- Modify: `src/requests/mod.rs` (re-export; remove the dogfood module)
+- Modify: `src/lsp_requests/mod.rs` (re-export; remove the dogfood module)
 
 **Interfaces:**
 - Consumes: all four macros from Tasks 1–4; the probe verdict (if the probe REJECTED trait-position macros, this task writes hover's trait method by hand per the fallback and still uses `#[lsp_request]` + `lsp_dispatch!`).
-- Produces: the exact three-place pattern Plan 3 repeats 47 times; `crate::requests::HoverRequest` as the first renamed marker struct.
+- Produces: the exact three-place pattern Plan 3 repeats 47 times; `crate::lsp_requests::HoverRequest` as the first renamed marker struct.
 
 - [ ] **Step 1: Delete the hover row from `registry.rs`**
 
-Remove lines 22–29 of `src/requests/registry.rs` (the `hover: hover @ Hover { … }` row inside `generated_methods!`). Nothing else in the file changes.
+Remove lines 22–29 of `src/lsp_requests/registry.rs` (the `hover: hover @ Hover { … }` row inside `generated_methods!`). Nothing else in the file changes.
 
-- [ ] **Step 2: Rewrite `src/requests/hover.rs`**
+- [ ] **Step 2: Rewrite `src/lsp_requests/hover.rs`**
 
 ```rust
 #[lsp_macros::lsp_request(
@@ -1320,7 +1320,7 @@ Remove lines 22–29 of `src/requests/registry.rs` (the `hover: hover @ Hover { 
     response = Option<async_lsp::lsp_types::Hover>,
     document(text_document_position_params.text_document),
     incoming_position(text_document_position_params.position),
-    outgoing(crate::requests::conversion::modify_outgoing_hover),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_hover),
 )]
 pub(crate) struct HoverRequest;
 
@@ -1332,7 +1332,7 @@ mod tests {
     };
 
     use lsp_macros::conversion_tests;
-    use crate::requests::HoverRequest;
+    use crate::lsp_requests::HoverRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {
@@ -1398,11 +1398,11 @@ Add to the imports: `use lsp_macros::lsp_dispatch;`. After the three registry in
 
 ```rust
     lsp_dispatch! {
-        hover: hover @ crate::requests::HoverRequest,
+        hover: hover @ crate::lsp_requests::HoverRequest,
     }
 ```
 
-- [ ] **Step 5: Re-export and cleanup in `src/requests/mod.rs`**
+- [ ] **Step 5: Re-export and cleanup in `src/lsp_requests/mod.rs`**
 
 - Add `pub(crate) use hover::HoverRequest;` to the re-export list (alphabetical: after `DocumentLinkResolve`… place it among the `pub(crate) use` group where `hover` sorts).
 - Delete the Task 2 dogfood module (`mod dogfood { … }` and the empty `#[test] fn nothing` scaffold from Task 1).
@@ -1432,7 +1432,7 @@ Expected: green everywhere; the two hover conversion tests pass through the attr
 
 - [ ] **Step 9: Checkpoint (owner commits)**
 
-Changed files: `src/requests/registry.rs`, `src/requests/hover.rs`, `src/server/server_trait.rs`, `src/server/with_state/mod.rs`, `src/requests/mod.rs` (plus any Step 6 fix-ups).
+Changed files: `src/lsp_requests/registry.rs`, `src/lsp_requests/hover.rs`, `src/server/server_trait.rs`, `src/server/with_state/mod.rs`, `src/lsp_requests/mod.rs` (plus any Step 6 fix-ups).
 
 ---
 
@@ -1447,10 +1447,10 @@ Changed files: `src/requests/registry.rs`, `src/requests/hover.rs`, `src/server/
 
 - [ ] **Step 1: The owner opens the three files in their editor (Zed, rust-analyzer) and checks:**
 
-1. `src/requests/hover.rs`, inside `#[lsp_request( … )]`: go-to-definition on `async_lsp::lsp_types::HoverParams`; go-to-definition and find-references on `crate::requests::conversion::modify_outgoing_hover`; completion after typing `incoming_`.
+1. `src/lsp_requests/hover.rs`, inside `#[lsp_request( … )]`: go-to-definition on `async_lsp::lsp_types::HoverParams`; go-to-definition and find-references on `crate::lsp_requests::conversion::modify_outgoing_hover`; completion after typing `incoming_`.
 2. `src/server/server_trait.rs`, inside `lsp_method! { … }`: go-to-definition on `HoverParams` and on `ServerState`; hover rendering of the `///` docs.
-3. `src/server/with_state/mod.rs`, inside `lsp_dispatch! { … }`: go-to-definition on `crate::requests::HoverRequest`.
-4. `src/requests/hover.rs`, inside `conversion_tests! { … }`: go-to-definition on `line_position` / `state_with_documents` (via the emitted code or directly).
+3. `src/server/with_state/mod.rs`, inside `lsp_dispatch! { … }`: go-to-definition on `crate::lsp_requests::HoverRequest`.
+4. `src/lsp_requests/hover.rs`, inside `conversion_tests! { … }`: go-to-definition on `line_position` / `state_with_documents` (via the emitted code or directly).
 5. Error quality: temporarily rename `modify_outgoing_hover` to `modify_outgoing_hovr` in the attribute — does the error point at the attribute argument?
 
 - [ ] **Step 2: Record verdicts**

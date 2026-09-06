@@ -3,7 +3,7 @@
     response = Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>,
     document(text_document_position_params.text_document),
     incoming_position(text_document_position_params.position),
-    outgoing(crate::requests::conversion::modify_outgoing_type_hierarchy_items),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_type_hierarchy_items),
 )]
 pub(crate) struct TypeHierarchyPrepareRequest;
 
@@ -15,7 +15,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::TypeHierarchyPrepareRequest;
+    use crate::lsp_requests::TypeHierarchyPrepareRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {

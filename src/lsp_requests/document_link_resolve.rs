@@ -30,7 +30,7 @@ mod tests {
     use async_lsp::ClientSocket;
     use async_lsp::lsp_types::{DocumentLink, Range};
 
-    use crate::requests::{Direction, DocumentLinkResolveRequest, convert_resolve_item};
+    use crate::lsp_requests::{Direction, DocumentLinkResolveRequest, convert_resolve_item};
     use crate::server::{ServerOptions, ServerState};
     use crate::testing::{TestServer, open_document, same_line, state_with_documents, url};
     use crate::text_utils::Encoding;

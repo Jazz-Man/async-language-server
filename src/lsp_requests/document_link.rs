@@ -2,7 +2,7 @@
     params = async_lsp::lsp_types::DocumentLinkParams,
     response = Option<Vec<async_lsp::lsp_types::DocumentLink>>,
     document(text_document),
-    outgoing(crate::requests::conversion::modify_outgoing_document_links),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_document_links),
 )]
 pub(crate) struct DocumentLinkRequest;
 
@@ -14,7 +14,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::DocumentLinkRequest;
+    use crate::lsp_requests::DocumentLinkRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {

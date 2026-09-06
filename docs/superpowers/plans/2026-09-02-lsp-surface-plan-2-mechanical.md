@@ -4,7 +4,7 @@
 
 **Goal:** Build the `method_registry!` (one registry module, three tables, consumed by three stampers) so adding an LSP method becomes one row; retrofit the 16 wired methods onto it; then land the 27 mechanical methods (20 generated rows + 7 custom-hook files) with their conversion helpers and tests.
 
-**Architecture:** A new `src/requests/registry.rs` holds three token tables (`generated_methods!`, `custom_methods!`, `resolve_methods!`) expanded through the macro-passthrough `table!(stamper)` technique — the same pattern async-lsp's `define!` uses. `server_trait.rs` stamps trait methods, `with_state/mod.rs` stamps dispatch entries (the existing `implement_method!`/`implement_resolve_method!` engines remain), and `requests/mod.rs` stamps `Request` impls for generated rows. Spec: `docs/superpowers/specs/2026-09-01-lsp-surface-completion-design.md`, sections "Architecture 1" and "Roadmap".
+**Architecture:** A new `src/lsp_requests/registry.rs` holds three token tables (`generated_methods!`, `custom_methods!`, `resolve_methods!`) expanded through the macro-passthrough `table!(stamper)` technique — the same pattern async-lsp's `define!` uses. `server_trait.rs` stamps trait methods, `with_state/mod.rs` stamps dispatch entries (the existing `implement_method!`/`implement_resolve_method!` engines remain), and `requests/mod.rs` stamps `Request` impls for generated rows. Spec: `docs/superpowers/specs/2026-09-01-lsp-surface-completion-design.md`, sections "Architecture 1" and "Roadmap".
 
 **Tech Stack:** Rust edition 2024 (`Future` is in the prelude), `macro_rules!` with `pub(crate) use` exports, existing `request_extract_url!`/`request_modify_params_position!`/`conversion_tests!` macros.
 
@@ -13,11 +13,11 @@
 - Owner commits — every task ends at a review checkpoint with a file list; no git commands anywhere.
 - Rows carry TWO method idents: `$trait_name` (our `Server` method) and `$alsp_name` (async-lsp trait method); they differ for `rename_prepare`/`prepare_rename`, `document_format`/`formatting`, `document_range_format`/`range_formatting`, `document_diagnostics`/`document_diagnostic`, `link`/`document_link`.
 - Types in rows are written as full paths (`async_lsp::lsp_types::...`) — rows expand in three different scopes.
-- UTF-8 invariant: handlers never convert; conversion lives only in `Request` hooks and `src/requests/conversion.rs`. Staleness comes only from `implement_method!`.
+- UTF-8 invariant: handlers never convert; conversion lives only in `Request` hooks and `src/lsp_requests/conversion.rs`. Staleness comes only from `implement_method!`.
 - Trait methods use RPITIT exactly like the existing ones: `fn $trait_name(&self, _state: ServerState, _params: $params) -> impl Future<Output = ServerResult<$response>> + Send`.
 - Every new public trait method needs a `doc:` literal in house style: names the wire method, says what it returns, names the capability requirement (`Requires a X provider in [`Server::server_capabilities`].`). Resolve methods' docs additionally document the sole-document conversion behavior (copy the pattern from the existing `completion_resolve` doc).
-- `Request` trait (exact, `src/requests/mod.rs:71-82`): `type Params; type Response;` and hooks `extract_url(&Self::Params) -> Option<Url>`, `modify_params(&ServerState, &Document, &mut Self::Params)`, `modify_response(&ServerState, &Document, &mut Self::Response)`.
-- Tests: `conversion_tests!` rows wherever the pin is a Position (fixture semantics: params built against the emoji document URL; load-bearing columns client UTF-16 2 ↔ UTF-8 byte 4; response closures receive `(plain_url, emoji_url)`); hand-written W0 for selection_range (multi-position), signature_help (label offsets), symbol (URL-less disk-fallback), inline_value (two incoming ranges), the four item-carrying hierarchy methods (incoming item conversion), and the file-ops trio (deep `WorkspaceEdit` shapes). Typed defaults (`WorkDoneProgressParams::default()` etc.), no `use crate::requests::Request;` in test modules (macro uses `$crate::requests::Request`).
+- `Request` trait (exact, `src/lsp_requests/mod.rs:71-82`): `type Params; type Response;` and hooks `extract_url(&Self::Params) -> Option<Url>`, `modify_params(&ServerState, &Document, &mut Self::Params)`, `modify_response(&ServerState, &Document, &mut Self::Response)`.
+- Tests: `conversion_tests!` rows wherever the pin is a Position (fixture semantics: params built against the emoji document URL; load-bearing columns client UTF-16 2 ↔ UTF-8 byte 4; response closures receive `(plain_url, emoji_url)`); hand-written W0 for selection_range (multi-position), signature_help (label offsets), symbol (URL-less disk-fallback), inline_value (two incoming ranges), the four item-carrying hierarchy methods (incoming item conversion), and the file-ops trio (deep `WorkspaceEdit` shapes). Typed defaults (`WorkDoneProgressParams::default()` etc.), no `use crate::lsp_requests::Request;` in test modules (macro uses `$crate::lsp_requests::Request`).
 - All three feature configurations compile and pass; no `#[allow]`/suppressions; production `src/` unwrap/expect-clean; `# Errors`/`# Panics` not needed (helpers return `()`, never panic — conversions pass through on miss).
 - `cargo dupes check` exit 0; one reasoned `.dupes-ignore.toml` entry per genuinely-deliberate group only, never per-row.
 - No per-plan final review (owner decision 2026-09-02): one end-of-cycle whole-branch review after Plan 3.
@@ -27,18 +27,18 @@
 ### Task 1: The registry + `request_modify_params_range!` + retrofit of the 16 wired methods
 
 **Files:**
-- Create: `src/requests/registry.rs`
-- Modify: `src/requests/mod.rs` (declare module, add `request_modify_params_range!`, stamper invocation, delete the 10 migrated per-method modules' impls — their files keep only `#[cfg(test)]` blocks where present)
+- Create: `src/lsp_requests/registry.rs`
+- Modify: `src/lsp_requests/mod.rs` (declare module, add `request_modify_params_range!`, stamper invocation, delete the 10 migrated per-method modules' impls — their files keep only `#[cfg(test)]` blocks where present)
 - Modify: `src/server/server_trait.rs` (delete the 15 hand-written method bodies; keep the 4 config methods; stamp from the registry)
 - Modify: `src/server/with_state/mod.rs` (replace both hand-maintained tables with stamper invocations)
-- Modify: `src/requests/conversion.rs` (six thin outgoing helpers)
+- Modify: `src/lsp_requests/conversion.rs` (six thin outgoing helpers)
 - Delete impl bodies from: `hover.rs`, `declaration.rs`, `definition.rs`, `references.rs`, `document_link.rs`, `rename.rs`, `rename_prepare.rs`, `document_format.rs`, `document_range_format.rs` (keep tests; delete files entirely only if they have no tests and no other content)
 
 **Interfaces:**
 - Consumes: `request_extract_url!`, `request_modify_params_position!`, `conversion_tests!`, `implement_method!`, `implement_resolve_method!`, all `convert_*` helpers in `conversion.rs`.
-- Produces (exact): `crate::requests::registry::{generated_methods, custom_methods, resolve_methods}` (each `pub(crate) use`-exported, each invoked as `table!(stamper_name)`); `request_modify_params_range!` in `src/requests/mod.rs` (mirror of the position macro delegating to `convert_range` with `Direction::Incoming`); conversion helpers `modify_outgoing_hover(&ServerState, &Document, &mut Option<async_lsp::lsp_types::Hover>)`, `modify_outgoing_locations(&ServerState, &Document, &mut Option<Vec<async_lsp::lsp_types::Location>>>)`, `modify_outgoing_document_links(&ServerState, &Document, &mut Option<Vec<async_lsp::lsp_types::DocumentLink>>)`, `modify_outgoing_text_edits(&ServerState, &Document, &mut Option<Vec<async_lsp::lsp_types::TextEdit>>)`, `modify_outgoing_workspace_edit(&ServerState, &Document, &mut Option<async_lsp::lsp_types::WorkspaceEdit>)`, `modify_outgoing_prepare_rename_response(&ServerState, &Document, &mut Option<async_lsp::lsp_types::PrepareRenameResponse>)`.
+- Produces (exact): `crate::lsp_requests::registry::{generated_methods, custom_methods, resolve_methods}` (each `pub(crate) use`-exported, each invoked as `table!(stamper_name)`); `request_modify_params_range!` in `src/lsp_requests/mod.rs` (mirror of the position macro delegating to `convert_range` with `Direction::Incoming`); conversion helpers `modify_outgoing_hover(&ServerState, &Document, &mut Option<async_lsp::lsp_types::Hover>)`, `modify_outgoing_locations(&ServerState, &Document, &mut Option<Vec<async_lsp::lsp_types::Location>>>)`, `modify_outgoing_document_links(&ServerState, &Document, &mut Option<Vec<async_lsp::lsp_types::DocumentLink>>)`, `modify_outgoing_text_edits(&ServerState, &Document, &mut Option<Vec<async_lsp::lsp_types::TextEdit>>)`, `modify_outgoing_workspace_edit(&ServerState, &Document, &mut Option<async_lsp::lsp_types::WorkspaceEdit>)`, `modify_outgoing_prepare_rename_response(&ServerState, &Document, &mut Option<async_lsp::lsp_types::PrepareRenameResponse>)`.
 
-- [ ] **Step 1: `request_modify_params_range!` in `src/requests/mod.rs`**
+- [ ] **Step 1: `request_modify_params_range!` in `src/lsp_requests/mod.rs`**
 
 After `request_modify_params_position!`:
 
@@ -54,18 +54,18 @@ macro_rules! request_modify_params_range {
             document: &crate::server::Document,
             params: &mut Self::Params,
         ) {
-            crate::requests::conversion::convert_range(
+            crate::lsp_requests::conversion::convert_range(
                 state,
                 document,
                 &mut params $(.$segment)*,
-                crate::requests::conversion::Direction::Incoming,
+                crate::lsp_requests::conversion::Direction::Incoming,
             );
         }
     };
 }
 ```
 
-- [ ] **Step 2: Create `src/requests/registry.rs` with the three tables holding all 16 retrofitted rows**
+- [ ] **Step 2: Create `src/lsp_requests/registry.rs` with the three tables holding all 16 retrofitted rows**
 
 ```rust
 //! The method registry: the single source of truth for (trait method,
@@ -76,7 +76,7 @@ macro_rules! request_modify_params_range {
 //! uses one level down. `generated_methods!` rows fully determine a
 //! `Request` impl (extract-url path, incoming hook, outgoing helper);
 //! `custom_methods!` rows only bind names/types — the hooks live in the
-//! per-method file under `src/requests/`; `resolve_methods!` rows bind the
+//! per-method file under `src/lsp_requests/`; `resolve_methods!` rows bind the
 //! resolve trio. Consumers: `server_trait.rs` (trait methods),
 //! `with_state/mod.rs` (dispatch), `requests/mod.rs` (generated impls).
 //!
@@ -215,7 +215,7 @@ pub(crate) use resolve_methods;
 
 - [ ] **Step 3: The three stampers**
 
-In `src/requests/mod.rs` (after the existing macros; `mod registry;` + `use` as needed):
+In `src/lsp_requests/mod.rs` (after the existing macros; `mod registry;` + `use` as needed):
 
 ```rust
 /// Stamps `Request` impls for the registry's generated rows.
@@ -247,7 +247,7 @@ macro_rules! registry_request_impls {
                     document: &crate::server::Document,
                     response: &mut Self::Response,
                 ) {
-                    $crate::requests::conversion::$outgoing(state, document, response);
+                    $crate::lsp_requests::conversion::$outgoing(state, document, response);
                 }
                 )?
             }
@@ -255,7 +255,7 @@ macro_rules! registry_request_impls {
     };
 }
 
-crate::requests::registry::generated_methods!(registry_request_impls);
+crate::lsp_requests::registry::generated_methods!(registry_request_impls);
 ```
 
 In `src/server/server_trait.rs` — delete the 15 hand-written method bodies (keep the 4 config methods and `method_not_implemented`), then:
@@ -310,9 +310,9 @@ macro_rules! registry_trait_resolve_methods {
     };
 }
 
-crate::requests::registry::generated_methods!(registry_trait_methods);
-crate::requests::registry::custom_methods!(registry_trait_methods);
-crate::requests::registry::resolve_methods!(registry_trait_resolve_methods);
+crate::lsp_requests::registry::generated_methods!(registry_trait_methods);
+crate::lsp_requests::registry::custom_methods!(registry_trait_methods);
+crate::lsp_requests::registry::resolve_methods!(registry_trait_resolve_methods);
 ```
 
 (Note: `registry_trait_methods!` must ALSO match `custom_methods!` rows — same matcher works: custom rows simply have no hook fields, all of which are optional. Declare `custom_methods` before use if import ordering requires; `server_trait.rs` needs no new imports — types come as full paths and `ServerState`/`ServerResult`/`method_not_implemented`/`Future` are already in scope.)
@@ -334,7 +334,7 @@ macro_rules! registry_dispatch {
         }
     )*) => {
         implement_methods!(
-            $( $alsp_name => $trait_name @ crate::requests::$req, )*
+            $( $alsp_name => $trait_name @ crate::lsp_requests::$req, )*
         );
     };
 }
@@ -348,17 +348,17 @@ macro_rules! registry_dispatch_resolve {
         }
     )*) => {
         $(
-            implement_resolve_method!($alsp_name => $trait_name @ crate::requests::$req);
+            implement_resolve_method!($alsp_name => $trait_name @ crate::lsp_requests::$req);
         )*
     };
 }
 
-crate::requests::registry::generated_methods!(registry_dispatch);
-crate::requests::registry::custom_methods!(registry_dispatch);
-crate::requests::registry::resolve_methods!(registry_dispatch_resolve);
+crate::lsp_requests::registry::generated_methods!(registry_dispatch);
+crate::lsp_requests::registry::custom_methods!(registry_dispatch);
+crate::lsp_requests::registry::resolve_methods!(registry_dispatch_resolve);
 ```
 
-- [ ] **Step 4: Six thin outgoing helpers in `src/requests/conversion.rs`**
+- [ ] **Step 4: Six thin outgoing helpers in `src/lsp_requests/conversion.rs`**
 
 ```rust
 /// Converts a hover's optional range from UTF-8 to the client encoding.
@@ -453,7 +453,7 @@ pub(crate) fn modify_outgoing_prepare_rename_response(
 
 - [ ] **Step 5: Migrate the ten per-method files**
 
-For each of `hover.rs`, `declaration.rs`, `definition.rs`, `references.rs`, `document_link.rs`, `rename.rs`, `rename_prepare.rs`, `document_format.rs`, `document_range_format.rs`: delete the `pub struct` + `impl Request` block (now stamped); keep `#[cfg(test)] mod tests` exactly as-is; if the file becomes tests-only it stays as the row's test home. In `src/requests/mod.rs` delete the corresponding `mod x;` + `pub(crate) use x::X;` lines for tests-only files and add `mod registry;`. The three custom files (`completion.rs`, `code_action.rs`, `document_diagnostics.rs`) and three resolve files keep everything — only their trait/dispatch bindings now come from the tables.
+For each of `hover.rs`, `declaration.rs`, `definition.rs`, `references.rs`, `document_link.rs`, `rename.rs`, `rename_prepare.rs`, `document_format.rs`, `document_range_format.rs`: delete the `pub struct` + `impl Request` block (now stamped); keep `#[cfg(test)] mod tests` exactly as-is; if the file becomes tests-only it stays as the row's test home. In `src/lsp_requests/mod.rs` delete the corresponding `mod x;` + `pub(crate) use x::X;` lines for tests-only files and add `mod registry;`. The three custom files (`completion.rs`, `code_action.rs`, `document_diagnostics.rs`) and three resolve files keep everything — only their trait/dispatch bindings now come from the tables.
 
 - [ ] **Step 6: Battery**
 
@@ -469,9 +469,9 @@ Report for review. Files: registry.rs (new), requests/mod.rs, server_trait.rs, w
 ### Task 2: Goto cluster — implementation, type_definition, document_highlight
 
 **Files:**
-- Modify: `src/requests/registry.rs` (three rows appended to `generated_methods!`)
-- Modify: `src/requests/conversion.rs` (one helper)
-- Create: `src/requests/implementation.rs`, `src/requests/type_definition.rs`, `src/requests/document_highlight.rs` (test homes)
+- Modify: `src/lsp_requests/registry.rs` (three rows appended to `generated_methods!`)
+- Modify: `src/lsp_requests/conversion.rs` (one helper)
+- Create: `src/lsp_requests/implementation.rs`, `src/lsp_requests/type_definition.rs`, `src/lsp_requests/document_highlight.rs` (test homes)
 
 **Interfaces:**
 - Consumes: registry grammar + stampers (Task 1); `modify_outgoing_goto_response` (exists).
@@ -577,8 +577,8 @@ mod tests {
 ### Task 3: Edits cluster — on_type_formatting, will_save_wait_until, will_create/rename/delete_files
 
 **Files:**
-- Modify: `src/requests/registry.rs` (five rows), `src/requests/conversion.rs` (file-ops helper)
-- Create: `src/requests/on_type_formatting.rs`, `will_save_wait_until.rs`, `will_create_files.rs`, `will_rename_files.rs`, `will_delete_files.rs` (test homes; the three file-ops carry hand-written tests)
+- Modify: `src/lsp_requests/registry.rs` (five rows), `src/lsp_requests/conversion.rs` (file-ops helper)
+- Create: `src/lsp_requests/on_type_formatting.rs`, `will_save_wait_until.rs`, `will_create_files.rs`, `will_rename_files.rs`, `will_delete_files.rs` (test homes; the three file-ops carry hand-written tests)
 
 **Interfaces:**
 - Consumes: `modify_outgoing_text_edits`, `modify_outgoing_workspace_edit` (Task 1).
@@ -673,7 +673,7 @@ mod tests {
 
     use async_lsp::lsp_types::{CreateFilesParams, FileCreate, TextEdit, WorkspaceEdit};
 
-    use crate::requests::Request;
+    use crate::lsp_requests::Request;
     use crate::testing::{same_line, state_with_documents};
 
     use super::WillCreateFiles;
@@ -715,7 +715,7 @@ contract.
 
 **Files:**
 - Modify: `src/server/with_state/mod.rs` (implement_method! + two helpers)
-- Test: `src/server/with_state/tests.rs` (three dispatch tests), `src/requests/conversion.rs` (document_changes pin)
+- Test: `src/server/with_state/tests.rs` (three dispatch tests), `src/lsp_requests/conversion.rs` (document_changes pin)
 
 **Interfaces:**
 - Produces: `fn conversion_document(state: &ServerState, url: Option<&Url>) -> Option<Document>` and `fn read_document_from_disk(url: &Url) -> Option<Document>` (both private to `with_state`), used by `implement_method!` on BOTH sides of the handler call (params side and response side resolve fresh, mirroring the tracked path's re-fetch).
@@ -732,7 +732,7 @@ if let Some(url) = url.as_ref() {
 }
 let params_doc = conversion_document(&state, url.as_ref());
 if let Some(doc) = params_doc.as_ref() {
-    <$request_type as crate::requests::Request>::modify_params(&state, doc, &mut params);
+    <$request_type as crate::lsp_requests::Request>::modify_params(&state, doc, &mut params);
 }
 ```
 
@@ -748,7 +748,7 @@ if let Some(url) = url.as_ref()
     ));
 }
 if let Some(doc) = conversion_document(&state, url.as_ref()) {
-    <$request_type as crate::requests::Request>::modify_response(&state, &doc, &mut result);
+    <$request_type as crate::lsp_requests::Request>::modify_response(&state, &doc, &mut result);
 }
 ```
 
@@ -794,14 +794,14 @@ the actual name as a deviation).)
   1. `url_less_response_converts_against_sole_document` — one tracked document; a capture server whose `will_create_files` returns `Some(WorkspaceEdit)` with a UTF-8 range at byte 4 keying the tracked (emoji) URL; assert the dispatched response carries client column 2.
   2. `untracked_url_converts_against_disk` — `temp_workspace` file containing `🙂abc`, never opened; a SECOND unrelated document tracked (so the sole-doc heuristic cannot fire); request `hover` against the file's URL with the handler returning a range at byte 4; assert client column 2 in the response (params side: send client column 2, handler records byte 4).
   3. `url_less_passes_through_without_sole_document` — zero and two tracked documents: response returns unconverted (UTF-8 as-is).
-- [ ] **Step 3: `document_changes` pin** — unit test in `src/requests/conversion.rs`'s test module (or sibling) covering `convert_workspace_edit`'s `DocumentChanges::Edits` branch: build a `WorkspaceEdit` with `document_changes: Some(DocumentChanges::Edits(vec![TextDocumentEdit { text_document: OptionalVersionedTextDocumentIdentifier { uri: emoji, version: None }, edits: vec![OneOf::Left(TextEdit { range: same_line(0, 4, 4), .. })] }]))`, convert Outgoing, assert column 2.
+- [ ] **Step 3: `document_changes` pin** — unit test in `src/lsp_requests/conversion.rs`'s test module (or sibling) covering `convert_workspace_edit`'s `DocumentChanges::Edits` branch: build a `WorkspaceEdit` with `document_changes: Some(DocumentChanges::Edits(vec![TextDocumentEdit { text_document: OptionalVersionedTextDocumentIdentifier { uri: emoji, version: None }, edits: vec![OneOf::Left(TextEdit { range: same_line(0, 4, 4), .. })] }]))`, convert Outgoing, assert column 2.
 - [ ] **Step 4: Full battery + dupes; report; owner commits.**
 
 ### Task 4: Folding / selection / linked editing / code lens
 
 **Files:**
-- Modify: `src/requests/registry.rs` (folding_range, linked_editing_range, code_lens rows), `src/requests/conversion.rs` (three helpers), `src/requests/custom_methods!` gets nothing — `selection_range` is a custom row
-- Create: `src/requests/folding_range.rs`, `linked_editing_range.rs`, `code_lens.rs`, `selection_range.rs`
+- Modify: `src/lsp_requests/registry.rs` (folding_range, linked_editing_range, code_lens rows), `src/lsp_requests/conversion.rs` (three helpers), `src/lsp_requests/custom_methods!` gets nothing — `selection_range` is a custom row
+- Create: `src/lsp_requests/folding_range.rs`, `linked_editing_range.rs`, `code_lens.rs`, `selection_range.rs`
 
 **Interfaces:**
 - Consumes: registry grammar; `convert_optional_vec`.
@@ -915,7 +915,7 @@ selection_range: selection_range @ SelectionRange {
 }
 ```
 
-`src/requests/selection_range.rs`:
+`src/lsp_requests/selection_range.rs`:
 
 ```rust
 use async_lsp::lsp_types::SelectionRangeParams as LspSelectionRangeParams;
@@ -972,7 +972,7 @@ impl Request for SelectionRange {
 mod tests {
     use async_lsp::lsp_types::FoldingRange;
 
-    use crate::requests::Request;
+    use crate::lsp_requests::Request;
     use crate::testing::state_with_documents;
 
     use super::FoldingRange as FoldingRangeRequest;
@@ -1010,8 +1010,8 @@ mod tests {
 ### Task 5: Colors — document_color, color_presentation
 
 **Files:**
-- Modify: `src/requests/registry.rs` (two rows), `src/requests/conversion.rs` (two helpers)
-- Create: `src/requests/document_color.rs`, `src/requests/color_presentation.rs`
+- Modify: `src/lsp_requests/registry.rs` (two rows), `src/lsp_requests/conversion.rs` (two helpers)
+- Create: `src/lsp_requests/document_color.rs`, `src/lsp_requests/color_presentation.rs`
 
 **Interfaces:**
 - Produces: `modify_outgoing_color_informations(&ServerState, &Document, &mut Vec<async_lsp::lsp_types::ColorInformation>)` (bare Vec — not Option, per the verification report), `modify_outgoing_color_presentations(&ServerState, &Document, &mut Vec<async_lsp::lsp_types::ColorPresentation>)`.
@@ -1079,8 +1079,8 @@ color_presentation: color_presentation @ ColorPresentation {
 ### Task 6: Hierarchies + moniker — prepare/incoming/outgoing calls, prepare/super/sub types, moniker
 
 **Files:**
-- Modify: `src/requests/registry.rs` (three generated rows: prepare_call_hierarchy, prepare_type_hierarchy, moniker; four custom rows: incoming_calls, outgoing_calls, supertypes, subtypes), `src/requests/conversion.rs` (two item helpers + incoming item helper)
-- Create: `src/requests/prepare_call_hierarchy.rs`, `prepare_type_hierarchy.rs`, `moniker.rs`, `incoming_calls.rs`, `outgoing_calls.rs`, `supertypes.rs`, `subtypes.rs`
+- Modify: `src/lsp_requests/registry.rs` (three generated rows: prepare_call_hierarchy, prepare_type_hierarchy, moniker; four custom rows: incoming_calls, outgoing_calls, supertypes, subtypes), `src/lsp_requests/conversion.rs` (two item helpers + incoming item helper)
+- Create: `src/lsp_requests/prepare_call_hierarchy.rs`, `prepare_type_hierarchy.rs`, `moniker.rs`, `incoming_calls.rs`, `outgoing_calls.rs`, `supertypes.rs`, `subtypes.rs`
 
 **Interfaces:**
 - Produces: `modify_outgoing_call_hierarchy_items(&ServerState, &Document, &mut Option<Vec<async_lsp::lsp_types::CallHierarchyItem>>)`, `modify_outgoing_type_hierarchy_items(&ServerState, &Document, &mut Option<Vec<async_lsp::lsp_types::TypeHierarchyItem>>)`; item converters `convert_call_hierarchy_item(&ServerState, &Document, &mut async_lsp::lsp_types::CallHierarchyItem, Direction)` and `convert_type_hierarchy_item(...)` converting `range` + `selection_range` per-URL (against `item.uri`, falling back to the request document).
@@ -1210,8 +1210,8 @@ impl Request for IncomingCalls {
 ### Task 7: Inlay hint / inline value / signature help
 
 **Files:**
-- Modify: `src/requests/registry.rs` (two generated rows: inlay_hint, signature_help; one custom row: inline_value), `src/requests/conversion.rs` (three helpers + label-offset converter)
-- Create: `src/requests/inlay_hint.rs`, `inline_value.rs`, `signature_help.rs`
+- Modify: `src/lsp_requests/registry.rs` (two generated rows: inlay_hint, signature_help; one custom row: inline_value), `src/lsp_requests/conversion.rs` (three helpers + label-offset converter)
+- Create: `src/lsp_requests/inlay_hint.rs`, `inline_value.rs`, `signature_help.rs`
 
 **Interfaces:**
 - Produces: `modify_outgoing_inlay_hints(&ServerState, &Document, &mut Option<Vec<async_lsp::lsp_types::InlayHint>>)` (converts `position`, every `text_edits` range, and every label-part `location`); `modify_outgoing_inline_value(&ServerState, &Document, &mut Option<async_lsp::lsp_types::InlineValue>)` (match on the three variants, convert each `range`); `modify_outgoing_signature_help(&ServerState, &Document, &mut Option<async_lsp::lsp_types::SignatureHelp>>)` (converts `ParameterLabel::LabelOffsets` against the containing label string); `convert_label_offsets(label: &str, offsets: &mut [u32; 2], from: Encoding, to: Encoding)`.
@@ -1331,8 +1331,8 @@ impl Request for InlineValue {
 ### Task 8: Symbols + execute_command — document_symbol, workspace symbol, execute_command
 
 **Files:**
-- Modify: `src/requests/registry.rs` (two generated rows: document_symbol, execute_command; one custom row: symbol), `src/requests/conversion.rs` (two helpers + disk-fallback machinery)
-- Create: `src/requests/document_symbol.rs`, `symbol.rs`, `execute_command.rs`
+- Modify: `src/lsp_requests/registry.rs` (two generated rows: document_symbol, execute_command; one custom row: symbol), `src/lsp_requests/conversion.rs` (two helpers + disk-fallback machinery)
+- Create: `src/lsp_requests/document_symbol.rs`, `symbol.rs`, `execute_command.rs`
 
 **Interfaces:**
 - Produces: `modify_outgoing_document_symbols(&ServerState, &Document, &mut Option<async_lsp::lsp_types::DocumentSymbolResponse>>)` (Flat: convert each `SymbolInformation.location` per-URL; Nested: recurse `children`, convert `range` + `selection_range`); custom `Symbol` impl whose `modify_response` converts `WorkspaceSymbolResponse` with store-first / disk-fallback / pass-through and a per-request cache (`HashMap<Url, Option<Document>>`).
@@ -1399,7 +1399,7 @@ symbol: symbol @ Symbol {
 }
 ```
 
-`src/requests/symbol.rs` — custom impl: `extract_url` default (None, no staleness); `modify_params` no-op (query only); `modify_response` walks the response — `Flat(Vec<SymbolInformation>)`: convert each `location` via store-first lookup (`state.document(&loc.uri)`), else disk-fallback reading the file bytes to a `Document` (cache `HashMap<Url, Option<Document>>` per call; parse failures cache `None` and pass through), else pass-through; `Nested(Vec<WorkspaceSymbol>)`: same for `location: OneOf::Left(location)`, `Right(_)` has no range and passes through untouched. Build the fallback `Document` via the same construction `workspace/diagnostics.rs` uses for loading workspace files (reuse its loader if one exists — check `src/workspace/diagnostics.rs` first; if it has a private loader, extract or mirror it minimally, recording the choice).
+`src/lsp_requests/symbol.rs` — custom impl: `extract_url` default (None, no staleness); `modify_params` no-op (query only); `modify_response` walks the response — `Flat(Vec<SymbolInformation>)`: convert each `location` via store-first lookup (`state.document(&loc.uri)`), else disk-fallback reading the file bytes to a `Document` (cache `HashMap<Url, Option<Document>>` per call; parse failures cache `None` and pass through), else pass-through; `Nested(Vec<WorkspaceSymbol>)`: same for `location: OneOf::Left(location)`, `Right(_)` has no range and passes through untouched. Build the fallback `Document` via the same construction `workspace/diagnostics.rs` uses for loading workspace files (reuse its loader if one exists — check `src/workspace/diagnostics.rs` first; if it has a private loader, extract or mirror it minimally, recording the choice).
 
 - [ ] **Step 3: Tests** — `conversion_tests!` outgoing row for `document_symbol` (Nested: `DocumentSymbolResponse::Nested(vec![DocumentSymbol { name: "f".into(), detail: None, kind: SymbolKind::FUNCTION, tags: None, deprecated: None, range: same_line(0, 4, 4), selection_range: same_line(0, 4, 4), children: Some(vec![...leaf...]) }])`, getter `[0].range.start` returns 2; a second hand-written assertion pins the recursive child); hand-written for `symbol` (three branches: tracked doc converts; untracked-but-on-disk converts via a `temp_workspace` file; nonexistent URI passes through) and a no-op sanity test for `execute_command` (params unchanged through `modify_params`, response value unchanged through `modify_response`).
 
@@ -1417,14 +1417,14 @@ are two real shapes; forcing the second through the first made the engine
 skip conversion entirely when no single anchor existed.
 
 **Files:**
-- Modify: `src/requests/mod.rs` (the trait hook), `src/server/with_state/mod.rs` (engine branch), `src/requests/symbol.rs` (override moves here)
+- Modify: `src/lsp_requests/mod.rs` (the trait hook), `src/server/with_state/mod.rs` (engine branch), `src/lsp_requests/symbol.rs` (override moves here)
 - Modify: `docs/superpowers/specs/...` spec 1.5 (done), `.claude/rules/structure.md` (one line on the second hook shape)
 - Test: `src/server/with_state/tests.rs` (multi-doc dispatch test)
 
 **Interfaces:**
 - Produces: `fn modify_response_standalone(_state: &ServerState, _response: &mut Self::Response) {}` on `Request` (default no-op, documented: state-driven conversions that resolve their own documents; override INSTEAD of `modify_response` when the anchor is irrelevant).
 
-- [ ] **Step 1: Trait hook** in `src/requests/mod.rs`, below `modify_response`:
+- [ ] **Step 1: Trait hook** in `src/lsp_requests/mod.rs`, below `modify_response`:
 
 ```rust
     /// Response conversion for requests with no document anchor.
@@ -1443,10 +1443,10 @@ skip conversion entirely when no single anchor existed.
 ```rust
     match conversion_document(&state, url.as_ref()) {
         Some(doc) => {
-            <$request_type as crate::requests::Request>::modify_response(&state, &doc, &mut result);
+            <$request_type as crate::lsp_requests::Request>::modify_response(&state, &doc, &mut result);
         }
         None => {
-            <$request_type as crate::requests::Request>::modify_response_standalone(&state, &mut result);
+            <$request_type as crate::lsp_requests::Request>::modify_response_standalone(&state, &mut result);
         }
     }
 ```

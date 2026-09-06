@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Owner commits — every task ends at a review checkpoint with a file list; no git commands anywhere.
-- Rows carry `$trait : $alsp @ $Request`; types as full paths; typed defaults (`WorkDoneProgressParams::default()` etc.) in test struct literals; test modules import stamped types via `crate::requests::X`.
+- Rows carry `$trait : $alsp @ $Request`; types as full paths; typed defaults (`WorkDoneProgressParams::default()` etc.) in test struct literals; test modules import stamped types via `crate::lsp_requests::X`.
 - Normative token semantics (LSP 3.17, quoted in the spec): `deltaStart` and `length` are encoded in the NEGOTIATED encoding; edit `start`/`deleteCount` index the FLAT u32 array and edits are interpretation-free; the 5-tuple layout is `SemanticToken { delta_line, delta_start, length, token_type, token_modifiers_bitset }` (pinned lsp-types 0.95.1, semantic_tokens.rs:146-153); results are untagged enums (`SemanticTokensResult` Tokens|Partial, `SemanticTokensFullDeltaResult` Tokens|TokensDelta|PartialTokensDelta{edits} — inline struct variant, `SemanticTokensRangeResult` Tokens|Partial).
 - Trait methods always speak UTF-8: token columns and lengths the handler produces are UTF-8; conversion happens only in the outgoing helpers. `start`/`delete_count` pass through untouched (array positions, not code units).
 - Cache discipline (spec, Semantic tokens): written whenever a FULL or DELTA response passes through `modify_response` (range responses convert but never cache); keyed by the request document's URL; a `didChange` does NOT invalidate it (the server's edits are against its previous UTF-8 state, which is exactly what the cache holds); on a cache miss the delta edits pass through unconverted (trace under the `tracing` feature).
@@ -25,8 +25,8 @@
 ### Task 1: Token converter + state cache + `semantic_tokens_full`
 
 **Files:**
-- Modify: `src/server/state/mod.rs` (+1 field, +2 methods, +1 struct), `src/requests/conversion.rs` (converter + outgoing helper), `src/requests/registry.rs` (1 row)
-- Create: `src/requests/semantic_tokens_full.rs` (tests only)
+- Modify: `src/server/state/mod.rs` (+1 field, +2 methods, +1 struct), `src/lsp_requests/conversion.rs` (converter + outgoing helper), `src/lsp_requests/registry.rs` (1 row)
+- Create: `src/lsp_requests/semantic_tokens_full.rs` (tests only)
 
 **Interfaces:**
 - Consumes: `convert_position`/`position_to_encoding` machinery; registry grammar.
@@ -63,7 +63,7 @@ pub(crate) struct CachedSemanticTokens {
     }
 ```
 
-- [ ] **Step 2: Converter** — in `src/requests/conversion.rs`:
+- [ ] **Step 2: Converter** — in `src/lsp_requests/conversion.rs`:
 
 ```rust
 /// Converts a semantic-token stream's `delta_start` and `length` columns
@@ -166,14 +166,14 @@ semantic_tokens_full: semantic_tokens_full @ SemanticTokensFull {
 }
 ```
 
-- [ ] **Step 4: Tests** — `src/requests/semantic_tokens_full.rs`, hand-written (arrays are not Position rows):
+- [ ] **Step 4: Tests** — `src/lsp_requests/semantic_tokens_full.rs`, hand-written (arrays are not Position rows):
 
 ```rust
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{SemanticToken, SemanticTokens, SemanticTokensResult};
 
-    use crate::requests::Request;
+    use crate::lsp_requests::Request;
     use crate::testing::state_with_documents;
 
     use super::SemanticTokensFull;
@@ -227,8 +227,8 @@ mod tests {
 ### Task 2: `semantic_tokens_range` + `semantic_tokens_full_delta`
 
 **Files:**
-- Modify: `src/requests/conversion.rs` (two helpers + edit-seeding walk), `src/requests/registry.rs` (2 rows)
-- Create: `src/requests/semantic_tokens_range.rs`, `src/requests/semantic_tokens_full_delta.rs` (tests only)
+- Modify: `src/lsp_requests/conversion.rs` (two helpers + edit-seeding walk), `src/lsp_requests/registry.rs` (2 rows)
+- Create: `src/lsp_requests/semantic_tokens_range.rs`, `src/lsp_requests/semantic_tokens_full_delta.rs` (tests only)
 
 **Interfaces:**
 - Consumes: Task 1's converter + cache.
@@ -434,8 +434,8 @@ semantic_tokens_full_delta: semantic_tokens_full_delta @ SemanticTokensFullDelta
 ### Task 3: Resolve trio — codeLens/resolve, inlayHint/resolve, workspaceSymbol/resolve
 
 **Files:**
-- Modify: `src/requests/registry.rs` (3 rows appended to `resolve_methods!`)
-- Create: `src/requests/code_lens_resolve.rs`, `inlay_hint_resolve.rs`, `workspace_symbol_resolve.rs` (struct + impl + tests; `pub(crate) use` re-exports)
+- Modify: `src/lsp_requests/registry.rs` (3 rows appended to `resolve_methods!`)
+- Create: `src/lsp_requests/code_lens_resolve.rs`, `inlay_hint_resolve.rs`, `workspace_symbol_resolve.rs` (struct + impl + tests; `pub(crate) use` re-exports)
 
 **Interfaces:**
 - Consumes: `implement_resolve_method!` (sole-document anchor + `convert_resolve_item` both directions — already stamped from the resolve table).
@@ -579,8 +579,8 @@ One test drives all twelve notifications through `LanguageServerWithState` (reus
 ### Task 6: `active_signature_help` incoming fix (registered Minor)
 
 **Files:**
-- Modify: `src/requests/registry.rs` (signature_help row moves from `generated_methods!` to `custom_methods!` — drop the hook fields, doc gains the context sentence), `src/requests/conversion.rs` (factor the label-offset walk into `convert_signature_help_label_offsets(state, document, help, direction)`), `src/requests/mod.rs` (mod + re-export)
-- Create: `src/requests/signature_help.rs` (struct + impl + tests move/extend)
+- Modify: `src/lsp_requests/registry.rs` (signature_help row moves from `generated_methods!` to `custom_methods!` — drop the hook fields, doc gains the context sentence), `src/lsp_requests/conversion.rs` (factor the label-offset walk into `convert_signature_help_label_offsets(state, document, help, direction)`), `src/lsp_requests/mod.rs` (mod + re-export)
+- Create: `src/lsp_requests/signature_help.rs` (struct + impl + tests move/extend)
 
 **Interfaces:**
 - Produces: `SignatureHelp` custom impl whose `modify_params` converts the flattened position AND walks `params.context.active_signature_help`'s label offsets client→UTF-8 (reversed direction of the outgoing walk); `modify_response` calls the existing outgoing helper.
@@ -616,7 +616,7 @@ One test drives all twelve notifications through `LanguageServerWithState` (reus
 Extended by the owner's design decision (2026-09-02, registered at T3's review): the resolve engine's sole-document gate leaves `workspaceSymbol/resolve` unconverted in multi-document sessions — the mirror of the T8 gate the standalone hook fixed for `workspace/symbol`.
 
 **Files:**
-- Modify: `src/requests/mod.rs` (`modify_params_standalone` hook), `src/server/with_state/mod.rs` (`implement_resolve_method!` branch), `src/requests/workspace_symbol_resolve.rs` (both hooks move), `.claude/rules/structure.md` (one sentence), `.claude/rules/testing.md` (`token` fixture line)
+- Modify: `src/lsp_requests/mod.rs` (`modify_params_standalone` hook), `src/server/with_state/mod.rs` (`implement_resolve_method!` branch), `src/lsp_requests/workspace_symbol_resolve.rs` (both hooks move), `.claude/rules/structure.md` (one sentence), `.claude/rules/testing.md` (`token` fixture line)
 - Test: `src/server/with_state/tests.rs` (multi-doc resolve dispatch test)
 
 - [ ] **Step 1: The params-side standalone hook** in `Request` (below `modify_response_standalone`):

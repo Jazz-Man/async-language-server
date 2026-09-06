@@ -3,7 +3,7 @@
     response = Option<async_lsp::lsp_types::SemanticTokensRangeResult>,
     document(text_document),
     incoming_range(range),
-    outgoing(crate::requests::conversion::modify_outgoing_semantic_tokens_range_result),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_semantic_tokens_range_result),
 )]
 pub(crate) struct SemanticTokensRangeRequest;
 
@@ -15,7 +15,7 @@ mod tests {
         WorkDoneProgressParams,
     };
 
-    use crate::requests::{Request, SemanticTokensRangeRequest};
+    use crate::lsp_requests::{Request, SemanticTokensRangeRequest};
     use crate::testing::{same_line, state_with_documents, token};
 
     #[test]

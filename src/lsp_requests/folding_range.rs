@@ -2,7 +2,7 @@
     params = async_lsp::lsp_types::FoldingRangeParams,
     response = Option<Vec<async_lsp::lsp_types::FoldingRange>>,
     document(text_document),
-    outgoing(crate::requests::conversion::modify_outgoing_folding_ranges),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_folding_ranges),
 )]
 pub(crate) struct FoldingRangeRequest;
 
@@ -10,7 +10,7 @@ pub(crate) struct FoldingRangeRequest;
 mod tests {
     use async_lsp::lsp_types::FoldingRange;
 
-    use crate::requests::{FoldingRangeRequest, Request};
+    use crate::lsp_requests::{FoldingRangeRequest, Request};
     use crate::testing::state_with_documents;
 
     #[test]

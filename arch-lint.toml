@@ -13,11 +13,13 @@
 
 # --- Layer rules mirroring .claude/rules/structure.md -------------------------
 # The dependency direction: text_utils is the bottom leaf; documents,
-# requests, and workspace are siblings below the server wiring; oneshot is
+# lsp_requests, and workspace are siblings below the server wiring; oneshot is
 # the top-level clientless consumer. Siblings never import each other, with
-# one blessed reuse edge: workspace -> requests (encoding conversion for
+# one blessed reuse edge: workspace -> lsp_requests (encoding conversion for
 # workspace reports). The domains' imports of crate::server facade types are
-# the designed route to shared types and stay allowed.
+# the designed route to shared types and stay allowed. The lsp_macros
+# proc-macro crate stands outside the layer stack: it generates library code
+# and must not depend on the library it serves.
 
 [[scopes]]
 name = "text-utils"
@@ -32,8 +34,8 @@ name = "workspace"
 paths = ["src/workspace/**"]
 
 [[scopes]]
-name = "requests"
-paths = ["src/requests/**"]
+name = "lsp-requests"
+paths = ["src/lsp_requests/**"]
 
 [[scopes]]
 name = "server"
@@ -43,23 +45,36 @@ paths = ["src/server/**"]
 name = "oneshot"
 paths = ["src/oneshot/**"]
 
+# A separate workspace member, not a src module: scope names are kebab-case
+# identifiers (arch-lint allows [a-z0-9-] only), the paths glob is what ties
+# a scope to the code.
+[[scopes]]
+name = "lsp-macros"
+paths = ["macros/src/**"]
+
 [[deny-scope-dep]]
 name = "text-utils-is-leaf"
 from = "text-utils"
-to = ["documents", "requests", "workspace", "server", "oneshot"]
+to = ["documents", "lsp-requests", "workspace", "server", "oneshot"]
 message = "text_utils is a leaf; conversion machinery must not leak into it."
 
 [[deny-scope-dep]]
 name = "documents-stays-below-wiring"
 from = "documents"
-to = ["requests", "workspace", "oneshot"]
+to = ["lsp-requests", "workspace", "oneshot"]
 message = "documents must not depend on request handling, workspace scanning, or the clientless entry point."
 
 [[deny-scope-dep]]
-name = "requests-stays-below-wiring"
-from = "requests"
+name = "lsp-requests-stays-below-wiring"
+from = "lsp-requests"
 to = ["documents", "workspace", "oneshot"]
 message = "encoding conversion must not reach into sibling domains or the clientless entry point."
+
+[[deny-scope-dep]]
+name = "lsp-macros-is-standalone"
+from = "lsp-macros"
+to = ["text-utils", "documents", "lsp-requests", "workspace", "server", "oneshot"]
+message = "the proc-macro crate generates library code but must not depend on the library it serves."
 
 [[deny-scope-dep]]
 name = "workspace-stays-below-wiring"
@@ -72,4 +87,3 @@ name = "server-above-domains"
 from = "server"
 to = ["oneshot"]
 message = "server plumbing must not depend on the clientless oneshot entry point."
-

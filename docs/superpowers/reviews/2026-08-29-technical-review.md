@@ -241,10 +241,10 @@ Facts taken from the official documentation:
   request hooks never run.** `implement_method!` calls `modify_response` only
   when `extract_url` returns `Some` (`src/server_with_state.rs:51-59,68-84`);
   `CompletionResolve` and `CodeActionResolve` have no URL (comments at
-  `src/requests.rs:361,421`), so their `modify_response` — which converts
+  `src/lsp_requests.rs:361,421`), so their `modify_response` — which converts
   text-edit ranges — is dead code, and resolve responses leave in UTF-8
   positions under a UTF-16 client. Related: `Request` trait carries
-  `#[allow(dead_code)]` (`src/requests.rs:32`). Status: known, unspecced.
+  `#[allow(dead_code)]` (`src/lsp_requests.rs:32`). Status: known, unspecced.
   Natural home: the same URL-less conversion machinery the symbols work
   introduces (parked spec `2026-08-28-symbols-design.md` §4).
 - **C3 (previously known, specced): workspace/diagnostic ranges are not
@@ -288,7 +288,7 @@ Facts taken from the official documentation:
 |---|---|---|---|---|
 | C1 | Critical | `examples/minimal.rs:40`, `examples/tree_sitter.rs:47`, `src/oneshot/workspace_diagnostics.rs:323` | clippy `-D warnings` fails: `unused_async` ×3; CI gate red | tech.md battery |
 | I1 | Important | `src/result.rs:33,47-81`, `src/workspace_walker.rs:66,91` | `Unknown(String)` stringly catch-all; source chains destroyed | `err-source-chain`, `err-thiserror-lib`, thiserror docs |
-| I2 | Important | `src/server_with_state.rs:68-84`, `src/requests.rs:355-433` | `*_resolve` `modify_response` never runs; resolve responses unconverted (known, now formalized) | — |
+| I2 | Important | `src/server_with_state.rs:68-84`, `src/lsp_requests.rs:355-433` | `*_resolve` `modify_response` never runs; resolve responses unconverted (known, now formalized) | — |
 | I3 | Important | `src/text_utils/encoding.rs:75` | panic on unrecognized client position encoding in `initialize` path | `api-parse-dont-validate`, `err-result-over-panic` |
 | I4 | Important | `src/workspace_walker.rs:66` | single walk error aborts entire workspace scan | `api-dir-enumeration` |
 | I5 | Important | `src/document.rs:178` | invalid tree-sitter query silently → `None` (public API, no signal) | no-workarounds spirit |

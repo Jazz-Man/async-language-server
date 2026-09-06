@@ -14,7 +14,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::MonikerRequest;
+    use crate::lsp_requests::MonikerRequest;
     use crate::testing::line_position;
 
     conversion_tests! {

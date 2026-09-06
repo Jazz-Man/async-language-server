@@ -1135,7 +1135,7 @@ mod tests {
         TextEdit, WorkspaceEdit,
     };
 
-    use crate::requests::{Request, WillCreateFilesRequest};
+    use crate::lsp_requests::{Request, WillCreateFilesRequest};
     use crate::testing::{same_line, state_with_documents};
 
     #[test]

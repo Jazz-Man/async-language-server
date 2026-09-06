@@ -3,7 +3,7 @@
     response = Option<Vec<async_lsp::lsp_types::Location>>,
     document(text_document_position.text_document),
     incoming_position(text_document_position.position),
-    outgoing(crate::requests::conversion::modify_outgoing_locations),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_locations),
 )]
 pub(crate) struct ReferencesRequest;
 
@@ -15,7 +15,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::ReferencesRequest;
+    use crate::lsp_requests::ReferencesRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {

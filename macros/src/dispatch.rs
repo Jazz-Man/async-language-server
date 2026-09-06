@@ -131,7 +131,7 @@ fn engine(row: &DispatchRow) -> TokenStream {
                     );
                 }
                 None => {
-                    <#request as crate::requests::Request>::modify_params_standalone(
+                    <#request as crate::lsp_requests::Request>::modify_params_standalone(
                         &state, &mut params,
                     );
                 }
@@ -144,7 +144,7 @@ fn engine(row: &DispatchRow) -> TokenStream {
                     );
                 }
                 None => {
-                    <#request as crate::requests::Request>::modify_response_standalone(
+                    <#request as crate::lsp_requests::Request>::modify_response_standalone(
                         &state, &mut result,
                     );
                 }
@@ -155,7 +155,7 @@ fn engine(row: &DispatchRow) -> TokenStream {
         quote! {
             // 1. Try to extract the URL from the params for document tracking
             let url: Option<Url> =
-                <#request as crate::requests::Request>::extract_url(&params);
+                <#request as crate::lsp_requests::Request>::extract_url(&params);
             let mut ver: Option<i32> = None;
 
             // 2. If we got an URL, track the document version
@@ -169,7 +169,7 @@ fn engine(row: &DispatchRow) -> TokenStream {
             //    tracked document for URL-less requests
             let params_doc = conversion_document(&state, url.as_ref());
             if let Some(doc) = params_doc.as_ref() {
-                <#request as crate::requests::Request>::modify_params(&state, doc, &mut params,);
+                <#request as crate::lsp_requests::Request>::modify_params(&state, doc, &mut params,);
             }
 
             // 4. Call the user-defined language server function
@@ -193,10 +193,10 @@ fn engine(row: &DispatchRow) -> TokenStream {
             //    skipping them.
             match conversion_document(&state, url.as_ref()) {
                 Some(doc) => {
-                    <#request as crate::requests::Request>::modify_response(&state, &doc, &mut result,);
+                    <#request as crate::lsp_requests::Request>::modify_response(&state, &doc, &mut result,);
                 }
                 None => {
-                    <#request as crate::requests::Request>::modify_response_standalone(
+                    <#request as crate::lsp_requests::Request>::modify_response_standalone(
                         &state, &mut result,
                     );
                 }
@@ -214,10 +214,10 @@ fn wrapped(alsp: &Ident, request: &Path, core: &TokenStream) -> TokenStream {
     quote! {
         fn #alsp(
             &mut self,
-            mut params: <#request as crate::requests::Request>::Params,
+            mut params: <#request as crate::lsp_requests::Request>::Params,
         ) -> BoxFuture<
             'static,
-            Result<<#request as crate::requests::Request>::Response, Self::Error>,
+            Result<<#request as crate::lsp_requests::Request>::Response, Self::Error>,
         > {
             let server = Arc::clone(&self.server);
             let state = self.state.clone();
@@ -233,13 +233,14 @@ mod tests {
 
     #[test]
     fn parses_plain_row() {
-        let r: DispatchRow = syn::parse2(quote! { hover: hover @ crate::requests::HoverRequest })
-            .expect("row parses");
+        let r: DispatchRow =
+            syn::parse2(quote! { hover: hover @ crate::lsp_requests::HoverRequest })
+                .expect("row parses");
         assert_eq!(r.trait_method, "hover");
         assert_eq!(r.alsp, "hover");
         assert_eq!(
             r.request.to_token_stream().to_string(),
-            "crate :: requests :: HoverRequest"
+            "crate :: lsp_requests :: HoverRequest"
         );
         assert!(!r.resolve);
     }
@@ -247,7 +248,7 @@ mod tests {
     #[test]
     fn parses_diverging_names() {
         let r: DispatchRow = syn::parse2(
-            quote! { rename_prepare: prepare_rename @ crate::requests::RenamePrepareRequest },
+            quote! { rename_prepare: prepare_rename @ crate::lsp_requests::RenamePrepareRequest },
         )
         .expect("row parses");
         assert_eq!(r.trait_method, "rename_prepare");

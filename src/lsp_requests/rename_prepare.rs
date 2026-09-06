@@ -3,7 +3,7 @@
     response = Option<async_lsp::lsp_types::PrepareRenameResponse>,
     document(text_document),
     incoming_position(position),
-    outgoing(crate::requests::conversion::modify_outgoing_prepare_rename_response),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_prepare_rename_response),
 )]
 pub(crate) struct RenamePrepareRequest;
 
@@ -14,7 +14,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::RenamePrepareRequest;
+    use crate::lsp_requests::RenamePrepareRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {

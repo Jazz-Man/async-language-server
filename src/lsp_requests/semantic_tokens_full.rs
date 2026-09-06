@@ -2,7 +2,7 @@
     params = async_lsp::lsp_types::SemanticTokensParams,
     response = Option<async_lsp::lsp_types::SemanticTokensResult>,
     document(text_document),
-    outgoing(crate::requests::conversion::modify_outgoing_semantic_tokens_result),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_semantic_tokens_result),
 )]
 pub(crate) struct SemanticTokensFullRequest;
 
@@ -10,7 +10,7 @@ pub(crate) struct SemanticTokensFullRequest;
 mod tests {
     use async_lsp::lsp_types::{SemanticTokens, SemanticTokensResult};
 
-    use crate::requests::{Request, SemanticTokensFullRequest};
+    use crate::lsp_requests::{Request, SemanticTokensFullRequest};
     use crate::testing::{state_with_documents, token};
 
     #[test]

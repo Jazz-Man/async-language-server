@@ -49,7 +49,7 @@ mod tests {
     use async_lsp::ClientSocket;
     use async_lsp::lsp_types::{CompletionItem, CompletionTextEdit, TextEdit};
 
-    use crate::requests::{CompletionResolveRequest, Direction, convert_resolve_item};
+    use crate::lsp_requests::{CompletionResolveRequest, Direction, convert_resolve_item};
     use crate::server::{ServerOptions, ServerState};
     use crate::testing::{TestServer, open_document, same_line, state_with_documents, url};
     use crate::text_utils::Encoding;

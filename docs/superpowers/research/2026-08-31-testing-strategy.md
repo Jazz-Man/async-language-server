@@ -11,7 +11,7 @@ at implementation time.
 
 Question, in three parts: (1) after the move to typed `ServerError` errors and
 the strict lint regime, which existing tests lost their value and should be
-deleted, merged, or rewritten? (2) How should the `src/requests` test harness
+deleted, merged, or rewritten? (2) How should the `src/lsp_requests` test harness
 be extracted so each new `Request` impl can be tested where it lives? (3)
 Should the crate grow client-based integration tests — a test-only LSP client —
 and if so, which architecture?
@@ -40,12 +40,12 @@ in-domain, and build a thin byte-level test LSP client — not a typed one.**
    (clippy.toml) means tests were never carrying unwrap-checking. The real
    work in this area is **additions**: the `CONTENT_MODIFIED` staleness
    contract and all UTF-32 conversion arms are completely untested (§2.3).
-2. **Harness extraction — `src/requests/testing.rs`.** Move the six private
-   helpers out of `src/requests/tests.rs` into a `#[cfg(test)] mod testing`
+2. **Harness extraction — `src/lsp_requests/testing.rs`.** Move the six private
+   helpers out of `src/lsp_requests/tests.rs` into a `#[cfg(test)] mod testing`
    with `pub(crate)` items (signatures verbatim), delete `tests.rs`, and
    distribute its 9 tests as inline `#[cfg(test)] mod tests` blocks in the six
    request files they exercise. Risks assessed low: no feature gates in
-   `src/requests`, harness touches no tree-sitter API, arch-lint polices
+   `src/lsp_requests`, harness touches no tree-sitter API, arch-lint polices
    `cfg(test)` imports but requests→server is the blessed direction (§3).
 3. **Integration testing — yes, but the small version.** A raw JSON-RPC client
    (~60-line framing helper + ~50-line tokio→futures adapter modeled on
@@ -79,7 +79,7 @@ test body was read and classified by behavior, not name:
 | src/text_utils/range_ext/lsp_tests.rs | 19 |
 | src/text_utils/range_ext/bytes_tests.rs | 15 |
 | src/server/with_state/tests.rs | 12 |
-| src/requests/tests.rs | 9 |
+| src/lsp_requests/tests.rs | 9 |
 | src/server/state/tests.rs | 8 |
 | src/error.rs | 5 |
 | src/oneshot/workspace_diagnostics.rs | 4 |
@@ -230,7 +230,7 @@ Options, with failure-diagnostic granularity as the first-class criterion:
 
 ### 3.1 Current state
 
-`src/requests/tests.rs` (286 lines) = 6 private harness helpers (tests.rs:22-60)
+`src/lsp_requests/tests.rs` (286 lines) = 6 private harness helpers (tests.rs:22-60)
 + 9 tests (tests.rs:62-286). The harness is deliberately thin: an empty-impl
 `TestServer` (no capabilities, no matchers — trait defaults return none,
 src/server/server_trait.rs:49-59), `ServerState::with_options` with a closed
@@ -241,7 +241,7 @@ UTF-8 bytes / 2 UTF-16 units, so byte offset 4 == UTF-16 offset 2, and that
 identity is what every moved test asserts. Usage census (verified):
 `state_with_documents` 7 call sites, `r()` 20, `url()` 7, `open_document`
 2 direct + 2 inside the fixture, `TestServer` 3; nothing outside the file
-references any of it (sole declaration: src/requests/mod.rs:22-23, and all
+references any of it (sole declaration: src/lsp_requests/mod.rs:22-23, and all
 items are private in a private child module). The 2026-08-30 structure spec
 centralized these tests as a deliberate mechanical move with "the owner has a
 separate test revision planned" — this is that revision, so distribution is
@@ -250,7 +250,7 @@ now in scope.
 ### 3.2 Target layout and API sketch
 
 ```
-src/requests/
+src/lsp_requests/
 ├── mod.rs                    EDITED: `#[cfg(test)] mod tests;` → `#[cfg(test)] mod testing;`
 ├── testing.rs                NEW — harness, ~70 lines (tests.rs:1-60 content,
 │                                   minus unneeded imports, plus pub(crate))
@@ -264,7 +264,7 @@ src/requests/
 ```
 
 ```rust
-//! src/requests/testing.rs — test-only baseline for per-request conversion
+//! src/lsp_requests/testing.rs — test-only baseline for per-request conversion
 //! tests. Declared #[cfg(test)] in mod.rs; never compiled into non-test builds.
 
 pub(crate) struct TestServer;                                   // tests.rs:22-24
@@ -278,7 +278,7 @@ pub(crate) fn state_with_documents() -> (ServerState, Url, Url);// tests.rs:47-6
 
 Signatures move **verbatim**, not redesigned (D3); ergonomics (a `Fixture`
 struct, parameterized encoding) are follow-ups. Test modules import via
-`use crate::requests::testing::{...}` — the absolute path, since
+`use crate::lsp_requests::testing::{...}` — the absolute path, since
 `super::super::testing` is unreadable from inside a request file's test mod.
 An optional `sole_document_state(text)` helper would deduplicate the two
 sole-document tests' setup blocks (2 call sites — judgment call; "three
@@ -286,7 +286,7 @@ similar lines beats a premature abstraction").
 
 ### 3.3 Migration mapping
 
-| # | Test (current lines in src/requests/tests.rs) | Exercises | Destination |
+| # | Test (current lines in src/lsp_requests/tests.rs) | Exercises | Destination |
 |---|---|---|---|
 | 1 | `definition_locations_are_converted_using_their_own_document` (62-77) | `<Definition as Request>::modify_response` | `definition.rs` |
 | 2 | `workspace_edits_are_converted_using_their_own_document` (79-96) | `<Rename as Request>::modify_response` | `rename.rs` |
@@ -304,7 +304,7 @@ No assertion or body text changes; only import paths. `self_named_module_files
 
 ### 3.4 Risks
 
-- **Feature-config matrix — LOW.** `src/requests/` contains exactly one `cfg`
+- **Feature-config matrix — LOW.** `src/lsp_requests/` contains exactly one `cfg`
   in the whole tree (the `#[cfg(test)]` on `mod tests;`). The harness touches
   only `async_lsp::ClientSocket`/lsp_types, `crate::server::{Server,
   ServerOptions, ServerState}`, and `crate::text_utils::Encoding` — none
@@ -313,10 +313,10 @@ No assertion or body text changes; only import paths. `self_named_module_files
   all three configurations.
 - **arch-lint — LOW.** arch-lint parses full ASTs without applying `cfg`, so
   test-only imports are policed (`allow_in_tests` is parsed but never
-  consulted). `src/requests/testing.rs` sits in the `requests` scope
-  (`src/requests/**` glob); its imports are requests → server (blessed
+  consulted). `src/lsp_requests/testing.rs` sits in the `requests` scope
+  (`src/lsp_requests/**` glob); its imports are requests → server (blessed
   direction) and requests → text-utils (not denied); request-file test mods
-  importing `crate::requests::testing` resolve to a self-edge, and no deny
+  importing `crate::lsp_requests::testing` resolve to a self-edge, and no deny
   rule targets `requests` from `requests`.
 - **Conventions — LOW.** `missing_docs` cannot fire on `pub(crate)` cfg(test)
   items; `TestServer` already exists as a private struct in four other test
@@ -532,7 +532,7 @@ wired through `implement_methods!` today, with_state/mod.rs:234-248, against
 
 Ordered; each is an independently shippable change with its own battery run.
 
-1. **Extract the requests harness** (§3): create `src/requests/testing.rs`,
+1. **Extract the requests harness** (§3): create `src/lsp_requests/testing.rs`,
    move the 9 tests inline per the migration map, delete `tests.rs`, update
    `mod.rs`. Pure motion; verify no diff beyond imports/paths.
 2. **Take (or explicitly decline) the two revision items** (§2.2): delete
@@ -574,7 +574,7 @@ Researcher reports (input to this document):
 
 This repository (read and spot-verified this session):
 
-- src/requests/{mod.rs, tests.rs} and the seven request files
+- src/lsp_requests/{mod.rs, tests.rs} and the seven request files
 - src/server/{serve.rs, mod.rs, state/tests.rs, with_state/mod.rs,
   with_state/tests.rs}
 - src/text_utils/{conversions.rs, range_ext/{mod.rs, bytes.rs, lsp.rs,

@@ -2,7 +2,7 @@
     params = async_lsp::lsp_types::DocumentSymbolParams,
     response = Option<async_lsp::lsp_types::DocumentSymbolResponse>,
     document(text_document),
-    outgoing(crate::requests::conversion::modify_outgoing_document_symbols),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_document_symbols),
 )]
 pub(crate) struct DocumentSymbolRequest;
 
@@ -19,7 +19,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::{DocumentSymbolRequest, Request};
+    use crate::lsp_requests::{DocumentSymbolRequest, Request};
     use crate::testing::{line_position, same_line, state_with_documents};
 
     conversion_tests! {

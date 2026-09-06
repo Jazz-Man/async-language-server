@@ -48,7 +48,7 @@ mod tests {
         TextDocumentIdentifier, WorkDoneProgressParams,
     };
 
-    use crate::requests::{InlineValueRequest, Request};
+    use crate::lsp_requests::{InlineValueRequest, Request};
     use crate::testing::{same_line, state_with_documents};
 
     #[test]

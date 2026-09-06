@@ -2,7 +2,7 @@
     params = async_lsp::lsp_types::SemanticTokensDeltaParams,
     response = Option<async_lsp::lsp_types::SemanticTokensFullDeltaResult>,
     document(text_document),
-    outgoing(crate::requests::conversion::modify_outgoing_semantic_tokens_delta_result),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_semantic_tokens_delta_result),
 )]
 pub(crate) struct SemanticTokensFullDeltaRequest;
 
@@ -16,7 +16,7 @@ mod tests {
         },
     };
 
-    use crate::requests::{Request, SemanticTokensFullDeltaRequest, SemanticTokensFullRequest};
+    use crate::lsp_requests::{Request, SemanticTokensFullDeltaRequest, SemanticTokensFullRequest};
     use crate::server::{ServerOptions, ServerState};
     use crate::testing::{TestServer, open_document, token, url};
     use crate::text_utils::Encoding;

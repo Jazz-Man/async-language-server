@@ -23,7 +23,7 @@ use async_lsp::{
 };
 
 use crate::{
-    requests::Request,
+    lsp_requests::Request,
     server::{
         Server, ServerOptions, ServerState, WorkspaceDiagnostics, WorkspaceDiagnosticsSetting,
     },
@@ -423,7 +423,7 @@ where
             ));
         }
 
-        <crate::requests::DocumentDiagnosticsRequest as Request>::modify_response(
+        <crate::lsp_requests::DocumentDiagnosticsRequest as Request>::modify_response(
             &state,
             &doc,
             &mut result,

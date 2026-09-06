@@ -49,14 +49,14 @@ Confirm the section now reads: `From<ServerError>` impl is the conversion for do
 
 **Files:**
 - Modify: `src/server_with_state.rs` (add two hand-wired methods after `workspace_diagnostic`, ~line 306; extend the `async_lsp::lsp_types` import list with `CodeAction`, `CompletionItem`)
-- Modify: `src/requests.rs` (two new conversion helpers; underscore-prefix unused default params; remove the two trait-level allows)
+- Modify: `src/lsp_requests.rs` (two new conversion helpers; underscore-prefix unused default params; remove the two trait-level allows)
 - Modify: `src/server_trait.rs` (doc notes on `completion_resolve` / `code_action_resolve`)
 
 **Interfaces:**
-- Consumes: `Request` impls `CompletionResolve`/`CodeActionResolve` (`src/requests.rs`) with their existing `modify_response` bodies.
-- Produces: `pub(crate) fn convert_completion_resolve(state: &ServerState, response: &mut LspCompletionItem)` and `pub(crate) fn convert_code_action_resolve(state: &ServerState, response: &mut LspCodeAction)` in `src/requests.rs`.
+- Consumes: `Request` impls `CompletionResolve`/`CodeActionResolve` (`src/lsp_requests.rs`) with their existing `modify_response` bodies.
+- Produces: `pub(crate) fn convert_completion_resolve(state: &ServerState, response: &mut LspCompletionItem)` and `pub(crate) fn convert_code_action_resolve(state: &ServerState, response: &mut LspCodeAction)` in `src/lsp_requests.rs`.
 
-- [ ] **Step 1: Write the failing tests** (append to `src/requests.rs` tests):
+- [ ] **Step 1: Write the failing tests** (append to `src/lsp_requests.rs` tests):
 
 ```rust
     #[test]
@@ -110,10 +110,10 @@ Confirm the section now reads: `From<ServerError>` impl is the conversion for do
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test --lib requests::tests::resolve`
+Run: `cargo test --lib lsp_requests::tests::resolve`
 Expected: compile error — `convert_completion_resolve` does not exist.
 
-- [ ] **Step 3: Implement the helpers** (in `src/requests.rs`, after the `CodeActionResolve` impl):
+- [ ] **Step 3: Implement the helpers** (in `src/lsp_requests.rs`, after the `CodeActionResolve` impl):
 
 ```rust
 /// Converts a resolve response's edits against the sole tracked document.
@@ -159,7 +159,7 @@ pub(crate) fn convert_code_action_resolve(state: &ServerState, response: &mut Ls
         let state = self.state.clone();
         Box::pin(async move {
             let mut result = server.completion_resolve(state.clone(), params).await?;
-            crate::requests::convert_completion_resolve(&state, &mut result);
+            crate::lsp_requests::convert_completion_resolve(&state, &mut result);
             Ok(result)
         })
     }
@@ -172,7 +172,7 @@ pub(crate) fn convert_code_action_resolve(state: &ServerState, response: &mut Ls
         let state = self.state.clone();
         Box::pin(async move {
             let mut result = server.code_action_resolve(state.clone(), params).await?;
-            crate::requests::convert_code_action_resolve(&state, &mut result);
+            crate::lsp_requests::convert_code_action_resolve(&state, &mut result);
             Ok(result)
         })
     }
@@ -182,7 +182,7 @@ Remove the corresponding two lines (`completion_item_resolve`, `code_action_reso
 
 - [ ] **Step 5: Shed `requests.rs` allows + underscore defaults**
 
-Remove `#[allow(dead_code)]` and `#[allow(unused_variables)]` from the `Request` trait (`src/requests.rs:32-33`). In the trait's default signatures, underscore-prefix the unused parameters:
+Remove `#[allow(dead_code)]` and `#[allow(unused_variables)]` from the `Request` trait (`src/lsp_requests.rs:32-33`). In the trait's default signatures, underscore-prefix the unused parameters:
 
 ```rust
     fn extract_url(_params: &Self::Params) -> Option<Url> {

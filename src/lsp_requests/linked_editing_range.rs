@@ -3,7 +3,7 @@
     response = Option<async_lsp::lsp_types::LinkedEditingRanges>,
     document(text_document_position_params.text_document),
     incoming_position(text_document_position_params.position),
-    outgoing(crate::requests::conversion::modify_outgoing_linked_editing_ranges),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_linked_editing_ranges),
 )]
 pub(crate) struct LinkedEditingRangeRequest;
 
@@ -15,7 +15,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::LinkedEditingRangeRequest;
+    use crate::lsp_requests::LinkedEditingRangeRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {

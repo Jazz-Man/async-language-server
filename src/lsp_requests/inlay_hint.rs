@@ -3,7 +3,7 @@
     response = Option<Vec<async_lsp::lsp_types::InlayHint>>,
     document(text_document),
     incoming_range(range),
-    outgoing(crate::requests::conversion::modify_outgoing_inlay_hints),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_inlay_hints),
 )]
 pub(crate) struct InlayHintRequest;
 
@@ -15,7 +15,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::{InlayHintRequest, Request};
+    use crate::lsp_requests::{InlayHintRequest, Request};
     use crate::testing::{line_position, same_line, state_with_documents};
 
     conversion_tests! {

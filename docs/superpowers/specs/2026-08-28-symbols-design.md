@@ -16,7 +16,7 @@ Additionally (owner's decision, this cycle): fix the discovered encoding gap in 
 - **D2 — `documentSymbol` rides the standard macro.** `DocumentSymbolParams` carries a document URL and no positions, so `implement_method!` provides staleness detection and response conversion for free.
 - **D3 — `workspace/symbol` is hand-wired.** `WorkspaceSymbolParams` carries only a query; with `extract_url` returning `None` the macro never calls `modify_response` (`src/server_with_state.rs:68-84`), so `symbol` gets a manual impl next to `workspace_diagnostic` (`src/server_with_state.rs:297-306`).
 - **D4 — URL-less conversion is store-first, disk-fallback (approach B).** Positions in responses of requests that carry no document URL are converted against the document store first; untracked `file://` URLs are read from disk into a transient `ropey::Rope` for conversion; symbols whose document cannot be resolved are returned unchanged. Rejected alternatives: store-only (leaves the common untracked-file case mis-encoded under UTF-16 clients) and a public store-loading API (widens the public surface against the handoff's "nothing else changes" constraint).
-- **D5 — All conversion lives in `src/requests.rs`**, per the crate's centralization rule; `workspace_diagnostics.rs` calls into it for the gap fix.
+- **D5 — All conversion lives in `src/lsp_requests.rs`**, per the crate's centralization rule; `workspace_diagnostics.rs` calls into it for the gap fix.
 
 ## Design
 
@@ -59,7 +59,7 @@ fn workspace_symbol(
 
 ### 2. `documentSymbol` path
 
-`Request` impl in `src/requests.rs`:
+`Request` impl in `src/lsp_requests.rs`:
 
 - `extract_url` → `params.text_document.uri.clone()`
 - `modify_params` — not overridden (params carry no positions)
@@ -84,7 +84,7 @@ fn modify_outgoing_document_symbol(
 `Flat` symbols convert through the existing `modify_outgoing_location`; `Nested` through the recursive helper. (The new `Request` struct named `DocumentSymbol` coexists with the lsp type of the same name via the module's existing `Lsp*` import aliasing.) Dispatch table gains one line in `src/server_with_state.rs`:
 
 ```
-document_symbol => document_symbol @ crate::requests::DocumentSymbol,
+document_symbol => document_symbol @ crate::lsp_requests::DocumentSymbol,
 ```
 
 (async-lsp's omni trait names the methods `document_symbol` and `symbol` — verified in `async-lsp-0.2.4/src/omni_trait_generated.rs:41-44`.)
@@ -104,20 +104,20 @@ fn symbol(
     let state = self.state.clone();
     Box::pin(async move {
         let mut result = server.workspace_symbol(state.clone(), params).await?;
-        crate::requests::convert_workspace_symbols(&state, &mut result);
+        crate::lsp_requests::convert_workspace_symbols(&state, &mut result);
         Ok(result)
     })
 }
 ```
 
-`crate::requests::convert_workspace_symbols(&mut Option<WorkspaceSymbolResponse>)` walks the response:
+`crate::lsp_requests::convert_workspace_symbols(&mut Option<WorkspaceSymbolResponse>)` walks the response:
 
 - `Flat` — each `SymbolInformation.location`
 - `Nested` — each `WorkspaceSymbol.location`; `OneOf::Left(Location)` is converted, `OneOf::Right(WorkspaceLocation)` (URI-only, resolve flow) carries no positions and is left untouched
 
 No staleness check: there is no single request document (same as `workspace_diagnostic`).
 
-### 4. URL-less conversion machinery (`src/requests.rs`, `pub(crate)`)
+### 4. URL-less conversion machinery (`src/lsp_requests.rs`, `pub(crate)`)
 
 A private per-request document cache drives both URL-less entry points:
 
@@ -135,7 +135,7 @@ struct UrlLessDocumentCache<'a> {
 - Both entry points return immediately when the negotiated encoding is UTF-8 (identity — no cache, no I/O).
 - Each unique URL is read at most once per request via the cache.
 
-Entry points (both in `src/requests.rs`, called from outside the module):
+Entry points (both in `src/lsp_requests.rs`, called from outside the module):
 
 - `pub(crate) fn convert_workspace_symbols(state: &ServerState, response: &mut Option<WorkspaceSymbolResponse>)`
 - `pub(crate) fn convert_workspace_diagnostic_report(state: &ServerState, report: &mut WorkspaceDiagnosticReportResult)`
@@ -202,4 +202,4 @@ Inline `#[cfg(test)] mod tests`, following the existing temp-workspace conventio
 
 ## Provenance
 
-Handoff citations re-verified at `d7795c4` (= HEAD): trait shape and defaults (`src/server_trait.rs`), dispatch macro and its `modify_response` gating (`src/server_with_state.rs:33-90`), `workspace_diagnostic` hand-wire precedent (`src/server_with_state.rs:297-306`), capabilities pass-through (`src/server_with_state.rs:147-247`), conversion helpers (`src/requests.rs`), missing conversion in `workspace_diagnostics.rs` (no `position_to_encoding`/`modify_outgoing*` calls in the file). lsp-types shapes from 0.95.1 sources; async-lsp method names from 0.2.4 sources.
+Handoff citations re-verified at `d7795c4` (= HEAD): trait shape and defaults (`src/server_trait.rs`), dispatch macro and its `modify_response` gating (`src/server_with_state.rs:33-90`), `workspace_diagnostic` hand-wire precedent (`src/server_with_state.rs:297-306`), capabilities pass-through (`src/server_with_state.rs:147-247`), conversion helpers (`src/lsp_requests.rs`), missing conversion in `workspace_diagnostics.rs` (no `position_to_encoding`/`modify_outgoing*` calls in the file). lsp-types shapes from 0.95.1 sources; async-lsp method names from 0.2.4 sources.

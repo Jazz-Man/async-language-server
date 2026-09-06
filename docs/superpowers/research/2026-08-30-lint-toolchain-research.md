@@ -318,7 +318,7 @@ paths = ["src/workspace/**"]
 
 [[scopes]]
 name = "requests"
-paths = ["src/requests/**"]
+paths = ["src/lsp_requests/**"]
 
 [[scopes]]
 name = "server"        # user layer (Server trait, serve, options) + plumbing

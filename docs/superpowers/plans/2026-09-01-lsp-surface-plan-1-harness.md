@@ -12,7 +12,7 @@
 
 - Owner commits — every task ends at a review checkpoint with a file list; no git commands anywhere.
 - The `"🙂abc"` document and UTF-16 negotiation in `state_with_documents` are load-bearing: byte offset 4 == UTF-16 offset 2. The emoji document is the fixture's **target** URL; the plain `"abcdef"` document is **source**.
-- `Request` hooks (exact signatures, `src/requests/mod.rs:71-82`): `modify_params(state: &ServerState, document: &Document, params: &mut Self::Params)`, `modify_response(state: &ServerState, document: &Document, response: &mut Self::Response)`. Both take the REQUEST's document.
+- `Request` hooks (exact signatures, `src/lsp_requests/mod.rs:71-82`): `modify_params(state: &ServerState, document: &Document, params: &mut Self::Params)`, `modify_response(state: &ServerState, document: &Document, response: &mut Self::Response)`. Both take the REQUEST's document.
 - Feature configurations: all changes must compile and pass under default, `--no-default-features`, and `--all-features`.
 - `expect`/`unwrap` allowed in tests (`clippy.toml`). Production `src/` stays unwrap/expect-clean.
 - `cargo dupes check` must exit 0; if macro expansions trip it, one reasoned `.dupes-ignore.toml` entry for the macro itself — never per row.
@@ -24,8 +24,8 @@
 
 **Files:**
 - Modify: `src/testing.rs` (append the macro + export after the fixtures)
-- Modify: `src/requests/hover.rs` (append `#[cfg(test)] mod tests` with two rows)
-- Modify: `src/requests/definition.rs` (append two rows to the existing `mod tests`; keep the hand-written test)
+- Modify: `src/lsp_requests/hover.rs` (append `#[cfg(test)] mod tests` with two rows)
+- Modify: `src/lsp_requests/definition.rs` (append two rows to the existing `mod tests`; keep the hand-written test)
 
 **Interfaces:**
 - Consumes: `state_with_documents() -> (ServerState, Url, Url)` (plain source, emoji target), `line_position`, `same_line` from `crate::testing`; `Request` trait as above.
@@ -46,7 +46,7 @@ conversion_tests! {
 
 - [ ] **Step 1: Write the failing rows (macro does not exist yet)**
 
-Append to `src/requests/hover.rs`:
+Append to `src/lsp_requests/hover.rs`:
 
 ```rust
 #[cfg(test)]
@@ -59,7 +59,7 @@ mod tests {
     use crate::testing::{conversion_tests, line_position, same_line};
 
     use super::Hover;
-    use crate::requests::Request;
+    use crate::lsp_requests::Request;
 
     conversion_tests! {
         hover_incoming_utf16_becomes_utf8: Hover {
@@ -97,7 +97,7 @@ mod tests {
 }
 ```
 
-Append inside the existing `mod tests` in `src/requests/definition.rs` (below the hand-written test, which stays as the macro's reference pin):
+Append inside the existing `mod tests` in `src/lsp_requests/definition.rs` (below the hand-written test, which stays as the macro's reference pin):
 
 ```rust
     use async_lsp::lsp_types::{
@@ -142,7 +142,7 @@ Expected: FAIL — compile error, `cannot find macro conversion_tests` (or unres
 Append after `json_matchers()`:
 
 ```rust
-/// Stamps one `#[test]` per row for a [`crate::requests::Request`]'s
+/// Stamps one `#[test]` per row for a [`crate::lsp_requests::Request`]'s
 /// conversion hooks — the table-driven W0 harness.
 ///
 /// Row grammar (both `incoming`/`expects` and the
@@ -175,7 +175,7 @@ macro_rules! conversion_tests {
             let (state, plain, emoji) = crate::testing::state_with_documents();
             let document = state.document(&emoji).expect("emoji document is tracked");
             let mut params = ($params)(emoji.clone());
-            <$request as $crate::requests::Request>::modify_params(&state, &document, &mut params);
+            <$request as $crate::lsp_requests::Request>::modify_params(&state, &document, &mut params);
             $(
             assert_eq!(
                 ($incoming)(&params),
@@ -185,7 +185,7 @@ macro_rules! conversion_tests {
             )?
             $(
             let mut response = ($response)(plain.clone(), emoji.clone());
-            <$request as $crate::requests::Request>::modify_response(&state, &document, &mut response);
+            <$request as $crate::lsp_requests::Request>::modify_response(&state, &document, &mut response);
             assert_eq!(
                 ($outgoing)(&response),
                 $returns,
@@ -215,15 +215,15 @@ Expected: all green; dupes exit 0 (if the macro's expansions trip dupes, add ONE
 
 - [ ] **Step 7: Review checkpoint**
 
-Report for review. Files changed: `src/testing.rs`, `src/requests/hover.rs`, `src/requests/definition.rs` (optionally `.dupes-ignore.toml`). The owner commits.
+Report for review. Files changed: `src/testing.rs`, `src/lsp_requests/hover.rs`, `src/lsp_requests/definition.rs` (optionally `.dupes-ignore.toml`). The owner commits.
 
 ---
 
 ### Task 2: Retrofit the regular-shape requests into rows
 
 **Files:**
-- Modify: `src/requests/declaration.rs`, `src/requests/references.rs`, `src/requests/document_link.rs`, `src/requests/document_format.rs`, `src/requests/document_range_format.rs`, `src/requests/rename_prepare.rs` — each gains a `#[cfg(test)] mod tests` with rows
-- Modify: `src/requests/completion.rs` — only if a regular single-position row fits its incoming side; its response test stays hand-written
+- Modify: `src/lsp_requests/declaration.rs`, `src/lsp_requests/references.rs`, `src/lsp_requests/document_link.rs`, `src/lsp_requests/document_format.rs`, `src/lsp_requests/document_range_format.rs`, `src/lsp_requests/rename_prepare.rs` — each gains a `#[cfg(test)] mod tests` with rows
+- Modify: `src/lsp_requests/completion.rs` — only if a regular single-position row fits its incoming side; its response test stays hand-written
 - Untouched (irregular, stay hand-written): `completion_resolve.rs`, `code_action.rs`, `code_action_resolve.rs`, `rename.rs`, `document_diagnostics.rs`, `document_link_resolve.rs`
 
 **Interfaces:**
@@ -242,7 +242,7 @@ mod tests {
         TextDocumentPositionParams,
     };
 
-    use crate::requests::Request;
+    use crate::lsp_requests::Request;
     use crate::testing::{conversion_tests, line_position, same_line};
 
     use super::Declaration;
@@ -283,7 +283,7 @@ mod tests {
         TextDocumentPositionParams,
     };
 
-    use crate::requests::Request;
+    use crate::lsp_requests::Request;
     use crate::testing::{conversion_tests, line_position, same_line};
 
     use super::References;
@@ -318,7 +318,7 @@ mod tests {
 mod tests {
     use async_lsp::lsp_types::{DocumentLink, DocumentLinkParams, TextDocumentIdentifier};
 
-    use crate::requests::Request;
+    use crate::lsp_requests::Request;
     use crate::testing::{conversion_tests, same_line};
 
     use super::DocumentLink;
@@ -354,7 +354,7 @@ mod tests {
         DocumentFormattingParams, TextDocumentIdentifier, TextEdit,
     };
 
-    use crate::requests::Request;
+    use crate::lsp_requests::Request;
     use crate::testing::{conversion_tests, line_position, same_line};
 
     use super::DocumentFormat;
@@ -386,7 +386,7 @@ mod tests {
         DocumentRangeFormattingParams, TextDocumentIdentifier, TextEdit,
     };
 
-    use crate::requests::Request;
+    use crate::lsp_requests::Request;
     use crate::testing::{conversion_tests, line_position, same_line};
 
     use super::DocumentRangeFormat;
@@ -424,7 +424,7 @@ mod tests {
         TextDocumentIdentifier, TextDocumentPositionParams,
     };
 
-    use crate::requests::Request;
+    use crate::lsp_requests::Request;
     use crate::testing::{conversion_tests, line_position, same_line};
 
     use super::RenamePrepare;
@@ -458,7 +458,7 @@ mod tests {
 
 - [ ] **Step 7: Assess `completion.rs` — row for the incoming side only, if it fits**
 
-Read the existing `mod tests` in `src/requests/completion.rs`. If its params are the standard single-position shape, add one incoming-only row mirroring the hover row (params `CompletionParams { text_document_position_params, work_done_progress_params, partial_result_params: Default::default(), context: None }`) with the same `incoming`/`expects` pair. If the existing tests already pin the incoming conversion hand-written and a row would only duplicate them, leave the file untouched and say so in the report.
+Read the existing `mod tests` in `src/lsp_requests/completion.rs`. If its params are the standard single-position shape, add one incoming-only row mirroring the hover row (params `CompletionParams { text_document_position_params, work_done_progress_params, partial_result_params: Default::default(), context: None }`) with the same `incoming`/`expects` pair. If the existing tests already pin the incoming conversion hand-written and a row would only duplicate them, leave the file untouched and say so in the report.
 
 - [ ] **Step 8: Run everything**
 

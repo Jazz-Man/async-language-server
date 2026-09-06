@@ -57,7 +57,7 @@ omission, and no notification from the upstream list can produce an
 
 ## Architecture 1 — Method registry
 
-One registry module (`src/requests/registry.rs`) is the single source of
+One registry module (`src/lsp_requests/registry.rs`) is the single source of
 truth for (trait method name, async-lsp method name, Request type,
 params/response types, doc, hook shape), split into three tables —
 `generated_methods!` (rows fully determine a `Request` impl),
@@ -67,7 +67,7 @@ the tables via macro passthrough; the pattern is the same one upstream uses
 (`omni_trait_generated.rs` consumed by `define!`).
 
 ```rust
-// src/requests/registry.rs — the table
+// src/lsp_requests/registry.rs — the table
 method_registry! {
     /// Goto implementation locations for the symbol at the position.
     implementation: "textDocument/implementation" @ Implementation {
@@ -79,7 +79,7 @@ method_registry! {
     selection_range: "textDocument/selectionRange" @ SelectionRange {
         params: SelectionRangeParams,
         result: Option<Vec<SelectionRange>>,
-        custom,   // multiple incoming positions; logic in src/requests/selection_range.rs
+        custom,   // multiple incoming positions; logic in src/lsp_requests/selection_range.rs
     },
 }
 ```
@@ -94,7 +94,7 @@ macro-passthrough `method_registry!($consumer)` technique):
 2. `with_state/mod.rs` — stamps the `implement_methods!` table body
    (replaces the hand-maintained list) and a second table for
    `implement_resolve_method!` rows (rows carry a `resolve` flag).
-3. `src/requests/mod.rs` — for fully generated rows, stamps
+3. `src/lsp_requests/mod.rs` — for fully generated rows, stamps
    `pub struct X;` + `impl Request for X` (method string from the row,
    `extract_url`/`modify_params` composed from the existing
    `request_extract_url!` / `request_modify_params_position!` and a new
@@ -302,7 +302,7 @@ incoming `Range` from negotiated to UTF-8).
   `SemanticTokensFullDeltaResult = Tokens | TokensDelta | PartialTokensDelta{edits}`
   (inline struct variant), `SemanticTokensRangeResult = Tokens | Partial`.
 
-**Converter** (`src/requests/conversion.rs`):
+**Converter** (`src/lsp_requests/conversion.rs`):
 `convert_semantic_tokens(document, tokens: &mut Vec<SemanticToken>, direction)`
 — walks 5-tuples, reconstructs absolute (line, char_utf8) from deltas,
 converts `delta_start` and `length` columns through the rope, re-deltas.

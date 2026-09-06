@@ -53,7 +53,7 @@ mod tests {
 
     use crate::testing::{same_line, state_with_documents};
 
-    use crate::requests::{CodeActionRequest, Request};
+    use crate::lsp_requests::{CodeActionRequest, Request};
 
     #[test]
     fn code_action_context_diagnostics_are_converted() {

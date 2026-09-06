@@ -46,7 +46,7 @@ mod tests {
 
     use crate::testing::{line_position, same_line, state_with_documents};
 
-    use crate::requests::{Request, SelectionRangeRequest};
+    use crate::lsp_requests::{Request, SelectionRangeRequest};
 
     #[test]
     fn selection_range_positions_and_chains_convert() {

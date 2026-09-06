@@ -98,7 +98,7 @@ command runs on demand or periodically, outside the per-task battery
 ## Adding a test for a new `Server` method
 
 The method already follows the three-place pattern (`structure.md`):
-the `#[lsp_request]` struct in its own file under `src/requests/`, the
+the `#[lsp_request]` struct in its own file under `src/lsp_requests/`, the
 `lsp_method!`/`lsp_resolve_method!` block for the trait method, one
 `lsp_dispatch!` row. The `#[lsp_request]` attribute fields cover the
 common shapes (`document(...)`, `incoming_position(...)`); hand-write

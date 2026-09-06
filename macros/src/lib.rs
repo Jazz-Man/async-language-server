@@ -64,9 +64,9 @@ pub fn lsp_resolve_method(input: TokenStream) -> TokenStream {
 ///
 /// ```ignore
 /// lsp_dispatch! {
-///     hover: hover @ crate::requests::HoverRequest,
-///     rename_prepare: prepare_rename @ crate::requests::RenamePrepareRequest,
-///     resolve(completion_resolve: completion_resolve @ crate::requests::CompletionResolveRequest),
+///     hover: hover @ crate::lsp_requests::HoverRequest,
+///     rename_prepare: prepare_rename @ crate::lsp_requests::RenamePrepareRequest,
+///     resolve(completion_resolve: completion_resolve @ crate::lsp_requests::CompletionResolveRequest),
 /// }
 /// ```
 ///
@@ -116,7 +116,7 @@ pub fn lsp_request(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Stamps one `#[test]` per row for a `crate::requests::Request`'s
+/// Stamps one `#[test]` per row for a `crate::lsp_requests::Request`'s
 /// conversion hooks — the table-driven W0 harness. Both the
 /// `incoming`/`expects` pair and the `response`/`outgoing`/`returns` triple
 /// are optional per row:

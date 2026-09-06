@@ -48,7 +48,7 @@ mod tests {
 
     use crate::testing::{line_position, same_line, state_with_documents};
 
-    use crate::requests::{CompletionRequest, Request};
+    use crate::lsp_requests::{CompletionRequest, Request};
 
     #[test]
     fn completion_additional_text_edits_are_converted() {

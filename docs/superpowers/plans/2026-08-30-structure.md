@@ -13,12 +13,12 @@
 The user runs and commits (agents must not):
 
 ```bash
-mkdir -p src/documents src/workspace src/requests src/server/state src/server/with_state
+mkdir -p src/documents src/workspace src/lsp_requests src/server/state src/server/with_state
 git mv src/document.rs            src/documents/document.rs
 git mv src/document_matcher.rs    src/documents/matcher.rs
 git mv src/workspace_diagnostics.rs src/workspace/diagnostics.rs
 git mv src/workspace_walker.rs    src/workspace/walker.rs
-git mv src/requests.rs            src/requests/mod.rs
+git mv src/lsp_requests.rs            src/lsp_requests/mod.rs
 git mv src/serve.rs               src/server/serve.rs
 git mv src/server_trait.rs        src/server/server_trait.rs
 git mv src/server_options.rs      src/server/options.rs
@@ -105,7 +105,7 @@ mod with_state;
 
 - [ ] **Step 2: Rewrite every stale path**
 
-Compiler is the oracle. The rewrite map: `crate::document::`→`crate::documents::`, `crate::document_matcher::`→`crate::documents::`, `crate::workspace_diagnostics::`→`crate::workspace::`, `crate::workspace_walker::`→`crate::workspace::`, `crate::serve::`/`crate::server_trait::`/`crate::server_options::`/`crate::server_state::`/`crate::server_with_state::`→their `crate::server::…` destinations (most consumers already import via the facade and need nothing). `crate::requests::` paths are ALREADY stable (mod.rs at `src/requests/mod.rs`). Grep to empty after: `grep -rn 'crate::document::\|crate::document_matcher::\|crate::workspace_diagnostics::\|crate::workspace_walker::\|crate::serve::\|crate::server_trait::\|crate::server_options::\|crate::server_state::\|crate::server_with_state::' src` → 0.
+Compiler is the oracle. The rewrite map: `crate::document::`→`crate::documents::`, `crate::document_matcher::`→`crate::documents::`, `crate::workspace_diagnostics::`→`crate::workspace::`, `crate::workspace_walker::`→`crate::workspace::`, `crate::serve::`/`crate::server_trait::`/`crate::server_options::`/`crate::server_state::`/`crate::server_with_state::`→their `crate::server::…` destinations (most consumers already import via the facade and need nothing). `crate::lsp_requests::` paths are ALREADY stable (mod.rs at `src/lsp_requests/mod.rs`). Grep to empty after: `grep -rn 'crate::document::\|crate::document_matcher::\|crate::workspace_diagnostics::\|crate::workspace_walker::\|crate::serve::\|crate::server_trait::\|crate::server_options::\|crate::server_state::\|crate::server_with_state::' src` → 0.
 
 - [ ] **Step 3: Verify**
 
@@ -131,8 +131,8 @@ The `#[cfg(test)] mod tests { … }` block of `state/mod.rs` (ex-server_state.rs
 ### Task 3: `requests/` — one file per `impl Request`
 
 **Files:**
-- Create: `src/requests/conversion.rs` + 15 per-impl files; the request tests move as ONE block to `src/requests/tests.rs`
-- Modify: `src/requests/mod.rs` (keeps the trait + re-exports; loses the moved content)
+- Create: `src/lsp_requests/conversion.rs` + 15 per-impl files; the request tests move as ONE block to `src/lsp_requests/tests.rs`
+- Modify: `src/lsp_requests/mod.rs` (keeps the trait + re-exports; loses the moved content)
 
 - [ ] **Step 1: Extract `conversion.rs`**
 
@@ -146,13 +146,13 @@ document_link.rs document_link_resolve.rs declaration.rs definition.rs reference
 rename.rs rename_prepare.rs document_format.rs document_range_format.rs document_diagnostics.rs
 ```
 
-Each holds its request struct + `impl Request for X` + its `modify_*` overrides; `completion_resolve.rs`/`code_action_resolve.rs` also hold their `convert_*_resolve` pairs (incoming + outgoing). The remaining request tests (everything except the conversion ones) move as ONE verbatim block to `src/requests/tests.rs`.
+Each holds its request struct + `impl Request for X` + its `modify_*` overrides; `completion_resolve.rs`/`code_action_resolve.rs` also hold their `convert_*_resolve` pairs (incoming + outgoing). The remaining request tests (everything except the conversion ones) move as ONE verbatim block to `src/lsp_requests/tests.rs`.
 
 - [ ] **Step 3: mod.rs = trait + re-exports**
 
-`src/requests/mod.rs` keeps the `Request` trait, declares `mod conversion; mod hover; … #[cfg(test)] mod tests;`, and re-exports (`pub(crate) use`) every request type + the four converters so `crate::requests::<X>` paths — dispatch table, `workspace/diagnostics.rs`, `server/with_state` — are untouched.
+`src/lsp_requests/mod.rs` keeps the `Request` trait, declares `mod conversion; mod hover; … #[cfg(test)] mod tests;`, and re-exports (`pub(crate) use`) every request type + the four converters so `crate::lsp_requests::<X>` paths — dispatch table, `workspace/diagnostics.rs`, `server/with_state` — are untouched.
 
-- [ ] **Step 4: Verify** — full battery ×4; `grep -rn 'crate::requests::' src/server src/workspace` unchanged (zero edits outside `src/requests/` and `lib.rs`).
+- [ ] **Step 4: Verify** — full battery ×4; `grep -rn 'crate::lsp_requests::' src/server src/workspace` unchanged (zero edits outside `src/lsp_requests/` and `lib.rs`).
 
 ---
 
@@ -211,6 +211,6 @@ diff /tmp/api-before.txt /tmp/api-after.txt   # must be EMPTY
 
 - [ ] **Step 3: Rewrite the steering + project doc file-maps**
 
-`.claude/rules/structure.md` and `CLAUDE.md` reference the old files (`src/server_trait.rs`, `src/requests.rs`, …) — update paths to the new tree; prose (three-places pattern, UTF-8 invariant, layer description) otherwise untouched.
+`.claude/rules/structure.md` and `CLAUDE.md` reference the old files (`src/server_trait.rs`, `src/lsp_requests.rs`, …) — update paths to the new tree; prose (three-places pattern, UTF-8 invariant, layer description) otherwise untouched.
 
 - [ ] **Step 4: Full battery + report** — ×4 configs, fmt, clippy, doc; zero-allow grep; report the empty API-diff. Commits are the user's.

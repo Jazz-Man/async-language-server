@@ -149,7 +149,7 @@ fn expand(input: TokenStream) -> syn::Result<TokenStream> {
         let response = response.as_ref().map(|(build, extract, returns)| {
             quote! {
                 let mut response = (#build)(_plain.clone(), emoji.clone());
-                <#request as crate::requests::Request>::modify_response(&state, &document, &mut response);
+                <#request as crate::lsp_requests::Request>::modify_response(&state, &document, &mut response);
                 crate::testing::assert_converted_position(
                     &response,
                     #extract,
@@ -164,7 +164,7 @@ fn expand(input: TokenStream) -> syn::Result<TokenStream> {
                 let (state, _plain, emoji) = crate::testing::state_with_documents();
                 let document = state.document(&emoji).expect("emoji document is tracked");
                 let mut params = (#params)(emoji.clone());
-                <#request as crate::requests::Request>::modify_params(&state, &document, &mut params);
+                <#request as crate::lsp_requests::Request>::modify_params(&state, &document, &mut params);
                 #incoming
                 #response
             }

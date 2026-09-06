@@ -31,7 +31,7 @@ let sole = {
 };
 ```
 
-`src/requests.rs` — all four converters: `document: Option<&Document>` parameter replaces the internal `documents()`/`let [document] … else` derivation; body becomes `if let Some(document) = document { …delegate to the Request hook… }` after the existing UTF-8 early return. Call sites pass `sole.as_ref()`. The three existing resolve tests update to build `Some(&document)`/`None` directly; the round-trip test now runs both converters against one captured `Option` — pinning the same-snapshot contract.
+`src/lsp_requests.rs` — all four converters: `document: Option<&Document>` parameter replaces the internal `documents()`/`let [document] … else` derivation; body becomes `if let Some(document) = document { …delegate to the Request hook… }` after the existing UTF-8 early return. Call sites pass `sole.as_ref()`. The three existing resolve tests update to build `Some(&document)`/`None` directly; the round-trip test now runs both converters against one captured `Option` — pinning the same-snapshot contract.
 
 ### Task 2: Mechanics + tests (D2–D4)
 

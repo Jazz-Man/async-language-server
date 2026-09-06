@@ -3,7 +3,7 @@
     response = Option<async_lsp::lsp_types::WorkspaceEdit>,
     document(text_document_position.text_document),
     incoming_position(text_document_position.position),
-    outgoing(crate::requests::conversion::modify_outgoing_workspace_edit),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_workspace_edit),
 )]
 pub(crate) struct RenameRequest;
 
@@ -13,7 +13,7 @@ mod tests {
 
     use async_lsp::lsp_types::{TextEdit, WorkspaceEdit};
 
-    use crate::requests::{RenameRequest, Request};
+    use crate::lsp_requests::{RenameRequest, Request};
     use crate::testing::{same_line, state_with_documents, url};
 
     #[test]

@@ -3,7 +3,7 @@
     response = Option<async_lsp::lsp_types::request::GotoDeclarationResponse>,
     document(text_document_position_params.text_document),
     incoming_position(text_document_position_params.position),
-    outgoing(crate::requests::conversion::modify_outgoing_goto_response),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_goto_response),
 )]
 pub(crate) struct DeclarationRequest;
 
@@ -15,7 +15,7 @@ mod tests {
     };
     use lsp_macros::conversion_tests;
 
-    use crate::requests::DeclarationRequest;
+    use crate::lsp_requests::DeclarationRequest;
     use crate::testing::{line_position, same_line};
 
     conversion_tests! {

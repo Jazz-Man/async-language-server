@@ -61,7 +61,7 @@ one owner-approved breaking change: the `tracing` feature is removed** (decision
 11. **No import aliases without a genuine collision** (owner, 2026-09-05): `use … as
     Name` exists only when two same-named types must coexist in scope (the "BaseCar"
     rule); `as _` trait imports are not aliases. The `Request` rename dissolves the one
-    real collision in `src/requests/` (`SignatureHelp` marker vs the LSP type); the
+    real collision in `src/lsp_requests/` (`SignatureHelp` marker vs the LSP type); the
     surviving whitelist is the `Ts…`/`Lsp…` tree-sitter-vs-LSP pairs in
     `text_utils`/`tree_sitter_utils` and the public `ErrorCode as ServerErrorCode`
     facade re-export. Enforced by the plans' global constraints and Plan 3's final
@@ -78,13 +78,13 @@ one owner-approved breaking change: the `tracing` feature is removed** (decision
 Two workspace members. A request flows through three places, each real code or a thin macro:
 
 ```rust
-// ① src/requests/hover.rs — REGISTRATION (distributed, one file per request)
+// ① src/lsp_requests/hover.rs — REGISTRATION (distributed, one file per request)
 #[lsp_request(
     params = async_lsp::lsp_types::HoverParams,
     response = Option<async_lsp::lsp_types::Hover>,
     document(text_document_position_params.text_document),
     incoming_position(text_document_position_params.position),
-    outgoing(crate::requests::conversion::modify_outgoing_hover),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_hover),
 )]
 pub struct HoverRequest;
 
@@ -134,7 +134,7 @@ Surface syntax uses valid attribute meta forms (NameValue for types, list-form f
 
 Rules:
 
-- All paths are full (`crate::requests::conversion::modify_outgoing_hover`) — this is what
+- All paths are full (`crate::lsp_requests::conversion::modify_outgoing_hover`) — this is what
   makes Go To Definition / Find Usages work at the call site.
 - Fields are optional per request exactly as registry rows are today (`moniker` has no
   `outgoing`; `execute_command` has neither document nor hooks; resolve rows carry
@@ -225,7 +225,7 @@ lsp_resolve_method! {
 
 ## Visibility pass and workspace plumbing
 
-1. **49 `pub` → `pub(crate)`** in `src/requests/` (`Request` + the 48 structs) — the only
+1. **49 `pub` → `pub(crate)`** in `src/lsp_requests/` (`Request` + the 48 structs) — the only
    real visibility looseness found (research §2).
 2. **`Request` is `pub(crate)` for good** in W1: macros are internal plumbing, emitted
    `crate::` paths resolve in-crate. The serde `#[doc(hidden)]` route for downstream macro

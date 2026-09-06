@@ -83,7 +83,7 @@ mod tests {
         WorkspaceSymbolResponse,
     };
 
-    use crate::requests::Request;
+    use crate::lsp_requests::Request;
     use crate::testing::{same_line, state_with_documents, temp_workspace};
 
     use super::SymbolRequest;

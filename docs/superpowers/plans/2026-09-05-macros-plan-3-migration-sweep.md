@@ -16,7 +16,7 @@
 - **If the Plan 2 Task 1 probe rejected trait-position proc macros**, every `lsp_method!`/`lsp_resolve_method!` block below is written as a plain hand-written trait method instead (same doc, same signature, body `method_not_implemented(stringify!(name))` / `async move { Ok(item) }`), and the Plan 2 fallback note applies (one `.dupes-ignore.toml` family entry in the final task).
 - Uniform rename: append `Request` to every marker struct (`Hover`→`HoverRequest` done in Plan 2). No other renames.
 - Bodies move **verbatim** — the only sanctioned edits are: (a) the composition rule: when an impl's `modify_params` starts with a single `convert_position`/`convert_range` on one field and continues with other work, it becomes `incoming_position`/`incoming_range` + `incoming_custom(rest)`, standard conversion first (signature_help is the only case); (b) de-aliasing per the no-alias rule below — imports drop `as Lsp…` renames and signatures use the real type names, statements unchanged.
-- **No `use … as Name` import aliases.** An alias exists only to resolve a genuine name collision — two same-named types that must coexist in scope (the BaseCar rule, owner 2026-09-05); `as _` trait imports are not aliases. The `Request` rename dissolves the one real collision in `src/requests/` (`SignatureHelp` marker vs `lsp_types::SignatureHelp`), so every `as Lsp…` import in the rewritten files disappears; the surviving collision pairs (`Ts…`/`Lsp…` across `text_utils`/`tree_sitter_utils`, and the public `ErrorCode as ServerErrorCode` facade re-export) are whitelisted in the Task 9 sweep.
+- **No `use … as Name` import aliases.** An alias exists only to resolve a genuine name collision — two same-named types that must coexist in scope (the BaseCar rule, owner 2026-09-05); `as _` trait imports are not aliases. The `Request` rename dissolves the one real collision in `src/lsp_requests/` (`SignatureHelp` marker vs `lsp_types::SignatureHelp`), so every `as Lsp…` import in the rewritten files disappears; the surviving collision pairs (`Ts…`/`Lsp…` across `text_utils`/`tree_sitter_utils`, and the public `ErrorCode as ServerErrorCode` facade re-export) are whitelisted in the Task 9 sweep.
 - Free-fn naming convention in request files: `fn convert_params(state, document, params)` for `incoming_custom`, `fn convert_response(state, document, response)` for `outgoing`, `fn convert_params_standalone(state, params)` / `fn convert_response_standalone(state, response)` for the standalone pair. When a `conversion.rs` helper already has the exact hook signature (three args in hook order), wire its full path directly instead of a local wrapper (`supertypes`, `subtypes`, `signature_help` outgoing).
 - Dupes gate protocol (memory + spec decision 4): zero new entries by construction; any surfaced group gets an avoidance analysis before an entry is even considered.
 - `conversion_tests` is imported DIRECTLY where it is used (owner decision, 2026-09-05): every test module that invokes it writes `use lsp_macros::conversion_tests;` (its own use line, separate from any `use crate::testing::{…}` fixture imports). The transitional `src/testing.rs` re-export was already deleted — a dedicated sweep on 2026-09-05 converted all 22 sites immediately after Plan 2 Task 4; every existing file already carries the direct import.
@@ -27,11 +27,11 @@
 
 For each request, five edits (order matters for compilation):
 
-1. **Registry**: delete the row from `src/requests/registry.rs` (source of the row's data — copy `doc:`, `params:`, `response:`, and hook fields out BEFORE deleting; for custom/resolve rows the registry carries only doc/params/response, the hooks come from the file's impl).
-2. **File** `src/requests/<name>.rs`: place the attribute + struct at the top (before `#[cfg(test)]`), port the impl hooks per the mapping table below, keep tests byte-identical except the struct name (all files already carry the direct `use lsp_macros::conversion_tests;` import from the 2026-09-05 sweep).
+1. **Registry**: delete the row from `src/lsp_requests/registry.rs` (source of the row's data — copy `doc:`, `params:`, `response:`, and hook fields out BEFORE deleting; for custom/resolve rows the registry carries only doc/params/response, the hooks come from the file's impl).
+2. **File** `src/lsp_requests/<name>.rs`: place the attribute + struct at the top (before `#[cfg(test)]`), port the impl hooks per the mapping table below, keep tests byte-identical except the struct name (all files already carry the direct `use lsp_macros::conversion_tests;` import from the 2026-09-05 sweep).
 3. **Trait** `src/server/server_trait.rs`: add the `lsp_method!` (or `lsp_resolve_method!`) block with the row's `doc:` value verbatim as `///` and the full type paths in the signature.
 4. **Dispatch** `src/server/with_state/mod.rs`: add one row to the growing `lsp_dispatch!` block (seeded by Plan 2 with hover).
-5. **Re-exports** `src/requests/mod.rs`: add (generated) or rename (custom/resolve) the `pub(crate) use <module>::<Name>Request;` line, then `grep -rn '\b<OldName>\b' src/ examples/` and fix stragglers (battery catches the rest).
+5. **Re-exports** `src/lsp_requests/mod.rs`: add (generated) or rename (custom/resolve) the `pub(crate) use <module>::<Name>Request;` line, then `grep -rn '\b<OldName>\b' src/ examples/` and fix stragglers (battery catches the rest).
 
 **Registry-row → attribute mapping** (generated rows):
 
@@ -42,19 +42,19 @@ For each request, five edits (order matters for compilation):
 | `document: a.b` | `document(a.b)` |
 | `incoming: position at p` | `incoming_position(p)` |
 | `incoming: range at r` | `incoming_range(r)` |
-| `outgoing: fun` | `outgoing(crate::requests::conversion::fun)` |
+| `outgoing: fun` | `outgoing(crate::lsp_requests::conversion::fun)` |
 | field absent | field absent |
 
 **Worked example** — `declaration` (the shape of all 30 generated migrations; hover in Plan 2 Task 5 is the lived reference):
 
 ```rust
-// src/requests/declaration.rs (file exists with tests only; add on top):
+// src/lsp_requests/declaration.rs (file exists with tests only; add on top):
 #[lsp_macros::lsp_request(
     params = async_lsp::lsp_types::request::GotoDeclarationParams,
     response = Option<async_lsp::lsp_types::request::GotoDeclarationResponse>,
     document(text_document_position_params.text_document),
     incoming_position(text_document_position_params.position),
-    outgoing(crate::requests::conversion::modify_outgoing_goto_response),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_goto_response),
 )]
 pub(crate) struct DeclarationRequest;
 // tests below: rename `Declaration` → `DeclarationRequest` in the
@@ -77,7 +77,7 @@ pub(crate) struct DeclarationRequest;
 
 ```rust
 // src/server/with_state/mod.rs (one more row in the lsp_dispatch! block):
-        declaration: declaration @ crate::requests::DeclarationRequest,
+        declaration: declaration @ crate::lsp_requests::DeclarationRequest,
 ```
 
 ---
@@ -149,7 +149,7 @@ fn convert_response(state: &ServerState, document: &Document, response: &mut Opt
 
 #[cfg(test)]
 mod tests {
-    // unchanged except: `use crate::requests::CompletionRequest;` and
+    // unchanged except: `use crate::lsp_requests::CompletionRequest;` and
     // `<CompletionRequest as Request>` (two sites in the hand-written test)
     // … existing body …
 }
@@ -226,7 +226,7 @@ fn convert_response(
 
 #[cfg(test)]
 mod tests {
-    // unchanged except `use crate::requests::{IncomingCallsRequest, Request};`
+    // unchanged except `use crate::lsp_requests::{IncomingCallsRequest, Request};`
     // and `<IncomingCallsRequest as Request>` (three call sites) … existing body …
 }
 ```
@@ -239,7 +239,7 @@ outgoing_calls: same shape; convert_response body = convert_optional_vec(...,
 supertypes:     document(item), incoming_custom(self::convert_params) [verbatim
                 convert_type_hierarchy_item body], outgoing wires the conversion
                 helper DIRECTLY (its signature already matches the hook):
-                outgoing(crate::requests::conversion::modify_outgoing_type_hierarchy_items);
+                outgoing(crate::lsp_requests::conversion::modify_outgoing_type_hierarchy_items);
                 struct SupertypesRequest
 subtypes:       identical to supertypes; struct SubtypesRequest
 ```
@@ -288,7 +288,7 @@ fn convert_locations(state: &ServerState, response: &mut Option<WorkspaceSymbolR
     document(text_document_position_params.text_document),
     incoming_position(text_document_position_params.position),
     incoming_custom(self::convert_context_label_offsets),
-    outgoing(crate::requests::conversion::modify_outgoing_signature_help),
+    outgoing(crate::lsp_requests::conversion::modify_outgoing_signature_help),
 )]
 pub(crate) struct SignatureHelpRequest;
 
@@ -310,7 +310,7 @@ fn convert_context_label_offsets(
 }
 ```
 
-(Tests: `use crate::requests::SignatureHelpRequest;` replacing the `SignatureHelp as SignatureHelpRequest` alias; the `conversion_tests!` row type becomes `SignatureHelpRequest`.)
+(Tests: `use crate::lsp_requests::SignatureHelpRequest;` replacing the `SignatureHelp as SignatureHelpRequest` alias; the `conversion_tests!` row type becomes `SignatureHelpRequest`.)
 
 - [ ] **Step 3: Battery + checkpoint** — with Tasks 3–5 covering 5 + 4 + 2 rows, `custom_methods!` is now an empty shell; only `resolve_methods!` still carries rows.
 
@@ -367,13 +367,13 @@ workspace_symbol_resolve:   incoming_standalone(self::convert_params_standalone)
                              keep the impl-block explanatory comments)
 ```
 
-Struct renames: `CodeActionResolveRequest`, `DocumentLinkResolveRequest`, `CodeLensResolveRequest`, `InlayHintResolveRequest`, `WorkspaceSymbolResolveRequest`. Trait blocks via `lsp_resolve_method!` with docs verbatim and the final parameter named `item`. Dispatch rows: `resolve(completion_resolve: completion_item_resolve @ crate::requests::CompletionResolveRequest),` etc. (alsp names from the registry rows: `completion_item_resolve`, `code_action_resolve`, `document_link_resolve`, `code_lens_resolve`, `inlay_hint_resolve`, `workspace_symbol_resolve`).
+Struct renames: `CodeActionResolveRequest`, `DocumentLinkResolveRequest`, `CodeLensResolveRequest`, `InlayHintResolveRequest`, `WorkspaceSymbolResolveRequest`. Trait blocks via `lsp_resolve_method!` with docs verbatim and the final parameter named `item`. Dispatch rows: `resolve(completion_resolve: completion_item_resolve @ crate::lsp_requests::CompletionResolveRequest),` etc. (alsp names from the registry rows: `completion_item_resolve`, `code_action_resolve`, `document_link_resolve`, `code_lens_resolve`, `inlay_hint_resolve`, `workspace_symbol_resolve`).
 
 - [ ] **Step 3: Full three-configuration battery + checkpoint.** All three registry tables are now empty shells.
 
 ### Task 7: Cutover — the final dispatch table and the deletions
 
-**Files:** `src/server/with_state/mod.rs`, `src/server/server_trait.rs`, `src/requests/mod.rs`, delete `src/requests/registry.rs`.
+**Files:** `src/server/with_state/mod.rs`, `src/server/server_trait.rs`, `src/lsp_requests/mod.rs`, delete `src/lsp_requests/registry.rs`.
 
 **Interfaces:** Produces the end state: 48 rows in one `lsp_dispatch!`, zero `macro_rules!` in `src/`, no registry.
 
@@ -381,54 +381,54 @@ Struct renames: `CodeActionResolveRequest`, `DocumentLinkResolveRequest`, `CodeL
 
 ```rust
     lsp_dispatch! {
-        hover: hover @ crate::requests::HoverRequest,
-        declaration: declaration @ crate::requests::DeclarationRequest,
-        definition: definition @ crate::requests::DefinitionRequest,
-        references: references @ crate::requests::ReferencesRequest,
-        link: document_link @ crate::requests::DocumentLinkRequest,
-        rename: rename @ crate::requests::RenameRequest,
-        rename_prepare: prepare_rename @ crate::requests::RenamePrepareRequest,
-        document_format: formatting @ crate::requests::DocumentFormatRequest,
-        document_range_format: range_formatting @ crate::requests::DocumentRangeFormatRequest,
-        implementation: implementation @ crate::requests::ImplementationRequest,
-        type_definition: type_definition @ crate::requests::TypeDefinitionRequest,
-        document_highlight: document_highlight @ crate::requests::DocumentHighlightRequest,
-        on_type_formatting: on_type_formatting @ crate::requests::OnTypeFormattingRequest,
-        folding_range: folding_range @ crate::requests::FoldingRangeRequest,
-        linked_editing_range: linked_editing_range @ crate::requests::LinkedEditingRangeRequest,
-        code_lens: code_lens @ crate::requests::CodeLensRequest,
-        will_save_wait_until: will_save_wait_until @ crate::requests::WillSaveWaitUntilRequest,
-        document_color: document_color @ crate::requests::DocumentColorRequest,
-        color_presentation: color_presentation @ crate::requests::ColorPresentationRequest,
-        prepare_call_hierarchy: prepare_call_hierarchy @ crate::requests::CallHierarchyPrepareRequest,
-        prepare_type_hierarchy: prepare_type_hierarchy @ crate::requests::TypeHierarchyPrepareRequest,
-        moniker: moniker @ crate::requests::MonikerRequest,
-        will_create_files: will_create_files @ crate::requests::WillCreateFilesRequest,
-        will_rename_files: will_rename_files @ crate::requests::WillRenameFilesRequest,
-        will_delete_files: will_delete_files @ crate::requests::WillDeleteFilesRequest,
-        inlay_hint: inlay_hint @ crate::requests::InlayHintRequest,
-        document_symbol: document_symbol @ crate::requests::DocumentSymbolRequest,
-        execute_command: execute_command @ crate::requests::ExecuteCommandRequest,
-        semantic_tokens_full: semantic_tokens_full @ crate::requests::SemanticTokensFullRequest,
-        semantic_tokens_range: semantic_tokens_range @ crate::requests::SemanticTokensRangeRequest,
-        semantic_tokens_full_delta: semantic_tokens_full_delta @ crate::requests::SemanticTokensFullDeltaRequest,
-        completion: completion @ crate::requests::CompletionRequest,
-        code_action: code_action @ crate::requests::CodeActionRequest,
-        document_diagnostics: document_diagnostic @ crate::requests::DocumentDiagnosticsRequest,
-        selection_range: selection_range @ crate::requests::SelectionRangeRequest,
-        incoming_calls: incoming_calls @ crate::requests::IncomingCallsRequest,
-        outgoing_calls: outgoing_calls @ crate::requests::OutgoingCallsRequest,
-        supertypes: supertypes @ crate::requests::SupertypesRequest,
-        subtypes: subtypes @ crate::requests::SubtypesRequest,
-        inline_value: inline_value @ crate::requests::InlineValueRequest,
-        symbol: symbol @ crate::requests::SymbolRequest,
-        signature_help: signature_help @ crate::requests::SignatureHelpRequest,
-        resolve(completion_resolve: completion_item_resolve @ crate::requests::CompletionResolveRequest),
-        resolve(code_action_resolve: code_action_resolve @ crate::requests::CodeActionResolveRequest),
-        resolve(link_resolve: document_link_resolve @ crate::requests::DocumentLinkResolveRequest),
-        resolve(code_lens_resolve: code_lens_resolve @ crate::requests::CodeLensResolveRequest),
-        resolve(inlay_hint_resolve: inlay_hint_resolve @ crate::requests::InlayHintResolveRequest),
-        resolve(workspace_symbol_resolve: workspace_symbol_resolve @ crate::requests::WorkspaceSymbolResolveRequest),
+        hover: hover @ crate::lsp_requests::HoverRequest,
+        declaration: declaration @ crate::lsp_requests::DeclarationRequest,
+        definition: definition @ crate::lsp_requests::DefinitionRequest,
+        references: references @ crate::lsp_requests::ReferencesRequest,
+        link: document_link @ crate::lsp_requests::DocumentLinkRequest,
+        rename: rename @ crate::lsp_requests::RenameRequest,
+        rename_prepare: prepare_rename @ crate::lsp_requests::RenamePrepareRequest,
+        document_format: formatting @ crate::lsp_requests::DocumentFormatRequest,
+        document_range_format: range_formatting @ crate::lsp_requests::DocumentRangeFormatRequest,
+        implementation: implementation @ crate::lsp_requests::ImplementationRequest,
+        type_definition: type_definition @ crate::lsp_requests::TypeDefinitionRequest,
+        document_highlight: document_highlight @ crate::lsp_requests::DocumentHighlightRequest,
+        on_type_formatting: on_type_formatting @ crate::lsp_requests::OnTypeFormattingRequest,
+        folding_range: folding_range @ crate::lsp_requests::FoldingRangeRequest,
+        linked_editing_range: linked_editing_range @ crate::lsp_requests::LinkedEditingRangeRequest,
+        code_lens: code_lens @ crate::lsp_requests::CodeLensRequest,
+        will_save_wait_until: will_save_wait_until @ crate::lsp_requests::WillSaveWaitUntilRequest,
+        document_color: document_color @ crate::lsp_requests::DocumentColorRequest,
+        color_presentation: color_presentation @ crate::lsp_requests::ColorPresentationRequest,
+        prepare_call_hierarchy: prepare_call_hierarchy @ crate::lsp_requests::CallHierarchyPrepareRequest,
+        prepare_type_hierarchy: prepare_type_hierarchy @ crate::lsp_requests::TypeHierarchyPrepareRequest,
+        moniker: moniker @ crate::lsp_requests::MonikerRequest,
+        will_create_files: will_create_files @ crate::lsp_requests::WillCreateFilesRequest,
+        will_rename_files: will_rename_files @ crate::lsp_requests::WillRenameFilesRequest,
+        will_delete_files: will_delete_files @ crate::lsp_requests::WillDeleteFilesRequest,
+        inlay_hint: inlay_hint @ crate::lsp_requests::InlayHintRequest,
+        document_symbol: document_symbol @ crate::lsp_requests::DocumentSymbolRequest,
+        execute_command: execute_command @ crate::lsp_requests::ExecuteCommandRequest,
+        semantic_tokens_full: semantic_tokens_full @ crate::lsp_requests::SemanticTokensFullRequest,
+        semantic_tokens_range: semantic_tokens_range @ crate::lsp_requests::SemanticTokensRangeRequest,
+        semantic_tokens_full_delta: semantic_tokens_full_delta @ crate::lsp_requests::SemanticTokensFullDeltaRequest,
+        completion: completion @ crate::lsp_requests::CompletionRequest,
+        code_action: code_action @ crate::lsp_requests::CodeActionRequest,
+        document_diagnostics: document_diagnostic @ crate::lsp_requests::DocumentDiagnosticsRequest,
+        selection_range: selection_range @ crate::lsp_requests::SelectionRangeRequest,
+        incoming_calls: incoming_calls @ crate::lsp_requests::IncomingCallsRequest,
+        outgoing_calls: outgoing_calls @ crate::lsp_requests::OutgoingCallsRequest,
+        supertypes: supertypes @ crate::lsp_requests::SupertypesRequest,
+        subtypes: subtypes @ crate::lsp_requests::SubtypesRequest,
+        inline_value: inline_value @ crate::lsp_requests::InlineValueRequest,
+        symbol: symbol @ crate::lsp_requests::SymbolRequest,
+        signature_help: signature_help @ crate::lsp_requests::SignatureHelpRequest,
+        resolve(completion_resolve: completion_item_resolve @ crate::lsp_requests::CompletionResolveRequest),
+        resolve(code_action_resolve: code_action_resolve @ crate::lsp_requests::CodeActionResolveRequest),
+        resolve(link_resolve: document_link_resolve @ crate::lsp_requests::DocumentLinkResolveRequest),
+        resolve(code_lens_resolve: code_lens_resolve @ crate::lsp_requests::CodeLensResolveRequest),
+        resolve(inlay_hint_resolve: inlay_hint_resolve @ crate::lsp_requests::InlayHintResolveRequest),
+        resolve(workspace_symbol_resolve: workspace_symbol_resolve @ crate::lsp_requests::WorkspaceSymbolResolveRequest),
     }
 ```
 
@@ -436,13 +436,13 @@ Struct renames: `CodeActionResolveRequest`, `DocumentLinkResolveRequest`, `CodeL
   - `with_state/mod.rs`: the five macro definitions (`implement_method!`, `implement_methods!`, `implement_resolve_method!`, `registry_dispatch!`, `registry_dispatch_resolve!`) and the three registry invocations; `conversion_document` and `read_document_from_disk` STAY (the generated code calls them).
   - `server_trait.rs`: the two stamper definitions and the three registry invocations.
   - `requests/mod.rs`: the three helper macros, `registry_request_impls!`, its invocation, `pub(crate) mod registry;`, and the registry mention in the module docs; the `Request` trait and conversion re-exports stay.
-  - Delete `src/requests/registry.rs`.
+  - Delete `src/lsp_requests/registry.rs`.
 - [ ] **Step 3: Verify the sweep is total:**
 
 ```bash
 grep -rn "macro_rules!" src/            # expected: empty
 grep -rn "registry" src/                # expected: empty
-grep -rnE "^pub (trait|struct)" src/requests/   # expected: empty
+grep -rnE "^pub (trait|struct)" src/lsp_requests/   # expected: empty
 ```
 
 - [ ] **Step 4: Full three-configuration battery + doc build + `cargo expand -p async-language-server server::with_state` (the 48 dispatch methods must match the pre-cycle expansion modulo the `Request` renames).**
@@ -459,7 +459,7 @@ grep -rnE "^pub (trait|struct)" src/requests/   # expected: empty
 - [ ] **Step 2: The oneshot sentence** — in `README.md`'s oneshot Tour bullet and `src/oneshot/mod.rs`'s module doc, add one clarifying sentence: `server` is the capability layer (implement `Server`); `oneshot` is a clientless runner driving the same engine (spec decision 9).
 
 - [ ] **Step 3: Normative docs rewrite.**
-  - `.claude/rules/structure.md`: "Adding an LSP method touches three places" becomes — (1) the request file: `#[lsp_request(...)]` + struct + inline tests (`src/requests/<method>.rs`); (2) the trait method: `lsp_method!`/`lsp_resolve_method!` block with the doc (`src/server/server_trait.rs`); (3) one row in the `lsp_dispatch!` table (`src/server/with_state/mod.rs`). "The `Request` pattern" section: the hook list stays; the `request_extract_url!`/`request_modify_params_position!` sentence becomes the attribute-field mapping (`document(...)`, `incoming_position(...)`, `incoming_range(...)`, `incoming_custom(...)`, `outgoing(...)`, standalone pair); the `implement_method!` staleness paragraph names `lsp_dispatch!` instead; drop the registry preamble sentence.
+  - `.claude/rules/structure.md`: "Adding an LSP method touches three places" becomes — (1) the request file: `#[lsp_request(...)]` + struct + inline tests (`src/lsp_requests/<method>.rs`); (2) the trait method: `lsp_method!`/`lsp_resolve_method!` block with the doc (`src/server/server_trait.rs`); (3) one row in the `lsp_dispatch!` table (`src/server/with_state/mod.rs`). "The `Request` pattern" section: the hook list stays; the `request_extract_url!`/`request_modify_params_position!` sentence becomes the attribute-field mapping (`document(...)`, `incoming_position(...)`, `incoming_range(...)`, `incoming_custom(...)`, `outgoing(...)`, standalone pair); the `implement_method!` staleness paragraph names `lsp_dispatch!` instead; drop the registry preamble sentence.
   - `.claude/rules/testing.md`: in "Adding a test for a new `Server` method", the sentence "The `Request` impl uses the shared macros for the common shapes — `request_extract_url!` … `request_modify_params_position!` …" becomes "The `#[lsp_request]` attribute fields cover the common shapes (`document(...)`, `incoming_position(...)`); hand-write hooks only for response-shaped or multi-position methods, as free `convert_*` fns wired through `incoming_custom`/`outgoing`".
   - `CLAUDE.md` Architecture: "The `implement_method!` macro glues…" → "The `lsp_dispatch!` table glues each async-lsp method to a `Server` method through the request's hooks, plus staleness detection…"; "one line in the `implement_methods!` table" → "one row in the `lsp_dispatch!` table".
   - `README.md`: `grep -n "registry\|macro_rules" README.md` — update any hit to the new architecture (expected: none, but verify).
@@ -470,7 +470,7 @@ grep -rnE "^pub (trait|struct)" src/requests/   # expected: empty
 - [ ] **Step 1: Full battery, three configurations, both crates** (the exact CI set).
 - [ ] **Step 2: `cargo test --test architecture`** — arch-lint scopes still green (the requests scope lost `registry.rs`; layer rules unchanged).
 - [ ] **Step 3: `cargo dupes check`** — expected outcome per spec decision 4: ZERO new entries. The pre-existing entries covering the parallel hook families ("resolve twins", "single-field Request hooks", "call-hierarchy…", "one-line modify_response hooks") now match free fns instead of trait-impl methods; fingerprints may shift as members churn — verify by comment-out probe, update the fingerprint in place, reason text unchanged. If a NEW group appears: write the avoidance analysis FIRST (memory: dupes-ignore-minimal); only a genuinely irreducible family earns an entry, with its reasoning in the file.
-- [ ] **Step 4: Import-alias sweep.** `grep -rnE "use .+ as [A-Za-z_]+" src/ | grep -v " as _"` must return ONLY the collision whitelist: the `Ts…`/`Lsp…` pairs in `text_utils/position.rs`, `text_utils/encoding.rs`, `text_utils/range_ext/{lsp,tree_sitter,tree_sitter_tests}.rs`, `tree_sitter_utils.rs` (tree-sitter vs LSP same-named types), and the public `pub use async_lsp::ErrorCode as ServerErrorCode` facade re-export in `error.rs`. Every survivor gains a one-line comment naming the type it collides with — self-documenting justification; any alias that cannot name its collision is removed and the real name used (battery re-run). The `src/requests/` rewrite removes its ~14 stylistic `Lsp…` aliases during Tasks 3–6, and the test-local `X as XRequest` aliases dissolve into direct renamed imports via the recipe.
+- [ ] **Step 4: Import-alias sweep.** `grep -rnE "use .+ as [A-Za-z_]+" src/ | grep -v " as _"` must return ONLY the collision whitelist: the `Ts…`/`Lsp…` pairs in `text_utils/position.rs`, `text_utils/encoding.rs`, `text_utils/range_ext/{lsp,tree_sitter,tree_sitter_tests}.rs`, `tree_sitter_utils.rs` (tree-sitter vs LSP same-named types), and the public `pub use async_lsp::ErrorCode as ServerErrorCode` facade re-export in `error.rs`. Every survivor gains a one-line comment naming the type it collides with — self-documenting justification; any alias that cannot name its collision is removed and the real name used (battery re-run). The `src/lsp_requests/` rewrite removes its ~14 stylistic `Lsp…` aliases during Tasks 3–6, and the test-local `X as XRequest` aliases dissolve into direct renamed imports via the recipe.
 - [ ] **Step 5: `cargo expand` diff on `with_state`** — already taken in Task 7 Step 4; re-confirm clean after docs (no code change expected).
 - [ ] **Step 6: Final checkpoint (owner commits)** — the cycle's working-tree state is the whole branch's deliverable; the end-of-cycle whole-branch review follows per the SDD flow.
 
