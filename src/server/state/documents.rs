@@ -26,7 +26,7 @@ use crate::{
 impl ServerState {
     pub(super) fn insert_document(
         &self,
-        url: Url,
+        url: &Url,
         text: String,
         version: i32,
         language: String,
@@ -35,7 +35,7 @@ impl ServerState {
         #[cfg(feature = "tree-sitter")]
         let mut tree_sitter_lang = self
             .matchers
-            .find(&url, language.as_str())
+            .find(url, language.as_str())
             .and_then(|m| m.lang_grammar());
 
         let text_rope = Rope::from(text);
@@ -53,7 +53,7 @@ impl ServerState {
             None
         };
 
-        let matcher = self.matchers.find(&url, &language);
+        let matcher = self.matchers.find(url, &language);
 
         #[cfg(feature = "tree-sitter")]
         let syntax = (tree_sitter_lang, tree_sitter_tree);
@@ -63,11 +63,24 @@ impl ServerState {
         self.documents.insert(
             url.clone(),
             DocumentEntry {
-                document: Document::from_parts(url, language, matcher, version, text_rope, syntax),
+                document: Document::from_parts(
+                    url.clone(),
+                    language,
+                    matcher,
+                    version,
+                    text_rope,
+                    syntax,
+                ),
                 origin,
                 stamp: None,
             },
         );
+
+        // A fresh installation replaces whatever this URL tracked before
+        // (didOpen, a disk re-read, a watched-file refresh): any cached
+        // token stream predates the new text, so drop it — the next full
+        // semantic-tokens request re-seeds it.
+        self.semantic_tokens_cache.remove(url);
     }
 
     pub(crate) fn handle_document_open(
@@ -75,7 +88,7 @@ impl ServerState {
         params: DidOpenTextDocumentParams,
     ) -> ControlFlow<Result<()>> {
         self.insert_document(
-            params.text_document.uri,
+            &params.text_document.uri,
             params.text_document.text,
             params.text_document.version,
             params.text_document.language_id,
@@ -103,14 +116,16 @@ impl ServerState {
 
         if !keep_as_workspace {
             self.documents.remove(&url);
+            self.semantic_tokens_cache.remove(&url);
             return ControlFlow::Continue(());
         }
 
         // arch-lint: allow(no-sync-io) reason="LSP notification handlers must stay synchronous per the spec; closing keeps a disk snapshot via std::fs"
         if let Ok(text) = std::fs::read_to_string(url.path()) {
-            self.insert_document(url, text, 0, language, DocumentOrigin::Workspace);
+            self.insert_document(&url, text, 0, language, DocumentOrigin::Workspace);
         } else {
             self.documents.remove(&url);
+            self.semantic_tokens_cache.remove(&url);
         }
 
         ControlFlow::Continue(())
@@ -222,7 +237,7 @@ impl ServerState {
 
             drop(entry);
 
-            self.recover_failed_incremental_update(uri, version, language);
+            self.recover_failed_incremental_update(&uri, version, language);
         }
 
         ControlFlow::Continue(())
@@ -231,7 +246,7 @@ impl ServerState {
     /// Recovers a document whose incremental update failed: reload from
     /// disk when possible, otherwise keep the last-known text (and re-parse
     /// its tree under the tree-sitter feature).
-    fn recover_failed_incremental_update(&mut self, uri: Url, version: i32, language: String) {
+    fn recover_failed_incremental_update(&mut self, uri: &Url, version: i32, language: String) {
         // NOTE: We must read the contents of the file synchronously
         // as the fallback here, since notification handlers are actually
         // synchronous both according to LSP spec and the async-lsp crate.
@@ -256,7 +271,7 @@ impl ServerState {
             // re-parse above never ran; re-parse the kept text from
             // scratch so the tree cannot diverge from the text.
             #[cfg(feature = "tree-sitter")]
-            if let Some(mut entry) = self.documents.get_mut(&uri) {
+            if let Some(mut entry) = self.documents.get_mut(uri) {
                 let base = entry.document.clone();
                 let old = base.inner_arc();
                 let mut parser = doc_parser(old.tree_sitter_lang.as_ref());
@@ -294,6 +309,7 @@ impl ServerState {
         } else {
             drop(entry);
             self.documents.remove(&url);
+            self.semantic_tokens_cache.remove(&url);
             return ControlFlow::Continue(());
         };
         let base = entry.document.clone();
@@ -329,6 +345,11 @@ impl ServerState {
         entry.document =
             Document::from_shared_meta(Arc::clone(&old.meta), matcher, old.version, text, syntax);
 
+        // didSave installs fresh text (params or disk), so the cached
+        // stream no longer corresponds to the stored document; the next
+        // full request re-seeds it.
+        self.semantic_tokens_cache.remove(&url);
+
         ControlFlow::Continue(())
     }
 
@@ -352,6 +373,7 @@ impl ServerState {
                 self.documents.remove_if(&event.uri, |_, entry| {
                     entry.origin == DocumentOrigin::Workspace
                 });
+                self.semantic_tokens_cache.remove(&event.uri);
                 continue;
             }
 
@@ -363,7 +385,7 @@ impl ServerState {
             drop(entry);
             // arch-lint: allow(no-sync-io) reason="LSP notification handlers must stay synchronous per the spec; the watched-files refresh re-reads via std::fs"
             if let Ok(text) = std::fs::read_to_string(event.uri.path()) {
-                self.insert_document(event.uri, text, 0, language, DocumentOrigin::Workspace);
+                self.insert_document(&event.uri, text, 0, language, DocumentOrigin::Workspace);
             } else {
                 // Keep the old snapshot: a stale tracked document beats
                 // dropping one that handlers may still be resolving.
@@ -403,8 +425,30 @@ impl ServerState {
             return;
         };
 
-        self.documents
-            .remove_if(&url, |_, entry| entry.origin == DocumentOrigin::Workspace);
+        if self
+            .documents
+            .remove_if(&url, |_, entry| entry.origin == DocumentOrigin::Workspace)
+            .is_some()
+        {
+            self.semantic_tokens_cache.remove(&url);
+        }
+    }
+
+    /// Retains only the documents for which `keep` returns `true`, evicting
+    /// the semantic-tokens cache entries of every dropped document so the
+    /// cache cannot outlive its document.
+    pub(super) fn retain_documents(&self, keep: impl Fn(&Url, &DocumentEntry) -> bool) {
+        let mut dropped = Vec::new();
+        self.documents.retain(|url, entry| {
+            let retained = keep(url, entry);
+            if !retained {
+                dropped.push(url.clone());
+            }
+            retained
+        });
+        for url in dropped {
+            self.semantic_tokens_cache.remove(&url);
+        }
     }
 }
 

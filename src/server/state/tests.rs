@@ -5,13 +5,14 @@ use async_lsp::{
     lsp_types::{
         DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
         DidSaveTextDocumentParams, FileChangeType, FileDelete, FileEvent, FileRename, Position,
-        Range, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Url,
-        VersionedTextDocumentIdentifier,
+        Range, SemanticTokens, SemanticTokensResult, TextDocumentContentChangeEvent,
+        TextDocumentIdentifier, TextDocumentItem, Url, VersionedTextDocumentIdentifier,
     },
 };
 
+use crate::lsp_requests::{Request, SemanticTokensFullRequest};
 use crate::server::{DocumentMatcher, Server, ServerOptions, WorkspaceDiagnostics};
-use crate::testing::{open_document, temp_workspace, url, workspace_folder};
+use crate::testing::{open_document, temp_workspace, token, url, workspace_folder};
 
 use super::ServerState;
 
@@ -25,6 +26,17 @@ impl Server for TestServer {
                 .with_lang_strings(["test"]),
         ]
     }
+}
+
+/// Seeds the semantic-tokens delta cache the way a full response does,
+/// mirroring the request-level conversion tests' flow.
+fn seed_semantic_tokens(state: &ServerState, uri: &Url) {
+    let document = state.document(uri).expect("document is tracked");
+    let mut response = Some(SemanticTokensResult::Tokens(SemanticTokens {
+        result_id: Some("r1".into()),
+        data: vec![token(0, 0, 4), token(0, 4, 3)],
+    }));
+    <SemanticTokensFullRequest as Request>::modify_response(state, &document, &mut response);
 }
 
 #[test]
@@ -260,6 +272,52 @@ fn closing_non_workspace_documents_removes_them() {
 }
 
 #[test]
+fn did_close_evicts_cached_semantic_tokens() {
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    let uri = url("tokens-close.txt");
+    open_document(&mut state, uri.clone(), "body");
+    seed_semantic_tokens(&state, &uri);
+    assert!(state.cached_semantic_tokens(&uri).is_some());
+
+    let _ = state.handle_document_close(DidCloseTextDocumentParams {
+        text_document: TextDocumentIdentifier::new(uri.clone()),
+    });
+
+    assert!(state.document(&uri).is_none());
+    assert!(state.cached_semantic_tokens(&uri).is_none());
+}
+
+#[test]
+fn did_close_keeps_disk_snapshot_but_evicts_cached_semantic_tokens() {
+    let root = temp_workspace("state", "close-evict-workspace");
+    let manifest = root.join("a.test");
+    fs::write(&manifest, "disk").expect("test file can be written");
+    let manifest = fs::canonicalize(manifest).expect("test file can be canonicalized");
+    let uri = Url::from_file_path(&manifest).expect("path can be converted to a URL");
+
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    state.set_workspace_folders([workspace_folder(&root)]);
+    open_document(&mut state, uri.clone(), "open");
+    seed_semantic_tokens(&state, &uri);
+    assert!(state.cached_semantic_tokens(&uri).is_some());
+
+    let _ = state.handle_document_close(DidCloseTextDocumentParams {
+        text_document: TextDocumentIdentifier::new(uri.clone()),
+    });
+
+    assert_eq!(state.document(&uri).unwrap().text_contents(), "disk");
+    assert!(state.cached_semantic_tokens(&uri).is_none());
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+#[test]
 fn failed_incremental_change_keeps_document_when_reread_fails() {
     let root = temp_workspace("state", "keep-last-known");
     let uri = {
@@ -433,6 +491,32 @@ fn document_save_removes_the_document_when_no_text_and_no_file() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
+#[test]
+fn document_save_evicts_cached_semantic_tokens() {
+    let root = temp_workspace("state", "save-evict");
+    let uri = {
+        let path = root.join("saved.test");
+        Url::from_file_path(path).expect("path converts to a URL")
+    };
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    open_document(&mut state, uri.clone(), "before");
+    seed_semantic_tokens(&state, &uri);
+    assert!(state.cached_semantic_tokens(&uri).is_some());
+
+    let _ = state.handle_document_save(DidSaveTextDocumentParams {
+        text_document: TextDocumentIdentifier::new(uri.clone()),
+        text: Some("after".into()),
+    });
+
+    assert!(state.document(&uri).is_some());
+    assert!(state.cached_semantic_tokens(&uri).is_none());
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
 #[tokio::test]
 async fn watched_files_change_rereads_mutated_workspace_document() {
     let root = temp_workspace("state", "watched-changed");
@@ -523,6 +607,50 @@ async fn file_rename_and_delete_drop_the_workspace_documents() {
 }
 
 #[tokio::test]
+async fn watched_delete_and_file_operations_evict_cached_semantic_tokens() {
+    let root = temp_workspace("state", "evict-file-operations");
+    fs::write(root.join("a.test"), "a").expect("test file can be written");
+    fs::write(root.join("b.test"), "b").expect("test file can be written");
+
+    let state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    state.set_workspace_folders([workspace_folder(&root)]);
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("workspace documents can be refreshed");
+    assert_eq!(urls.len(), 2);
+    for uri in &urls {
+        seed_semantic_tokens(&state, uri);
+        assert!(state.cached_semantic_tokens(uri).is_some());
+    }
+
+    let _ = state.handle_watched_files_change(vec![FileEvent::new(
+        urls[0].clone(),
+        FileChangeType::DELETED,
+    )]);
+    assert!(state.document(&urls[0]).is_none());
+    assert!(
+        state.cached_semantic_tokens(&urls[0]).is_none(),
+        "a watched delete evicts the cache"
+    );
+
+    let _ = state.handle_files_renamed(vec![FileRename {
+        old_uri: urls[1].to_string(),
+        new_uri: "file:///tmp/async-language-server-moved.test".into(),
+    }]);
+    assert!(state.document(&urls[1]).is_none());
+    assert!(
+        state.cached_semantic_tokens(&urls[1]).is_none(),
+        "a rename evicts the old URL's cache"
+    );
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+#[tokio::test]
 async fn open_documents_survive_watched_files_and_file_operations() {
     let root = temp_workspace("state", "open-immunity");
     let path = root.join("a.test");
@@ -561,6 +689,122 @@ async fn open_documents_survive_watched_files_and_file_operations() {
         uri: uri.to_string(),
     }]);
     assert!(state.document(&uri).is_some());
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+#[tokio::test]
+async fn open_documents_keep_their_cached_semantic_tokens_across_file_operations() {
+    let root = temp_workspace("state", "open-cache-immunity");
+    let path = root.join("a.test");
+    fs::write(&path, "disk").expect("test file can be written");
+    let manifest = fs::canonicalize(&path).expect("test file can be canonicalized");
+    let uri = Url::from_file_path(&manifest).expect("path can be converted to a URL");
+
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    state.set_workspace_folders([workspace_folder(&root)]);
+    open_document(&mut state, uri.clone(), "open");
+    seed_semantic_tokens(&state, &uri);
+    assert!(state.cached_semantic_tokens(&uri).is_some());
+
+    fs::write(&path, "mutated").expect("test file can be written");
+    let _ = state.handle_watched_files_change(vec![
+        FileEvent::new(uri.clone(), FileChangeType::CHANGED),
+        FileEvent::new(uri.clone(), FileChangeType::DELETED),
+    ]);
+
+    let _ = state.handle_files_renamed(vec![FileRename {
+        old_uri: uri.to_string(),
+        new_uri: "file:///tmp/async-language-server-moved.test".into(),
+    }]);
+    assert!(state.document(&uri).is_some());
+    assert!(
+        state.cached_semantic_tokens(&uri).is_some(),
+        "an open document keeps its cache across file operations"
+    );
+
+    let _ = state.handle_files_deleted(vec![FileDelete {
+        uri: uri.to_string(),
+    }]);
+    assert!(state.document(&uri).is_some());
+    assert!(state.cached_semantic_tokens(&uri).is_some());
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+#[tokio::test]
+async fn workspace_refresh_evicts_tokens_of_dropped_documents() {
+    let root = temp_workspace("state", "refresh-evict");
+    let dropped_path = root.join("a.test");
+    fs::write(&dropped_path, "a").expect("test file can be written");
+    fs::write(root.join("b.test"), "b").expect("test file can be written");
+
+    let state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    state.set_workspace_folders([workspace_folder(&root)]);
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("workspace documents can be refreshed");
+    assert_eq!(urls.len(), 2);
+    for uri in &urls {
+        seed_semantic_tokens(&state, uri);
+        assert!(state.cached_semantic_tokens(uri).is_some());
+    }
+
+    fs::remove_file(&dropped_path).expect("test file can be removed");
+    let kept = state
+        .refresh_workspace_documents()
+        .await
+        .expect("workspace documents can be refreshed");
+    assert_eq!(kept.len(), 1);
+
+    let dropped_uri = urls
+        .iter()
+        .find(|uri| !kept.contains(uri))
+        .expect("dropped URL is identified");
+    assert!(state.document(dropped_uri).is_none());
+    assert!(
+        state.cached_semantic_tokens(dropped_uri).is_none(),
+        "a document the refresh drops loses its cache"
+    );
+    let kept_uri = &kept[0];
+    assert!(state.document(kept_uri).is_some());
+    assert!(
+        state.cached_semantic_tokens(kept_uri).is_some(),
+        "a document the refresh keeps keeps its cache"
+    );
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+#[tokio::test]
+async fn disabling_workspace_diagnostics_evicts_cached_semantic_tokens() {
+    let root = temp_workspace("state", "disable-evict");
+    fs::write(root.join("a.test"), "disk").expect("test file can be written");
+
+    let state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    state.set_workspace_folders([workspace_folder(&root)]);
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("workspace documents can be refreshed");
+    let uri = urls[0].clone();
+    seed_semantic_tokens(&state, &uri);
+    assert!(state.cached_semantic_tokens(&uri).is_some());
+
+    assert!(state.set_workspace_diagnostics_enabled(false));
+
+    assert!(state.document(&uri).is_none());
+    assert!(state.cached_semantic_tokens(&uri).is_none());
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }

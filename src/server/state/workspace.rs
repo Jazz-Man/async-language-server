@@ -117,7 +117,7 @@ impl ServerState {
         .await?;
 
         let urls: HashSet<_> = urls.into_iter().collect();
-        self.documents.retain(|url, entry| {
+        self.retain_documents(|url, entry| {
             entry.origin == DocumentOrigin::Open
                 || !url_is_in_roots(url, &roots)
                 || urls.contains(url)
@@ -129,8 +129,7 @@ impl ServerState {
     }
 
     pub(super) fn remove_workspace_documents(&self) {
-        self.documents
-            .retain(|_, entry| entry.origin == DocumentOrigin::Open);
+        self.retain_documents(|_, entry| entry.origin == DocumentOrigin::Open);
     }
 
     fn remove_workspace_documents_in_roots(&self, roots: &[PathBuf]) {
@@ -138,7 +137,7 @@ impl ServerState {
             return;
         }
 
-        self.documents.retain(|url, entry| {
+        self.retain_documents(|url, entry| {
             entry.origin == DocumentOrigin::Open || !url_is_in_roots(url, roots)
         });
     }
@@ -185,7 +184,7 @@ async fn load_workspace_document(
         move || -> std::io::Result<()> {
             // arch-lint: allow(no-sync-io) reason="workspace file IO runs on the blocking pool by design"
             let text = std::fs::read_to_string(&path)?;
-            state.insert_document(uri, text, 0, language, DocumentOrigin::Workspace);
+            state.insert_document(&uri, text, 0, language, DocumentOrigin::Workspace);
             Ok(())
         }
     })
