@@ -101,8 +101,8 @@ mod tests {
                     fn completion_resolve(&self, _state: ServerState, item: CompletionItem)
                         -> impl Future<Output = ServerResult<CompletionItem>> + Send;
                 },
-                // "Ok"/"item" pin that the last parameter is returned unchanged.
-                &["async move", "Ok", "item"],
+                // "Ok(item)" pins that the last parameter is returned unchanged.
+                &["async move", "Ok (item)"],
             ),
         ];
         for (i, (kind, decl, needles)) in cases.into_iter().enumerate() {

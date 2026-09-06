@@ -220,7 +220,8 @@ impl Parse for Entries {
     }
 }
 
-/// The nine attribute fields before `params`/`response` are required.
+/// The parsed attribute fields; `params`/`response` are required, the
+/// seven hooks optional.
 #[derive(Default)]
 struct PartialSpec {
     params: Option<Type>,
