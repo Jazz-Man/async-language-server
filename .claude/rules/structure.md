@@ -30,25 +30,34 @@ handlers never convert encodings themselves.
 
 ## Adding an LSP method touches three places
 
-1. The trait method in `src/server/server_trait.rs`, defaulting to
-   `method_not_implemented`, with a `///` doc naming the capability it
+1. The request file `src/requests/<method>.rs`: a marker struct under
+   `#[lsp_request(...)]` with inline tests, re-exported from
+   `src/requests/mod.rs`.
+2. The trait method: an `lsp_method!` / `lsp_resolve_method!` block in
+   `src/server/server_trait.rs` with a `///` doc naming the capability it
    requires.
-2. A `Request` impl in a dedicated file under `src/requests/`, re-exported
-   from `src/requests/mod.rs`.
-3. One line in the `implement_methods!` table in `src/server/with_state/mod.rs`
-   (`async_lsp_method => server_trait_method @ RequestType`).
+3. One row in the `lsp_dispatch!` table in `src/server/with_state/mod.rs`
+   (`trait_method: async_lsp_method @ RequestType`).
 
 Export any new public types through the `server` module in `src/lib.rs`.
 
 ## The `Request` pattern (`src/requests/`)
 
-The `Request` trait lives in `src/requests/mod.rs`; each LSP request has
-its own file with a `Request` impl providing three hooks:
+The `Request` trait lives in `src/requests/mod.rs` and carries five hooks
+(`extract_url`, the `modify_params`/`modify_response` pair, the standalone
+pair). Each LSP request lives in its own file as a marker struct under
+`#[lsp_request(...)]`; the attribute fields stamp the hook impls:
 
-- `extract_url` — pulls the document URL out of the params so the wrapper can
-  snapshot its version.
-- `modify_params` — client encoding → UTF-8, before the handler runs.
-- `modify_response` — UTF-8 → client encoding, after.
+- `document(...)` — the params' field path to the document URL, stamped
+  into `extract_url` so the wrapper can snapshot its version.
+- `incoming_position(...)` / `incoming_range(...)` — field paths whose
+  position/range `modify_params` converts client encoding → UTF-8, before
+  the handler runs.
+- `incoming_custom(...)` / `outgoing(...)` — function paths for
+  response-shaped or multi-position conversions: params composed after the
+  standard incoming step, and the response, UTF-8 → client encoding, after.
+- `incoming_standalone(...)` / `outgoing_standalone(...)` — function paths
+  `fn(&ServerState, &mut Params or &mut Response)` for the no-anchor hooks.
 
 State-driven conversions that resolve each position against their own
 document — no single anchor (the workspace-symbol shape) — override the
@@ -58,17 +67,18 @@ resolve family, when no sole tracked document resolves) and
 resolves) directly, and `modify_params`/`modify_response`'s defaults
 delegate to them so the override runs in every dispatch state.
 
-Implement these with the existing `modify_incoming_*` / `modify_outgoing_*`
-helpers in `src/requests/conversion.rs` (positions, ranges, locations,
-diagnostics, text edits) rather than calling `position_to_encoding`
-directly — that is reuse of existing machinery, not new abstraction.
-Conversely, do not build new abstraction layers for one-off conversions:
-if no helper fits, add one next to the others in
-`src/requests/conversion.rs`. Conversions stay centralized there. Convert
-positions in responses against the document the position refers to, falling
-back to the request's own document when that URL isn't tracked.
+Write the custom functions as free fns in the request file, reusing the
+existing `convert_*` / `modify_outgoing_*` helpers in
+`src/requests/conversion.rs` (positions, ranges, locations, diagnostics,
+text edits) rather than calling `position_to_encoding` directly — that is
+reuse of existing machinery, not new abstraction. Conversely, do not build
+new abstraction layers for one-off conversions: if no helper fits, add one
+next to the others in `src/requests/conversion.rs`. Conversions stay
+centralized there. Convert positions in responses against the document the
+position refers to, falling back to the request's own document when that
+URL isn't tracked.
 
-The `implement_method!` macro glues everything together and adds staleness
+The `lsp_dispatch!` table glues everything together and adds staleness
 detection: it snapshots the document version before the handler and returns
 `CONTENT_MODIFIED` if the version changed by response time (clients retry).
 Do not duplicate that logic in handlers.

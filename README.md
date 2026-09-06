@@ -71,7 +71,8 @@ the encoding negotiated with the client — conversions are handled internally.
 - **Workspace diagnostics** — `workspace/diagnostic` with walker-based
   scanning; exposure configured through `ServerOptions`.
 - **`oneshot`** — run a `Server` over files on disk with no LSP client:
-  CLI-style batch diagnostics.
+  CLI-style batch diagnostics. `server` is the capability layer (implement
+  `Server`); `oneshot` is a clientless runner driving the same engine.
 - **`text_utils`** — `Encoding`, `Position`, and range helpers behind the
   transparent encoding conversion.
 

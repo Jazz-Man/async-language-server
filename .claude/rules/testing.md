@@ -98,16 +98,17 @@ command runs on demand or periodically, outside the per-task battery
 ## Adding a test for a new `Server` method
 
 The method already follows the three-place pattern (`structure.md`):
-trait method, `Request` impl in its own file under `src/requests/`, one
-`implement_methods!` line. The `Request` impl uses the shared macros for
-the common shapes — `request_extract_url!` (document URL at a field
-path) and `request_modify_params_position!` (one incoming position at a
-field path) — hand-writing hooks only for response-shaped or
-multi-position methods.
+the `#[lsp_request]` struct in its own file under `src/requests/`, the
+`lsp_method!`/`lsp_resolve_method!` block for the trait method, one
+`lsp_dispatch!` row. The `#[lsp_request]` attribute fields cover the
+common shapes (`document(...)`, `incoming_position(...)`); hand-write
+hooks only for response-shaped or multi-position methods, as free
+`convert_*` fns wired through `incoming_custom`/`outgoing`.
 
-Testing adds one piece: a W0 conversion test in the `#[cfg(test)] mod
-tests` block next to the `Request` impl, importing fixtures from
-`crate::testing` (`state_with_documents` is the standard UTF-16 fixture).
+Testing adds one piece: a W0 conversion test — `conversion_tests!` rows
+in the `#[cfg(test)] mod tests` block next to the marker struct —
+importing fixtures from `crate::testing` (`state_with_documents` is the
+standard UTF-16 fixture).
 Dispatch needs nothing new: the parametrized wire unknown-method test
 (`unwired_methods_return_method_not_found`) pins `-32601` for every
 method the crate does not wire, so surface growth adds no wire tests.
