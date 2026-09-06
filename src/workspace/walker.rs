@@ -1,10 +1,11 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::mpsc,
 };
 
 use async_lsp::lsp_types::Url;
-use ignore::WalkBuilder;
+use ignore::{WalkBuilder, WalkState};
 
 use crate::{error::ServerError, server::ServerResult};
 
@@ -56,27 +57,35 @@ impl WorkspaceWalker {
     }
 
     pub(crate) fn files(&self) -> ServerResult<Vec<PathBuf>> {
-        let mut files = Vec::new();
+        let (sender, receiver) = mpsc::channel();
 
         for root in &self.roots {
             let mut builder = WalkBuilder::new(root);
             configure_walker(&mut builder, &self.config);
 
-            for entry in builder.build() {
-                let entry = match entry {
-                    Ok(entry) => entry,
+            builder.build_parallel().run(|| {
+                let sender = sender.clone();
+                Box::new(move |entry| match entry {
+                    Ok(entry) => {
+                        // arch-lint: allow(no-sync-io) reason="the ignore-crate walk is a synchronous batch scan by design"
+                        if entry.file_type().is_some_and(|ty| ty.is_file()) {
+                            // The receiver outlives every send: it is dropped
+                            // only after all walks have joined, so the send
+                            // cannot fail.
+                            let _ = sender.send(entry.into_path());
+                        }
+                        WalkState::Continue
+                    }
                     Err(error) => {
                         tracing::warn!("skipping unreadable workspace entry: {error}");
-                        continue;
+                        WalkState::Continue
                     }
-                };
-                // arch-lint: allow(no-sync-io) reason="the ignore-crate walk is a synchronous batch scan by design"
-                if entry.file_type().is_some_and(|ty| ty.is_file()) {
-                    files.push(entry.into_path());
-                }
-            }
+                })
+            });
         }
 
+        drop(sender);
+        let mut files = receiver.into_iter().collect::<Vec<_>>();
         files.sort();
         Ok(files)
     }
@@ -107,6 +116,89 @@ mod tests {
     };
 
     use super::{WorkspaceWalkConfig, WorkspaceWalker};
+    use crate::testing::temp_workspace;
+
+    // The walk's observable contract is the sorted `Vec`, identical for the
+    // same tree no matter which order entries are delivered in: every file
+    // under each root exactly once per root (nested roots duplicate their
+    // files), hidden entries skipped unless `with_hidden_files`, ignore-file
+    // matches skipped unless `with_ignore_files`. The expected `Vec`s are a
+    // golden capture of the walk output.
+    #[test]
+    fn files_produce_the_identical_sorted_output_for_the_same_tree() {
+        let root = temp_workspace("walker", "determinism");
+        fs::create_dir_all(root.join("nested/deep")).expect("nested dirs can be created");
+        fs::create_dir_all(root.join("skipped-dir")).expect("skipped dir can be created");
+        fs::create_dir_all(root.join(".hidden-dir")).expect("hidden dir can be created");
+        fs::write(root.join("a.test"), "a").expect("file can be written");
+        fs::write(root.join("z.test"), "z").expect("file can be written");
+        fs::write(root.join("nested/b.test"), "b").expect("file can be written");
+        fs::write(root.join("nested/deep/c.test"), "c").expect("file can be written");
+        fs::write(root.join("skip.test"), "ignored").expect("file can be written");
+        fs::write(root.join("skipped-dir/x.test"), "x").expect("file can be written");
+        fs::write(root.join(".hidden.test"), "hidden").expect("file can be written");
+        fs::write(root.join(".hidden-dir/y.test"), "y").expect("file can be written");
+        fs::write(root.join(".ignore"), "skip.test\nskipped-dir/\n")
+            .expect("ignore file can be written");
+
+        // The second root nests inside the first: a file under both roots is
+        // visited once per root, so the sorted output carries duplicates.
+        let walker = WorkspaceWalker::new(
+            &[root.clone(), root.join("nested")],
+            WorkspaceWalkConfig::default(),
+        )
+        .expect("walker can be created");
+        let (canonical_root, canonical_nested) =
+            (walker.roots()[0].clone(), walker.roots()[1].clone());
+        assert_eq!(
+            walker.files().expect("walk succeeds"),
+            vec![
+                canonical_root.join("a.test"),
+                canonical_root.join("nested/b.test"),
+                canonical_nested.join("b.test"),
+                canonical_root.join("nested/deep/c.test"),
+                canonical_nested.join("deep/c.test"),
+                canonical_root.join("z.test"),
+            ],
+        );
+
+        let hidden = WorkspaceWalker::new(
+            std::slice::from_ref(&root),
+            WorkspaceWalkConfig::default().with_hidden_files(true),
+        )
+        .expect("walker can be created");
+        assert_eq!(
+            hidden.files().expect("walk succeeds"),
+            vec![
+                canonical_root.join(".hidden-dir/y.test"),
+                canonical_root.join(".hidden.test"),
+                canonical_root.join(".ignore"),
+                canonical_root.join("a.test"),
+                canonical_root.join("nested/b.test"),
+                canonical_root.join("nested/deep/c.test"),
+                canonical_root.join("z.test"),
+            ],
+        );
+
+        let unfiltered = WorkspaceWalker::new(
+            std::slice::from_ref(&root),
+            WorkspaceWalkConfig::default().with_ignore_files(false),
+        )
+        .expect("walker can be created");
+        assert_eq!(
+            unfiltered.files().expect("walk succeeds"),
+            vec![
+                canonical_root.join("a.test"),
+                canonical_root.join("nested/b.test"),
+                canonical_root.join("nested/deep/c.test"),
+                canonical_root.join("skip.test"),
+                canonical_root.join("skipped-dir/x.test"),
+                canonical_root.join("z.test"),
+            ],
+        );
+
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
 
     // One unreadable entry must not abort the scan; this test is unix-only
     // because the failure is injected with filesystem permissions.
