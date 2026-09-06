@@ -123,7 +123,7 @@ fn engine(row: &DispatchRow) -> TokenStream {
             // sole tracked document, if the server tracks exactly one; with no
             // sole document, the standalone hooks run state-driven conversions
             // instead of skipping them.
-            let sole = conversion_document(&state, None);
+            let sole = state.sole_document();
             match sole.as_ref() {
                 Some(document) => {
                     convert_resolve_item::<#request, _>(
@@ -156,30 +156,21 @@ fn engine(row: &DispatchRow) -> TokenStream {
             // 1. Try to extract the URL from the params for document tracking
             let url: Option<Url> =
                 <#request as crate::lsp_requests::Request>::extract_url(&params);
-            let mut ver: Option<i32> = None;
-
-            // 2. If we got an URL, track the document version
-            if let Some(url) = url.as_ref() && let Some(doc) = state.document(url) {
-                ver.replace(doc.version());
-            }
-
-            // 3. Call the "modify params" callback against the request's
-            //    conversion document: the tracked snapshot for a tracked URL,
-            //    a disk snapshot for an untracked file URL, or the sole
-            //    tracked document for URL-less requests
+            // 2. Version probe (clone-free) and one conversion document
+            //    for the whole request.
+            let ver: Option<i32> =
+                url.as_ref().and_then(|url| state.document_version(url));
             let params_doc = conversion_document(&state, url.as_ref());
             if let Some(doc) = params_doc.as_ref() {
                 <#request as crate::lsp_requests::Request>::modify_params(&state, doc, &mut params,);
             }
 
-            // 4. Call the user-defined language server function
+            // 3. Call the user-defined language server function.
             let mut result = server.#trait_method(state.clone(), params).await?;
 
-            // 5. Check our document again, if we had one originally. If the
-            //    version changed, our result is stale, and we should try again
+            // 4. Staleness probe against the same clone-free version.
             if let Some(url) = url.as_ref()
-                && let Some(doc) = state.document(url)
-                && ver.is_some_and(|v| v != doc.version())
+                && state.document_version(url).is_some_and(|v| Some(v) != ver)
             {
                 return Err(ResponseError::new(
                     ErrorCode::CONTENT_MODIFIED,
@@ -187,13 +178,13 @@ fn engine(row: &DispatchRow) -> TokenStream {
                 ));
             }
 
-            // 6. Run the final "modify response" callback against a freshly
-            //    resolved conversion document; when none resolves, the
-            //    standalone hook runs state-driven conversions instead of
-            //    skipping them.
-            match conversion_document(&state, url.as_ref()) {
+            // 5. The staleness probe passed, so the conversion document is
+            //    still valid for the response — reuse it instead of
+            //    re-resolving (one snapshot and at most one disk read per
+            //    request).
+            match params_doc.as_ref() {
                 Some(doc) => {
-                    <#request as crate::lsp_requests::Request>::modify_response(&state, &doc, &mut result,);
+                    <#request as crate::lsp_requests::Request>::modify_response(&state, doc, &mut result,);
                 }
                 None => {
                     <#request as crate::lsp_requests::Request>::modify_response_standalone(
@@ -262,13 +253,18 @@ mod tests {
         for needle in [
             "fn hover",
             "extract_url",
-            "conversion_document",
+            "document_version",
             "CONTENT_MODIFIED",
             "modify_response_standalone",
             ". hover (state . clone () , params)",
         ] {
             assert!(text.contains(needle), "missing {needle:?} from {text}");
         }
+        assert_eq!(
+            text.matches("conversion_document").count(),
+            1,
+            "the response step must reuse the request's conversion document"
+        );
     }
 
     #[test]
@@ -279,6 +275,7 @@ mod tests {
         let text = engine(&r).to_string();
         assert!(text.contains("convert_resolve_item"));
         assert!(text.contains("Direction :: Incoming"));
+        assert!(text.contains("sole_document"));
         assert!(!text.contains("CONTENT_MODIFIED"));
     }
 
