@@ -59,12 +59,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/rust-setup
-      - run: cargo doc --workspace --no-deps
-      - name: Fix permissions
-        run: |
-          chmod -c -R +rX "target/doc/" | while read line; do
-            echo "::warning title=Invalid file permissions automatically fixed::$line"
-          done
+      - name: Docs
+        run: cargo +nightly doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: "--enable-index-page -Zunstable-options"
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
