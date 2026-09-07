@@ -8,12 +8,12 @@ Library crate (no binary) that wraps `async-lsp` to make language servers with l
 
 ## Commands
 
-- CI runs the full battery on push/PR to `main`: `cargo build --workspace --all-targets`, `cargo test --workspace` in three feature configurations (default, `--no-default-features`, `--all-features`), `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`
+- CI (`.github/workflows/ci.yml`) runs on push/PR to `main` and via `workflow_dispatch` on any branch: a `checks` job (`cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`) plus a two-leg test matrix (`cargo test --workspace --all-features` and `--no-default-features`) in parallel, with Cargo caching (`rust-cache`, saves on `main` only); on pushes to `main`, a release job tags (`v` prefix; `#major`/`#minor`/`#patch`/`#none` commit-message tokens) and publishes a GitHub Release with changelog. The `default` test leg returns when a second, non-default feature exists (today `default` ≡ `--all-features`)
 - `cargo test <test_name>` — run a single test; tests are inline `#[cfg(test)] mod tests` blocks inside each `src/` module, or sibling `tests.rs` files for the larger modules
 - `cargo clippy --all-targets` — `clippy::all` is `deny` in `Cargo.toml` `[workspace.lints.clippy]`, so default lints are hard errors; `pedantic`/`cargo` deny, with an explicit allow list there
 - `cargo fmt` — rustfmt and clippy are pinned via `rust-toolchain.toml`
 - Feature gates matter: the default feature is `tree-sitter` (`tracing` is permanent, not a feature). Changes touching `#[cfg(feature = "tree-sitter")]` paths should also be checked with `cargo test --no-default-features`
-- Doctests are enabled and run as part of `cargo test` in all three feature configurations; keep them free of tree-sitter-gated API
+- Doctests are enabled and run as part of `cargo test` in every feature configuration CI runs; keep them free of tree-sitter-gated API
 
 ## Architecture
 

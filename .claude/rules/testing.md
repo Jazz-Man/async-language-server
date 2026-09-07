@@ -79,7 +79,7 @@ instructions in the test's own comment.
   grammar — fill a bounded pool through channels or semaphores, bound
   every wait, assert on what entered — never on elapsed time
   (`for_each_bounded`'s width test, the wire concurrency tripwire).
-- All three feature configurations must compile and pass. Keep shared
+- Every feature configuration CI runs must compile and pass — `--all-features` and `--no-default-features` (plus `default` again once a non-default feature exists). Keep shared
   harness code free of tree-sitter API; a test that needs the feature
   gates itself with `#[cfg(feature = "tree-sitter")]`.
 - `expect`/`unwrap` are allowed in tests (`allow-unwrap-in-tests` and

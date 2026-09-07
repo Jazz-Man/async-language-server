@@ -19,22 +19,27 @@ One feature, on by default (`[features]` in `Cargo.toml`):
 spec decision 10): no consumer disables it, and `TracingLayer` is always in
 the middleware stack. Code under `#[cfg(feature = "tree-sitter")]` must also
 compile without it; when a change touches the gated path, verify at least
-`cargo test --no-default-features` in addition to the default configuration.
+`cargo test --workspace --no-default-features` in addition to
+`cargo test --workspace --all-features`.
 
 ## Verification battery
 
 Before considering work done, run the same battery CI runs
-(`.github/workflows/rust.yml`, on push/PR to `main`):
+(`.github/workflows/ci.yml`, on push/PR to `main` and via `workflow_dispatch`):
 
 ```bash
-cargo build --workspace --all-targets
-cargo test --workspace              # default features
-cargo test --workspace --no-default-features
-cargo test --workspace --all-features
 cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --all-features
+cargo test --workspace --no-default-features
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
+
+The standalone `cargo build --workspace --all-targets` step is gone:
+nothing is published, and `clippy --all-targets` compiles every target.
+The `default` configuration is currently identical to `--all-features`
+(the crate has one feature, on by default) and returns as a third leg the
+day a non-default feature lands.
 
 `cargo test <test_name>` runs a single test. A failing check is a signal
 about the code, not about the check: when anything fails, follow the global
@@ -77,7 +82,7 @@ Public items need `///` docs (`missing_docs` is enforced):
 Error-documentation duties (`# Errors`, `# Panics` sections) are governed by
 `error-handling.md`.
 
-Doctests run in all three feature configurations. Keep them free of
+Doctests run in every feature configuration CI runs. Keep them free of
 tree-sitter-gated API so they compile under `--no-default-features`, and use
 `no_run` fences for anything that opens a transport (see `serve` in
 `src/server/serve.rs`).
