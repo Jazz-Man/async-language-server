@@ -829,6 +829,7 @@ dependencies = [
  "dylint_linting",
  "dylint_testing",
  "serde",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

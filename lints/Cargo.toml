@@ -10,11 +10,56 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 clippy_utils = { git = "https://github.com/rust-lang/rust-clippy", rev = "9fca3bc9fc2bc83c60bde26d18ed68f11564b228" }
-dylint_linting = "6.0.4"
+# `constituent` keeps `impl_late_lint!` from emitting its own `dylint_library!`
+# and `no_mangle register_lints` per lint — a multi-lint library declares them
+# once at the crate root and delegates, like dylint's `examples/general`.
+dylint_linting = { version = "6.0.4", features = ["constituent"] }
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 dylint_testing = "6.0.4"
+# For the `ui/` fixture crates (`#[derive(thiserror::Error)]`) and the lint
+# docs' doctests.
+thiserror = "2"
+
+# UI fixtures: standalone crates compiled with the library loaded by the dylint
+# driver. Registered as example targets so `dylint_testing` recovers their
+# linking flags from a real cargo build and `thiserror` resolves.
+[[example]]
+name = "bad_case"
+path = "ui/error_display/bad_case.rs"
+
+[[example]]
+name = "bad_punct"
+path = "ui/error_display/bad_punct.rs"
+
+[[example]]
+name = "ok_lowercase"
+path = "ui/error_display/ok_lowercase.rs"
+
+[[example]]
+name = "transparent_from"
+path = "ui/error_display/transparent_from.rs"
+
+[[example]]
+name = "bad_tuple"
+path = "ui/error_no_string/bad_tuple.rs"
+
+[[example]]
+name = "bad_named"
+path = "ui/error_no_string/bad_named.rs"
+
+[[example]]
+name = "ok_two_fields"
+path = "ui/error_no_string/ok_two_fields.rs"
+
+[[example]]
+name = "bad_plain"
+path = "ui/require_thiserror/bad_plain.rs"
+
+[[example]]
+name = "ok_derived"
+path = "ui/require_thiserror/ok_derived.rs"
 
 [workspace]
 
