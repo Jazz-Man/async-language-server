@@ -142,6 +142,16 @@ Covered by the suite: the ResponseError construction boundary (error-handling.md
 6. The exact clippy lint covering `let _ =` on must-use values (`let_underscore_must_use` per current clippy docs — confirm at the pinned 1.98) and whether it is restriction-group.
 7. Gating semantics for deny: our lints register `Deny` themselves so a plain `cargo dylint --all` gates; confirm no extra flags are needed.
 
+## Out of scope
+
+- **cargo-deny** (advisories/bans/licenses/sources) — the one applicable security axis; registered as a deliberate follow-up cycle, per the still-unlanded step 5 of the 2026-08-30 research. dylint ships no stock security suite (verified against its `examples/` catalog; Trail of Bits' own Testing Handbook recommends Clippy favorites plus audit-specific custom lints), so no security lints join this cycle.
+- Migrating clippy-expressible rules into the suite (the division of labor is fixed: per-project clippy config, dylint only beyond clippy).
+- `cargo modules` / `cargo machete` CI additions — the rest of the unlanded 2026-08-30 step 5.
+- The declarative `[[restrict-use]]`/`[[require-use]]` arch-lint forms (unused in `arch-lint.toml` today); `layer_boundaries` is designed so they can be added later.
+- The `clippy::panic`/`clippy::unreachable` adoptions — conscious follow-ups from the 2026-08-30 research, unrelated to this cycle.
+- VS Code/rust-analyzer integration — documented as a snippet in `lints/README.md` only.
+- `rust-review` (Trail of Bits' Claude Code security-review plugin) — the owner's personal tooling decision, outside project scope.
+
 ## Acceptance
 
 - `cargo dylint --all` green locally and in the new CI job.
@@ -157,4 +167,4 @@ Covered by the suite: the ResponseError construction boundary (error-handling.md
 
 This spec reverses the dylint verdict of `docs/superpowers/research/2026-08-30-lint-toolchain-research.md` (§1 comparison table: "Out: writing a boundary lint here is effort comparable to a custom psalm plugin, and lint libraries pin nightly rustc internals"). The reversal is deliberate and scoped: that research optimized for this crate alone under a stable-only battery; the portability requirement across the owner's projects amortizes the lint-writing effort, and the nightly coupling is accepted as a lint pass explicitly separated from the stable battery. The research's other holdings stand unchanged: clippy stays the primary strictness lever, arch-lint's layer engine had no stable alternative (which is why it survives here as `layer_boundaries`), and no baseline mechanism exists in this landscape (the adopted equivalent remains self-verifying `#[expect(..., reason)]` — unused by this design, which needs no suppressions at all).
 
-Owner decisions 2026-09-07 (in session): placement in-repo `lints/` (vs a dedicated repo); the six initial custom lints; all three type-first proxies added; both error-handling extensions (transparent+`#[from]`, `From`-impl boundary) added; CI + battery wiring (not on-demand); stock width 21 curated; arch-lint replaced within v1 rather than deferred; the rules files slimmed to pointers in the cycle's final task (D10).
+Owner decisions 2026-09-07 (in session): placement in-repo `lints/` (vs a dedicated repo); the six initial custom lints; all three type-first proxies added; both error-handling extensions (transparent+`#[from]`, `From`-impl boundary) added; CI + battery wiring (not on-demand); stock width 21 curated; arch-lint replaced within v1 rather than deferred; the rules files slimmed to pointers in the cycle's final task (D10); cargo-deny registered as a follow-up cycle, not folded in (dylint verified to carry no stock security lints — `examples/` catalog plus the Trail of Bits Testing Handbook blog post of 2026-07-13).
