@@ -21,8 +21,8 @@ omission, and no notification from the upstream list can produce an
 ## Owner decisions (settled 2026-09-01)
 
 1. **Symbols in**: `document_symbol`, `symbol`, `workspace_symbol_resolve`
-   enter this cycle as ordinary plumbing. The parked 2026-08-28 symbols
-   spec is dead; this design re-anchors from scratch per the re-open
+   enter this cycle as ordinary plumbing. The earlier parked symbols cycle
+   is dead; this design re-anchors from scratch per the re-open
    protocol (the parked cycle's approved URL-less conversion shape is
    recovered below).
 2. **Semantic tokens: full trio** (full, full/delta, range).

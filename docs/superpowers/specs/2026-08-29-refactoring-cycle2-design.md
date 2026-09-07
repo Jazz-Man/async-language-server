@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-29
 **Status:** approved design, pre-implementation
-**Inputs:** technical review `docs/superpowers/reviews/2026-08-29-technical-review.md` (M5/M6/M8/I8/I9), Cycle 1 outcomes (ledger + final-review triage), owner decisions 2026-08-29 (full allow sweep to zero, target clients Zed/Claude Code, breaking changes accepted)
+**Inputs:** the 2026-08-29 technical review (M5/M6/M8/I8/I9; file removed 2026-09-07), Cycle 1 outcomes (ledger + final-review triage), owner decisions 2026-08-29 (full allow sweep to zero, target clients Zed/Claude Code, breaking changes accepted)
 **Branch:** `feature/abstraction`
 
 ## Goal
