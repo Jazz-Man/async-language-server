@@ -1,0 +1,11 @@
+error: constructing `ResponseError` outside the wire adapter
+  --> $DIR/bad_construct.rs:4:14
+   |
+LL |     let _e = ResponseError::new(ErrorCode::INTERNAL_ERROR, "boom");
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: return a domain error and convert it at the single configured boundary instead
+   = note: `#[deny(wire_boundary)]` on by default
+
+error: aborting due to 1 previous error
+

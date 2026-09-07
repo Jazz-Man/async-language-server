@@ -20,11 +20,17 @@ dylint_linting::dylint_library!();
 #[expect(clippy::no_mangle_with_rust_abi)]
 #[unsafe(no_mangle)]
 pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut rustc_lint::LintStore) {
+    // Configurable lints read this session's `dylint.toml` through the
+    // process-global config table; initialize before any registration.
+    // (`init_config` is idempotent — the per-lint registrations call it too.)
+    dylint_linting::init_config(sess);
     error_display::register_lints(sess, lint_store);
     error_no_string::register_lints(sess, lint_store);
     require_thiserror::register_lints(sess, lint_store);
+    wire_boundary::register_lints(sess, lint_store);
 }
 
 mod error_display;
 mod error_no_string;
 mod require_thiserror;
+mod wire_boundary;

@@ -1,0 +1,23 @@
+error: implementing `From` for `ResponseError` outside the wire adapter
+  --> $DIR/bad_from_impl.rs:5:1
+   |
+LL | / impl From<DomainError> for ResponseError {
+LL | |     fn from(_: DomainError) -> Self {
+LL | |         Self::new(ErrorCode::INTERNAL_ERROR, "boom")
+LL | |     }
+LL | | }
+   | |_^
+   |
+   = help: convert domain errors to the wire form at the single configured boundary instead
+   = note: `#[deny(wire_boundary)]` on by default
+
+error: constructing `ResponseError` outside the wire adapter
+  --> $DIR/bad_from_impl.rs:7:9
+   |
+LL |         Self::new(ErrorCode::INTERNAL_ERROR, "boom")
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: return a domain error and convert it at the single configured boundary instead
+
+error: aborting due to 2 previous errors
+

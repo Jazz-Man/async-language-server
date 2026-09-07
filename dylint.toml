@@ -27,3 +27,15 @@ libraries = [
         "examples/restriction/misleading_variable_name",
     ] },
 ]
+
+# Per-library lint configuration: keyed by library name, then lint name.
+[strict-lints.wire_boundary]
+# The boundary sites: `src/error.rs` owns the single `From<ServerError>`
+# conversion (and its `ResponseError::new` calls); `with_state` and the
+# workspace-diagnostics layer are the protocol adapter paths. Everything else
+# must speak domain errors.
+allowed_paths = [
+    "src/error.rs",
+    "src/server/with_state/**",
+    "src/workspace/diagnostics.rs",
+]

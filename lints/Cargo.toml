@@ -14,9 +14,12 @@ clippy_utils = { git = "https://github.com/rust-lang/rust-clippy", rev = "9fca3b
 # and `no_mangle register_lints` per lint — a multi-lint library declares them
 # once at the crate root and delegates, like dylint's `examples/general`.
 dylint_linting = { version = "6.0.4", features = ["constituent"] }
+globset = "0.4"
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
+# For the `ui/wire_boundary/` fixtures (`async_lsp::ResponseError`).
+async-lsp = "0.2"
 dylint_testing = "6.0.4"
 # For the `ui/` fixture crates (`#[derive(thiserror::Error)]`) and the lint
 # docs' doctests.
@@ -60,6 +63,22 @@ path = "ui/require_thiserror/bad_plain.rs"
 [[example]]
 name = "ok_derived"
 path = "ui/require_thiserror/ok_derived.rs"
+
+[[example]]
+name = "bad_construct"
+path = "ui/wire_boundary/bad_construct.rs"
+
+[[example]]
+name = "bad_from_impl"
+path = "ui/wire_boundary/bad_from_impl.rs"
+
+[[example]]
+name = "ok_read"
+path = "ui/wire_boundary/ok_read.rs"
+
+[[example]]
+name = "noop_without_dep"
+path = "ui/wire_boundary/noop_without_dep.rs"
 
 [workspace]
 
