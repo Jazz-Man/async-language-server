@@ -1,0 +1,24 @@
+name: Rust setup
+description: Checkout plus Cargo build caching (Swatinem/rust-cache; cache saves on main only).
+
+inputs:
+  fetch-depth:
+    description: Checkout fetch depth; pass 0 for full history (release line).
+    default: '1'
+  cache:
+    description: Whether to set up the Cargo build cache; false for jobs that compile nothing.
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: ${{ inputs.fetch-depth }}
+
+    - name: Cache cargo build
+      if: ${{ inputs.cache == 'true' }}
+      uses: Swatinem/rust-cache@v2.9.2
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
