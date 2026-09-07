@@ -1,0 +1,29 @@
+# Dylint configuration: library discovery + per-library config.
+# Docs: https://github.com/trailofbits/dylint#workspace-metadata
+
+[workspace.metadata.dylint]
+libraries = [
+    { path = "lints" },
+    { git = "https://github.com/trailofbits/dylint", tag = "v6.0.4", pattern = [
+        # `non_thread_safe_call_in_test` (dropped from v6.0.4 `general`): it
+        # flags every `std::fs` call in tests (128 fires), but real temp
+        # workspaces on disk are this crate's mandated test convention
+        # (`testing.md`), already isolated by millisecond-unique directory
+        # names — the fires are by design, so the lint is dropped, not
+        # silenced.
+        "examples/general/abs_home_path",
+        "examples/general/await_holding_span_guard",
+        "examples/general/basic_dead_store",
+        "examples/general/crate_wide_allow",
+        "examples/general/incorrect_matches_operation",
+        "examples/general/non_local_effect_before_unhandled_error",
+        "examples/general/wrong_serialize_struct_arg",
+        "examples/supplementary",
+        # `assert_eq_arg_misordering` (dropped, v6.0.4 restriction): it
+        # demands const-first `assert_eq!` arguments (329 fires), against the
+        # actual-first convention this codebase and the wider Rust ecosystem
+        # follow.
+        "examples/restriction/collapsible_unwrap",
+        "examples/restriction/misleading_variable_name",
+    ] },
+]
