@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/rust-setup
+      - name: Format
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Docs
+        run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
+  test:
+    runs-on: ubuntu-latest
+    name: test (${{ matrix.features }})
+    strategy:
+      matrix:
+        features: ["--all-features", "--no-default-features"]
+    steps:
+      - uses: ./.github/actions/rust-setup
+      - name: Test (${{ matrix.features }})
+        run: cargo test --workspace ${{ matrix.features }} --verbose
+
+  release:
+    needs: [checks, test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: ./.github/actions/rust-setup
+        with:
+          fetch-depth: '0'
+          cache: 'false'
+      - name: Bump version and push tag
+        uses: anothrNick/github-tag-action@v1
+        id: bump
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MAJOR_STRING_TOKEN: '#major'
+          MINOR_STRING_TOKEN: '#minor'
+          PATCH_STRING_TOKEN: '#patch'
+          NONE_STRING_TOKEN: '#none'
+          TAG_PREFIX: v
+          VERBOSE: false
+      - name: Build changelog
+        id: changelog
+        uses: loopwerk/tag-changelog@v1
+        with:
+          token: ${{ github.token }}
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ github.token }}
+          generate_release_notes: true
+          append_body: true
+          make_latest: true
+          tag_name: ${{ steps.bump.outputs.tag }}
+          name: ${{ steps.bump.outputs.tag }}
+          body: ${{ steps.changelog.outputs.changelog }}
