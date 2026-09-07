@@ -1,24 +1,10 @@
-name: Rust setup PING
-description: Checkout plus Cargo build caching (Swatinem/rust-cache; cache saves on main only).
-
-inputs:
-  fetch-depth:
-    description: Checkout fetch depth; pass 0 for full history (release line).
-    default: '1'
-  cache:
-    description: Whether to set up the Cargo build cache; false for jobs that compile nothing.
-    default: 'true'
+name: Rust setup
+description: Cargo build caching (Swatinem/rust-cache, pinned; cache saves on main only). Call only after actions/checkout — local actions resolve from the workspace.
 
 runs:
   using: composite
   steps:
-    - name: Checkout repository
-      uses: actions/checkout@v7
-      with:
-        fetch-depth: ${{ inputs.fetch-depth }}
-
     - name: Cache cargo build
-      if: ${{ inputs.cache == 'true' }}
       uses: Swatinem/rust-cache@v2.9.2
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}

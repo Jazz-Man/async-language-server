@@ -21,6 +21,7 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/rust-setup
       - name: Format
         run: cargo fmt --check
@@ -38,6 +39,7 @@ jobs:
       matrix:
         features: ["--all-features", "--no-default-features"]
     steps:
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/rust-setup
       - name: Test (${{ matrix.features }})
         run: cargo test --workspace ${{ matrix.features }} --verbose
@@ -49,10 +51,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: ./.github/actions/rust-setup
+      - uses: actions/checkout@v5
         with:
-          fetch-depth: '0'
-          cache: 'false'
+          fetch-depth: 0
       - name: Bump version and push tag
         uses: anothrNick/github-tag-action@v1
         id: bump
