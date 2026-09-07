@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-29
 **Status:** approved design, pre-implementation
-**Inputs:** technical review `docs/superpowers/reviews/2026-08-29-technical-review.md` (findings register + ranked backlog) and the project rules `.claude/rules/{error-handling,tech,product}.md`
+**Inputs:** the 2026-08-29 technical review (findings register + ranked backlog; file removed 2026-09-07) and the project rules `.claude/rules/{error-handling,tech,product}.md`
 **Branch:** `feature/abstraction`
 
 ## Goal
@@ -99,4 +99,4 @@ pub enum ServerError {
 
 ## Provenance
 
-Findings IDs reference `docs/superpowers/reviews/2026-08-29-technical-review.md` (verified against HEAD `c7e86df`; battery re-run during the review). Design decisions D1–D7 were taken with the owner on 2026-08-29 (scope slicing, hard break, root-cause C1, module organization + rename, M7 drop, D7 registration).
+Findings IDs reference the 2026-08-29 technical review (verified against HEAD `c7e86df`; battery re-run during the review; file removed 2026-09-07). Design decisions D1–D7 were taken with the owner on 2026-08-29 (scope slicing, hard break, root-cause C1, module organization + rename, M7 drop, D7 registration).
