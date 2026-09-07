@@ -650,17 +650,17 @@ fn initialize_enables_workspace_diagnostics() {
     let root = temp_workspace("workspace", "capabilities");
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
 
-    let result = futures::executor::block_on(server.initialize(initialize_params(&root)))
+    let init_result = futures::executor::block_on(server.initialize(initialize_params(&root)))
         .expect("server can initialize");
 
     let Some(DiagnosticServerCapabilities::Options(options)) =
-        result.capabilities.diagnostic_provider
+        init_result.capabilities.diagnostic_provider
     else {
         panic!("expected diagnostic options");
     };
     assert!(options.workspace_diagnostics);
 
-    let Some(workspace) = result.capabilities.workspace else {
+    let Some(workspace) = init_result.capabilities.workspace else {
         panic!("expected workspace capabilities");
     };
     let Some(folders) = workspace.workspace_folders else {
@@ -677,16 +677,16 @@ fn initialize_respects_disabled_workspace_diagnostics() {
     let root = temp_workspace("workspace", "disabled-capabilities");
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), DisabledServer);
 
-    let result = futures::executor::block_on(server.initialize(initialize_params(&root)))
+    let init_result = futures::executor::block_on(server.initialize(initialize_params(&root)))
         .expect("server can initialize");
 
     let Some(DiagnosticServerCapabilities::Options(options)) =
-        result.capabilities.diagnostic_provider
+        init_result.capabilities.diagnostic_provider
     else {
         panic!("expected diagnostic options");
     };
     assert!(!options.workspace_diagnostics);
-    assert!(result.capabilities.workspace.is_none());
+    assert!(init_result.capabilities.workspace.is_none());
 
     let error =
         futures::executor::block_on(server.workspace_diagnostic(workspace_diagnostic_params()))
@@ -710,11 +710,11 @@ fn initialize_ignores_unknown_client_encodings() {
         ..Default::default()
     });
 
-    let result =
+    let init_result =
         futures::executor::block_on(server.initialize(params)).expect("server can initialize");
 
     assert_eq!(
-        result.capabilities.position_encoding,
+        init_result.capabilities.position_encoding,
         Some(PositionEncodingKind::UTF16)
     );
 
@@ -728,11 +728,11 @@ fn initialize_ignores_unknown_client_encodings() {
         ..Default::default()
     });
 
-    let result =
+    let init_result =
         futures::executor::block_on(server.initialize(params)).expect("server can initialize");
 
     assert_eq!(
-        result.capabilities.position_encoding,
+        init_result.capabilities.position_encoding,
         Some(PositionEncodingKind::UTF16)
     );
 
@@ -753,11 +753,11 @@ fn initialize_prefers_utf8_when_the_client_offers_it() {
         ..Default::default()
     });
 
-    let result =
+    let init_result =
         futures::executor::block_on(server.initialize(params)).expect("server can initialize");
 
     assert_eq!(
-        result.capabilities.position_encoding,
+        init_result.capabilities.position_encoding,
         Some(PositionEncodingKind::UTF8)
     );
 
@@ -778,11 +778,11 @@ fn initialize_prefers_utf32_over_utf16() {
         ..Default::default()
     });
 
-    let result =
+    let init_result =
         futures::executor::block_on(server.initialize(params)).expect("server can initialize");
 
     assert_eq!(
-        result.capabilities.position_encoding,
+        init_result.capabilities.position_encoding,
         Some(PositionEncodingKind::UTF32)
     );
 
@@ -798,11 +798,11 @@ async fn configurable_workspace_diagnostics_can_be_toggled() {
     let uri = Url::from_file_path(file).expect("path can be converted to a URL");
 
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), ConfigurableServer);
-    let result = futures::executor::block_on(server.initialize(initialize_params(&root)))
+    let init_result = futures::executor::block_on(server.initialize(initialize_params(&root)))
         .expect("server can initialize");
 
     let Some(DiagnosticServerCapabilities::Options(options)) =
-        result.capabilities.diagnostic_provider
+        init_result.capabilities.diagnostic_provider
     else {
         panic!("expected diagnostic options");
     };
@@ -1540,8 +1540,8 @@ fn workspace_diagnostic_params() -> WorkspaceDiagnosticParams {
 }
 
 fn related_uri(uri: &Url) -> Option<Url> {
-    let path = uri.to_file_path().ok()?.with_file_name("b.test");
-    Url::from_file_path(path).ok()
+    let file_path = uri.to_file_path().ok()?.with_file_name("b.test");
+    Url::from_file_path(file_path).ok()
 }
 
 fn workspace_report_message(report: &WorkspaceDocumentDiagnosticReport) -> &str {

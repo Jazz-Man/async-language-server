@@ -120,7 +120,7 @@ impl From<ServerError> for ResponseError {
     fn from(value: ServerError) -> Self {
         match value {
             ServerError::Rpc { code, message } => ResponseError::new(code, message),
-            other => ResponseError::new(ServerErrorCode::INTERNAL_ERROR, other.to_string()),
+            other => ResponseError::new(ServerErrorCode::INTERNAL_ERROR, other),
         }
     }
 }

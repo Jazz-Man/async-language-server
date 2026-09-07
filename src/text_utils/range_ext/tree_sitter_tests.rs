@@ -85,7 +85,7 @@ fn basic_sub_delimited() {
 #[test]
 fn basic_sub_delimited_tri() {
     let text = "one/two@three";
-    let (first, second, third) = r(0, p(0, 0), 13, p(0, 13))
+    let (first, second, third) = r(0, p(0, 0), text.len(), p(0, text.len()))
         .sub_delimited_tri(text, D1, D2)
         .expect("valid range");
     assert_eq!(first, Some(r(0, p(0, 0), 3, p(0, 3))));
@@ -134,7 +134,7 @@ fn sub_empty_range() {
 #[test]
 fn sub_multiline() {
     let text = "one\ntwo\nthree";
-    let sub_range = r(0, p(0, 0), 13, p(2, 5))
+    let sub_range = r(0, p(0, 0), text.len(), p(2, 5))
         .sub(text, p(0, 2), p(1, 1))
         .expect("valid range");
     assert_eq!(sub_range, r(2, p(0, 2), 5, p(1, 1)));
@@ -215,7 +215,7 @@ fn sub_delimited_tri_no_delimiters() {
 #[test]
 fn sub_delimited_tri_multiline() {
     let text = "one\ntwo\n@@@";
-    let (first, second, third) = r(0, p(0, 0), 11, p(2, 3))
+    let (first, second, third) = r(0, p(0, 0), text.len(), p(2, 3))
         .sub_delimited_tri(text, LF, D2)
         .expect("valid range");
     assert_eq!(first, Some(r(0, p(0, 0), 3, p(0, 3))));
@@ -228,7 +228,7 @@ fn sub_delimited_tri_multiline() {
 #[test]
 fn split_at_newline_boundary() {
     let text = "line1\nline2";
-    let (left, right) = r(0, p(0, 0), 11, p(1, 5))
+    let (left, right) = r(0, p(0, 0), text.len(), p(1, 5))
         .split_at(text, p(1, 0))
         .expect("valid range");
     assert_eq!(left, r(0, p(0, 0), 6, p(1, 0)));
@@ -238,7 +238,7 @@ fn split_at_newline_boundary() {
 #[test]
 fn sub_across_multiple_lines() {
     let text = "line1\nline2\nline3";
-    let sub_range = r(0, p(0, 0), 17, p(2, 5))
+    let sub_range = r(0, p(0, 0), text.len(), p(2, 5))
         .sub(text, p(0, 3), p(2, 2))
         .expect("valid range");
     assert_eq!(sub_range, r(3, p(0, 3), 14, p(2, 2)));
@@ -247,7 +247,7 @@ fn sub_across_multiple_lines() {
 #[test]
 fn sub_delimited_complex_multiline() {
     let text = "start\nfirst/second\nend";
-    let (left, right) = r(0, p(0, 0), 22, p(2, 3))
+    let (left, right) = r(0, p(0, 0), text.len(), p(2, 3))
         .sub_delimited(text, D1)
         .expect("valid range");
     assert_eq!(left, Some(r(0, p(0, 0), 11, p(1, 5))));

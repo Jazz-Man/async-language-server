@@ -321,8 +321,8 @@ fn did_close_keeps_disk_snapshot_but_evicts_cached_semantic_tokens() {
 fn failed_incremental_change_keeps_document_when_reread_fails() {
     let root = temp_workspace("state", "keep-last-known");
     let uri = {
-        let path = root.join("missing.test");
-        Url::from_file_path(path).expect("path can be converted to a URL")
+        let file_path = root.join("missing.test");
+        Url::from_file_path(file_path).expect("path can be converted to a URL")
     };
     let mut state = ServerState::with_options::<TestServer>(
         ClientSocket::new_closed(),
@@ -363,8 +363,8 @@ fn failed_incremental_change_reparses_kept_text_tree() {
 
     let root = temp_workspace("state", "keep-last-known-tree");
     let uri = {
-        let path = root.join("missing.json");
-        Url::from_file_path(path).expect("path can be converted to a URL")
+        let file_path = root.join("missing.json");
+        Url::from_file_path(file_path).expect("path can be converted to a URL")
     };
     let mut state = ServerState::with_options::<JsonServer>(
         ClientSocket::new_closed(),
@@ -412,8 +412,8 @@ fn failed_incremental_change_reparses_kept_text_tree() {
 fn document_save_replaces_text_from_params() {
     let root = temp_workspace("state", "save-from-params");
     let uri = {
-        let path = root.join("saved.txt");
-        Url::from_file_path(path).expect("path converts to a URL")
+        let file_path = root.join("saved.txt");
+        Url::from_file_path(file_path).expect("path converts to a URL")
     };
     let mut state = ServerState::with_options::<TestServer>(
         ClientSocket::new_closed(),
@@ -437,9 +437,9 @@ fn document_save_replaces_text_from_params() {
 #[test]
 fn document_save_falls_back_to_disk_when_params_have_no_text() {
     let root = temp_workspace("state", "save-from-disk");
-    let path = root.join("on-disk.txt");
-    fs::write(&path, "from disk").expect("file can be written");
-    let uri = Url::from_file_path(&path).expect("path converts to a URL");
+    let file_path = root.join("on-disk.txt");
+    fs::write(&file_path, "from disk").expect("file can be written");
+    let uri = Url::from_file_path(&file_path).expect("path converts to a URL");
     let mut state = ServerState::with_options::<TestServer>(
         ClientSocket::new_closed(),
         &ServerOptions::default(),
@@ -463,8 +463,8 @@ fn document_save_falls_back_to_disk_when_params_have_no_text() {
 fn document_save_removes_the_document_when_no_text_and_no_file() {
     let root = temp_workspace("state", "save-removes");
     let uri = {
-        let path = root.join("missing.txt");
-        Url::from_file_path(path).expect("path converts to a URL")
+        let file_path = root.join("missing.txt");
+        Url::from_file_path(file_path).expect("path converts to a URL")
     };
     let mut state = ServerState::with_options::<TestServer>(
         ClientSocket::new_closed(),
@@ -495,8 +495,8 @@ fn document_save_removes_the_document_when_no_text_and_no_file() {
 fn document_save_evicts_cached_semantic_tokens() {
     let root = temp_workspace("state", "save-evict");
     let uri = {
-        let path = root.join("saved.test");
-        Url::from_file_path(path).expect("path converts to a URL")
+        let file_path = root.join("saved.test");
+        Url::from_file_path(file_path).expect("path converts to a URL")
     };
     let mut state = ServerState::with_options::<TestServer>(
         ClientSocket::new_closed(),
@@ -520,8 +520,8 @@ fn document_save_evicts_cached_semantic_tokens() {
 #[tokio::test]
 async fn watched_files_change_rereads_mutated_workspace_document() {
     let root = temp_workspace("state", "watched-changed");
-    let path = root.join("a.test");
-    fs::write(&path, "before").expect("test file can be written");
+    let file_path = root.join("a.test");
+    fs::write(&file_path, "before").expect("test file can be written");
 
     let state = ServerState::with_options::<TestServer>(
         ClientSocket::new_closed(),
@@ -535,7 +535,7 @@ async fn watched_files_change_rereads_mutated_workspace_document() {
     let uri = urls[0].clone();
     assert_eq!(state.document(&uri).unwrap().text_contents(), "before");
 
-    fs::write(&path, "after").expect("test file can be written");
+    fs::write(&file_path, "after").expect("test file can be written");
     let _ = state
         .handle_watched_files_change(vec![FileEvent::new(uri.clone(), FileChangeType::CHANGED)]);
 
@@ -653,9 +653,9 @@ async fn watched_delete_and_file_operations_evict_cached_semantic_tokens() {
 #[tokio::test]
 async fn open_documents_survive_watched_files_and_file_operations() {
     let root = temp_workspace("state", "open-immunity");
-    let path = root.join("a.test");
-    fs::write(&path, "disk").expect("test file can be written");
-    let manifest = fs::canonicalize(&path).expect("test file can be canonicalized");
+    let file_path = root.join("a.test");
+    fs::write(&file_path, "disk").expect("test file can be written");
+    let manifest = fs::canonicalize(&file_path).expect("test file can be canonicalized");
     let uri = Url::from_file_path(&manifest).expect("path can be converted to a URL");
 
     let mut state = ServerState::with_options::<TestServer>(
@@ -671,7 +671,7 @@ async fn open_documents_survive_watched_files_and_file_operations() {
         .expect("workspace documents can be refreshed");
     assert_eq!(urls, vec![uri.clone()]);
 
-    fs::write(&path, "mutated").expect("test file can be written");
+    fs::write(&file_path, "mutated").expect("test file can be written");
     let _ = state.handle_watched_files_change(vec![
         FileEvent::new(uri.clone(), FileChangeType::CHANGED),
         FileEvent::new(uri.clone(), FileChangeType::DELETED),
@@ -696,9 +696,9 @@ async fn open_documents_survive_watched_files_and_file_operations() {
 #[tokio::test]
 async fn open_documents_keep_their_cached_semantic_tokens_across_file_operations() {
     let root = temp_workspace("state", "open-cache-immunity");
-    let path = root.join("a.test");
-    fs::write(&path, "disk").expect("test file can be written");
-    let manifest = fs::canonicalize(&path).expect("test file can be canonicalized");
+    let file_path = root.join("a.test");
+    fs::write(&file_path, "disk").expect("test file can be written");
+    let manifest = fs::canonicalize(&file_path).expect("test file can be canonicalized");
     let uri = Url::from_file_path(&manifest).expect("path can be converted to a URL");
 
     let mut state = ServerState::with_options::<TestServer>(
@@ -710,7 +710,7 @@ async fn open_documents_keep_their_cached_semantic_tokens_across_file_operations
     seed_semantic_tokens(&state, &uri);
     assert!(state.cached_semantic_tokens(&uri).is_some());
 
-    fs::write(&path, "mutated").expect("test file can be written");
+    fs::write(&file_path, "mutated").expect("test file can be written");
     let _ = state.handle_watched_files_change(vec![
         FileEvent::new(uri.clone(), FileChangeType::CHANGED),
         FileEvent::new(uri.clone(), FileChangeType::DELETED),

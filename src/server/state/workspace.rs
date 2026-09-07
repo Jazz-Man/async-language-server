@@ -70,9 +70,9 @@ impl ServerState {
     }
 
     pub(crate) fn document_workspace_version(&self, url: &Url) -> Option<i64> {
-        let entry = self.documents.get(url)?;
-        match entry.origin {
-            DocumentOrigin::Open => Some(i64::from(entry.document.version())),
+        let record = self.documents.get(url)?;
+        match record.origin {
+            DocumentOrigin::Open => Some(i64::from(record.document.version())),
             DocumentOrigin::Workspace => None,
         }
     }
@@ -222,12 +222,14 @@ mod tests {
     fn stamp_gate_is_conservative() {
         use std::time::{Duration, SystemTime};
 
+        const SIZE: u64 = 12;
+
         let now = SystemTime::now();
-        let stamp = (now, 12);
+        let stamp = (now, SIZE);
         assert!(stamp_unchanged(Some(stamp), Some(stamp)));
         assert!(!stamp_unchanged(
             Some(stamp),
-            Some((now + Duration::from_secs(1), 12))
+            Some((now + Duration::from_secs(1), SIZE))
         ));
         assert!(!stamp_unchanged(Some(stamp), Some((now, 13))));
         assert!(!stamp_unchanged(None, Some(stamp)));

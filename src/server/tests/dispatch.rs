@@ -22,8 +22,8 @@ async fn unknown_methods_answer_method_not_found() {
     // the trait default — so only a synthetic name outside `lsp_types`
     // reaches this reply. The empty params are deliberate: deserialization
     // lives inside each registered handler, so the router default fires
-    // before params validation and even garbage params cannot turn this
-    // into -32602.
+    // before params validation, and even garbage params cannot turn this
+    // unknown-method reply into the invalid-params error.
     let response = client
         .request(10, "textDocument/nonexistent", json!({}))
         .await;

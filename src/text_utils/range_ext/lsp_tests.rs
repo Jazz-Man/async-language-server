@@ -71,8 +71,10 @@ fn basic_sub_delimited() {
 
 #[test]
 fn basic_sub_delimited_tri() {
-    let (first, second, third) = line_range(line_position(0, 0), line_position(0, 13))
-        .sub_delimited_tri("one/two@three", D1, D2)
+    let text = "one/two@three";
+    let end = u32::try_from(text.len()).expect("fixture length fits in u32");
+    let (first, second, third) = line_range(line_position(0, 0), line_position(0, end))
+        .sub_delimited_tri(text, D1, D2)
         .expect("valid range");
     assert_eq!(
         first,

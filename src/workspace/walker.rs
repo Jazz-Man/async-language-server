@@ -207,6 +207,10 @@ mod tests {
     fn files_skips_unreadable_entries() {
         use std::os::unix::fs::PermissionsExt;
 
+        // The mode is restored so the cleanup below can remove the restricted
+        // directory.
+        const RESTORED_MODE: u32 = 0o755;
+
         let millis = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system time is after epoch")
@@ -226,7 +230,7 @@ mod tests {
 
         assert!(files.iter().any(|file| file.ends_with("good.test")));
 
-        fs::set_permissions(root.join("bad"), fs::Permissions::from_mode(0o755))
+        fs::set_permissions(root.join("bad"), fs::Permissions::from_mode(RESTORED_MODE))
             .expect("permissions can be restored");
         fs::remove_dir_all(root).expect("temp workspace can be removed");
     }

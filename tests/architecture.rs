@@ -54,11 +54,11 @@ fn architecture_rules_hold() {
     }
 
     let analyzer = builder.build().expect("analyzer builds");
-    let result = analyzer.analyze().expect("analysis completes");
+    let analysis = analyzer.analyze().expect("analysis completes");
 
     assert!(
-        !result.has_violations_at(Severity::Error),
+        !analysis.has_violations_at(Severity::Error),
         "{}",
-        result.format_test_report(Severity::Error)
+        analysis.format_test_report(Severity::Error)
     );
 }

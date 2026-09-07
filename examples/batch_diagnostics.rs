@@ -12,7 +12,7 @@
 //! Exits 0 when the workspace is clean, 1 when diagnostics are found:
 //!
 //! ```text
-//! cargo run --example batch_diagnostics -- path/to/dir
+//! cargo run --example batch_diagnostics -- <directory-to-lint>
 //! ```
 
 use std::io::Write as _;

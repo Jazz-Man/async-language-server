@@ -77,8 +77,8 @@ impl ServerState {
     /// Returns `None` if the document is not found.
     #[must_use]
     pub fn document(&self, url: &Url) -> Option<Document> {
-        let entry = self.documents.get(url)?;
-        Some(entry.document.clone())
+        let record = self.documents.get(url)?;
+        Some(record.document.clone())
     }
 
     /// Gets snapshots of all documents currently tracked by the server.
