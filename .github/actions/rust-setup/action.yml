@@ -1,4 +1,4 @@
-name: Rust setup
+name: Rust setup PING
 description: Checkout plus Cargo build caching (Swatinem/rust-cache; cache saves on main only).
 
 inputs:
