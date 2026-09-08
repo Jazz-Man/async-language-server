@@ -3,7 +3,10 @@
 
 [workspace.metadata.dylint]
 libraries = [
-    { path = "lints" },
+    # Third-party style suite (owner decision 2026-09-08: adopt instead of
+    # maintaining custom lints). Pinned rc tag — master-HEAD would move under
+    # us; bump deliberately, like the ToB tag below.
+    { git = "https://github.com/KSXGitHub/perfectionist", tag = "0.0.0-rc.22" },
     { git = "https://github.com/trailofbits/dylint", tag = "v6.0.4", pattern = [
         # `non_thread_safe_call_in_test` (dropped from v6.0.4 `general`): it
         # flags every `std::fs` call in tests (128 fires), but real temp
@@ -29,35 +32,39 @@ libraries = [
 ]
 
 # Per-library lint configuration: keyed by library name, then lint name.
-[strict-lints.wire_boundary]
-# The boundary sites: `src/error.rs` owns the single `From<ServerError>`
-# conversion (and its `ResponseError::new` calls); `with_state` and the
-# workspace-diagnostics layer are the protocol adapter paths. Everything else
-# must speak domain errors.
-allowed_paths = [
-    "src/error.rs",
-    "src/server/with_state/**",
-    "src/workspace/diagnostics.rs",
+# Perfectionist rules that fight this repo's own conventions are disabled
+# with reasons below — see CONFIGURATION.md in the perfectionist repo for
+# the knob names. Unknown rule names are silently ignored by the library;
+# all entries here are verified rule names.
+
+[perfectionist]
+disable = [
+    # Prescribes `derive_more::{Display, Error}` and bans thiserror;
+    # `.claude/rules/error-handling.md` mandates thiserror for this crate
+    # (err-thiserror-lib). The two suites prescribe opposite error-derive
+    # policies, and ours wins here.
+    "thiserror_usage",
+    # Wants inline test code extracted to separate files;
+    # `.claude/rules/testing.md` mandates inline `#[cfg(test)] mod tests`
+    # (or sibling `tests.rs`) per module — 23 fires across 23 test modules,
+    # every one by our own convention.
+    "excessive_inline_tests",
+    # Flags `T`/`E`/`F`-style generic parameters (41 fires, all in
+    # production code: `ServerResult<T>`, `for_each_bounded<T, R, E, F,
+    # Fut>`, `serve<S>`). Single-letter generics are the Rust ecosystem
+    # idiom (`Result<T, E>`, `HashMap<K, V>`); renaming them degrades the
+    # code. Distinct from the single-letter closure/const rules, which we
+    # keep and fix: local bindings gain clarity from descriptive names,
+    # canonical generics do not.
+    "single_letter_generic",
 ]
 
-[strict-lints.no_sync_io]
-# The deliberate synchronous-IO sites — the same set arch-lint's no-sync-io
-# rule blesses via `// arch-lint: allow` comments; both gates stay (arch-lint
-# covers this repo in `cargo test`, this portable lint carries the rule to
-# other projects):
-# - `documents.rs`: notification handlers must stay synchronous per the LSP
-#   spec; closing and fallbacks re-read files from disk.
-# - `workspace.rs` + `walker.rs`: workspace scanning is a synchronous batch
-#   pass over the ignore crate.
-# - `with_state/mod.rs`: the dispatch fallback reads one file per request.
-# - `oneshot/workspace_diagnostics.rs`: clientless batch file IO runs on the
-#   blocking pool.
-# - `benches/**`: bench setup runs before any async runtime exists.
-allowed_paths = [
-    "src/server/state/documents.rs",
-    "src/server/state/workspace.rs",
-    "src/workspace/walker.rs",
-    "src/server/with_state/mod.rs",
-    "src/oneshot/workspace_diagnostics.rs",
-    "benches/**",
-]
+# `impure_macro_arguments` stays active — the one genuine fire
+# (`info!` in src/server/with_state/initialize.rs) is fixed in code.
+# The exemption below covers only the quote-family token DSL: the rule's
+# own docs put curly-brace DSL bodies (`quote! { ... }`) out of scope —
+# "the evaluation contract is the macro's, not the call site's" — and
+# `parse_quote!`/`quote!` with parentheses hit the same DSL through the
+# paren form; their arguments are quoted tokens, never evaluated.
+["perfectionist::impure_macro_arguments"]
+ignore = ["quote", "parse_quote"]
