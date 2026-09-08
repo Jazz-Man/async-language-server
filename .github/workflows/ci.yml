@@ -51,7 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/rust-setup
-      - name: Install dylint
+      - name: Install dylint PING
         run: cargo install cargo-dylint dylint-link --locked
       # Complements ./.github/actions/rust-setup: rust-cache already owns
       # ~/.cargo (bin included) and prunes ./target of non-dependency
