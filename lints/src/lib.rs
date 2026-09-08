@@ -24,16 +24,22 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut rustc_lint
     // process-global config table; initialize before any registration.
     // (`init_config` is idempotent — the per-lint registrations call it too.)
     dylint_linting::init_config(sess);
+    bool_params::register_lints(sess, lint_store);
     error_display::register_lints(sess, lint_store);
     error_no_string::register_lints(sess, lint_store);
+    no_sleep_in_tests::register_lints(sess, lint_store);
     no_sync_io::register_lints(sess, lint_store);
+    panics_doc_debt::register_lints(sess, lint_store);
     require_thiserror::register_lints(sess, lint_store);
     wire_boundary::register_lints(sess, lint_store);
 }
 
+mod bool_params;
 mod error_display;
 mod error_no_string;
 mod globs;
+mod no_sleep_in_tests;
 mod no_sync_io;
+mod panics_doc_debt;
 mod require_thiserror;
 mod wire_boundary;

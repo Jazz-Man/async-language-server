@@ -24,6 +24,9 @@ dylint_testing = "6.0.4"
 # For the `ui/` fixture crates (`#[derive(thiserror::Error)]`) and the lint
 # docs' doctests.
 thiserror = "2"
+# For the `ui/no_sleep_in_tests/bad_tokio.rs` fixture (`#[tokio::test]`,
+# `tokio::time::sleep`).
+tokio = { version = "1", features = ["macros", "rt", "time"] }
 
 # UI fixtures: standalone crates compiled with the library loaded by the dylint
 # driver. Registered as example targets so `dylint_testing` recovers their
@@ -87,6 +90,30 @@ path = "ui/wire_boundary/ok_read.rs"
 [[example]]
 name = "noop_without_dep"
 path = "ui/wire_boundary/noop_without_dep.rs"
+
+[[example]]
+name = "bad_pub_fn"
+path = "ui/bool_params_public/bad_pub_fn.rs"
+
+[[example]]
+name = "ok_trait_impl"
+path = "ui/bool_params_public/ok_trait_impl.rs"
+
+[[example]]
+name = "bad_thread"
+path = "ui/no_sleep_in_tests/bad_thread.rs"
+
+[[example]]
+name = "bad_tokio"
+path = "ui/no_sleep_in_tests/bad_tokio.rs"
+
+[[example]]
+name = "ok_outside_test"
+path = "ui/no_sleep_in_tests/ok_outside_test.rs"
+
+[[example]]
+name = "bad_doc"
+path = "ui/panics_doc_debt/bad_doc.rs"
 
 [workspace]
 
