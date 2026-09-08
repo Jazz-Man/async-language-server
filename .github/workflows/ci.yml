@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - feature/DyLint
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -44,8 +46,36 @@ jobs:
       - name: Test (${{ matrix.features }})
         run: cargo test --workspace ${{ matrix.features }} --verbose
 
+  dylint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust-setup
+      - name: Install dylint
+        run: cargo install cargo-dylint dylint-link --locked
+      # Complements ./.github/actions/rust-setup: rust-cache already owns
+      # ~/.cargo (bin included) and prunes ./target of non-dependency
+      # artifacts, so only what it never covers is cached here.
+      - name: Cache dylint artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.dylint_drivers
+            ~/.rustup/toolchains
+            lints/target
+            target/dylint
+          key: dylint-${{ runner.os }}-${{ hashFiles('lints/Cargo.toml', 'lints/rust-toolchain.toml', 'dylint.toml') }}
+      - name: Lint (strict-lints + stock suites)
+        run: cargo dylint --all -- --all-targets
+      - name: Suite self-check (fmt + clippy + test)
+        run: |
+          cd lints
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+
   release:
-    needs: [checks, test]
+    needs: [checks, test, dylint]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
