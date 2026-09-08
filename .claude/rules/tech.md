@@ -30,10 +30,15 @@ Before considering work done, run the same battery CI runs
 ```bash
 cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
+cargo dylint --all -- --all-targets
 cargo test --workspace --all-features
 cargo test --workspace --no-default-features
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
+
+The dylint pass is a nightly-pinned lint pass (`nightly-2026-05-28`, shared
+by both suites); the first run downloads the toolchain and builds the
+drivers, cached afterwards via `~/.dylint_drivers`/`~/.rustup/toolchains`.
 
 The standalone `cargo build --workspace --all-targets` step is gone:
 nothing is published, and `clippy --all-targets` compiles every target.
@@ -66,6 +71,14 @@ Lint levels live in `Cargo.toml`, not in source attributes:
   `module_name_repetitions`, `multiple_crate_versions`, `similar_names`,
   `unnecessary_wraps`).
 - `[workspace.lints.rust]`: `missing_docs = "deny"`.
+
+Clippy remains the primary strictness lever. A nightly-pinned dylint pass
+(`cargo dylint --all -- --all-targets`) adds the stock Trail of Bits suites
+(tag-pinned) and the third-party `perfectionist` style suite (rc-pinned);
+`dylint.toml` carries the reasoned rule disables. arch-lint still owns the
+layer rules and its own rule set inside `cargo test`. Perfectionist config
+keys are silently ignored when names change: at every tag bump, verify the
+`[perfectionist]` disables/ignores still name real rules.
 
 Write code that passes at these levels. The allow entries are inherited from
 upstream and count as debt: do not add new entries, and treat removing one as

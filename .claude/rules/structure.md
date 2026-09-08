@@ -159,6 +159,9 @@ the wrapper converts them to LSP error responses.
 - `tree_sitter_utils` (feature-gated) — parsing helpers over matched
   grammars.
 
+The dependency directions between these modules are enforced by arch-lint
+(`arch-lint.toml` scopes + `deny-scope-dep`, green in `cargo test`).
+
 ---
 _Every change respects the layer split and the UTF-8 invariant: new LSP
 surface goes through the three-place pattern, encoding stays centralized in

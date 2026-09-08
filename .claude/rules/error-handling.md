@@ -92,7 +92,8 @@ tracing::warn!("request failed: {error}");
   `err-result-over-panic`). An unrecognized client encoding is filtered during
   negotiation, not panicked on during conversion.
 - `expect` is for invariants whose violation means a bug, and its message must
-  state the contract (`err-expect-bugs-only`):
+  state the contract (`err-expect-bugs-only`) — clippy `expect_used`/
+  `unwrap_used` are deny, test-aware via `clippy.toml`:
 
 ```rust
 let parser = doc_parser(doc).expect("has tree - must have parser");
@@ -103,7 +104,8 @@ let parser = doc_parser(doc).expect("has tree - must have parser");
 ## Docs and Display
 
 - `# Errors` on every public fallible item, `# Panics` on every public
-  panicking item (`doc-errors-section`, `doc-panics-section`).
+  panicking item (`doc-errors-section`, `doc-panics-section`) — enforced by
+  clippy pedantic (`missing_errors_doc`/`missing_panics_doc`).
 - Display messages start lowercase, carry no trailing punctuation, and include
   the discriminating values (`err-lowercase-msg`). When a Display string
   changes, update any doctest asserting it.

@@ -18,6 +18,13 @@
 - **Task 9 adjusted:** acceptance audit drops all layer/sync-IO-replacement items; the canary step covers every deny lint (`error_display_lowercase`, `error_no_string_catch_all`, `require_thiserror`, `wire_boundary`, `no_sync_io`, `no_sleep_in_tests`); arch-lint's green run stays part of the `cargo test` battery.
 - **Note:** `require_thiserror` (Task 2, already committed and reviewed) is technically an AL005 port; the duplication with arch-lint is accepted for landed work. Deleting it is a separate owner decision, not part of this revision.
 
+## Revision 2026-09-08 (later same day) — custom suite deleted, perfectionist adopted
+
+Second owner reversal: the `strict-lints` suite is deleted entirely — Tasks 2–5 landed and were removed in the same cycle (the suite tree deleted in 974faf4 "Replace strict-lints with perfectionist suite", the CI drop in d6e7dad "Drop strict-lints suite from dylint CI"). The third-party `perfectionist` suite replaces it at pin `0.0.0-rc.22` in `dylint.toml` (three reasoned disables, one ignore knob); the stock ToB suites stay at tag `v6.0.4`.
+
+- **Task 8 = docs sync + narrowed MD trim** (per the task brief; no `lints/README.md` — the suite no longer exists): battery line + lint-stack paragraph in `tech.md`, one `CLAUDE.md` command line, this revision record and the spec's second addendum, and the D10 trim narrowed to clippy-covered duties.
+- **Task 9 = final battery + acceptance audit with the re-worded gate:** the five stable battery lines plus `cargo dylint --all -- --all-targets` green; every suite-specific audit item (custom-lint list, ui fixtures, `cd lints` self-check) is gone.
+
 ## Global Constraints
 
 - **No git writes by agents.** Every task ends with a *Checkpoint* step listing the task's file group; the owner commits. Never run `git add`/`git commit`/`git push`.

@@ -153,6 +153,13 @@ Mid-cycle owner decision: **arch-lint stays.** "Зараз це все прац�
 - `require_thiserror` (landed in Task 2, committed and reviewed) duplicates arch-lint's AL005; accepted for landed work.
 - Task 6 of the plan (demolition + clippy parity) is skipped; `let_underscore_must_use` is not added.
 
+## Addendum 2026-09-08 (later same day) — custom suite deleted, perfectionist adopted
+
+Second mid-cycle owner decision: the maintenance cost of custom lint code is accepted as out of scope. The `strict-lints` suite (8 lints, fixtures, toolchain pin) is removed entirely; in its place the third-party `perfectionist` style suite is adopted, pinned at `0.0.0-rc.22` in `dylint.toml`, with `thiserror_usage` + `excessive_inline_tests` disabled (convention conflicts with this repo's error-handling and testing rules) and `single_letter_generic` disabled (single-letter generics are the ecosystem idiom). The stock Trail of Bits suites stay at tag `v6.0.4`.
+
+- The D10 trim narrows to clippy-covered duties — no strict-lints pointers exist anywhere.
+- The spec's §6 machine/prose boundary table is now historical: the semantic axes it lists returned to prose + review.
+
 ## Out of scope
 
 - **cargo-deny** (advisories/bans/licenses/sources) — the one applicable security axis; registered as a deliberate follow-up cycle, per the still-unlanded step 5 of the 2026-08-30 research. dylint ships no stock security suite (verified against its `examples/` catalog; Trail of Bits' own Testing Handbook recommends Clippy favorites plus audit-specific custom lints), so no security lints join this cycle.
