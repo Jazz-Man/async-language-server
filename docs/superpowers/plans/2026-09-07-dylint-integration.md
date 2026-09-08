@@ -8,6 +8,16 @@
 
 **Tech Stack:** dylint 6.0.4 (tag `v6.0.4`), `dylint-linting` + `dylint-testing` 6.0.4 from crates.io, `clippy_utils` pinned to git rev `9fca3bc9fc2bc83c60bde26d18ed68f11564b228`, toolchain `nightly-2026-05-28` (+ `rustc-dev`, `llvm-tools-preview`), rustc `LateLintPass` HIR APIs.
 
+## Revision 2026-09-08 — arch-lint retained (owner decision, supersedes conflicting task text)
+
+- **Task 4 revised:** scope is `no_sync_io` ONLY (kept as a *portable* lint — arch-lint covers this repo, the suite covers the owner's other projects). `layer_boundaries` is CANCELLED and stripped from the tree. Task 4's original text remains only as detection-spec reference for no_sync_io.
+- **Task 6 SKIPPED entirely:** no arch-lint demolition (`arch-lint.toml`, `tests/architecture.rs`, the dev-dep, and the inert comment-allows all stay), and no `let_underscore_must_use` clippy addition (arch-lint's `NoSilentResultDrop` keeps owning that axis).
+- **Task 5 unchanged** (warn trio — not arch-lint-related).
+- **Task 7 unchanged** (CI `dylint` job, `cargo dylint --all -- --all-targets` from repo root).
+- **Task 8 adjusted:** the D10 trim covers only duties owned by strict-lints (T2/T3/T4-revised/T5 lints) and clippy; `structure.md`'s layer text stays arch-lint-owned. The suite is **8 custom lints**. Keep: `lints/README.md`, battery sync, `CLAUDE.md` line, and the spec §4 three-`allowed_paths` correction for wire_boundary.
+- **Task 9 adjusted:** acceptance audit drops all layer/sync-IO-replacement items; the canary step covers every deny lint (`error_display_lowercase`, `error_no_string_catch_all`, `require_thiserror`, `wire_boundary`, `no_sync_io`, `no_sleep_in_tests`); arch-lint's green run stays part of the `cargo test` battery.
+- **Note:** `require_thiserror` (Task 2, already committed and reviewed) is technically an AL005 port; the duplication with arch-lint is accepted for landed work. Deleting it is a separate owner decision, not part of this revision.
+
 ## Global Constraints
 
 - **No git writes by agents.** Every task ends with a *Checkpoint* step listing the task's file group; the owner commits. Never run `git add`/`git commit`/`git push`.

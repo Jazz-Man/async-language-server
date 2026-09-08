@@ -142,6 +142,17 @@ Covered by the suite: the ResponseError construction boundary (error-handling.md
 6. The exact clippy lint covering `let _ =` on must-use values (`let_underscore_must_use` per current clippy docs — confirm at the pinned 1.98) and whether it is restriction-group.
 7. Gating semantics for deny: our lints register `Deny` themselves so a plain `cargo dylint --all` gates; confirm no extra flags are needed.
 
+## Addendum 2026-09-08 — arch-lint retained (supersedes D4 and the parity map in conflict)
+
+Mid-cycle owner decision: **arch-lint stays.** "Зараз це все працює" — replacing a working gate costs more time and tokens than the replacement returns. Consequences:
+
+- D4 is rescinded: `arch-lint.toml`, `tests/architecture.rs`, the pinned dev-dep, and the inert comment-allow comments are NOT removed; the layer engine, `NoSyncIo`, `RequireThiserror`, and the remaining arch-lint rules keep running in stable `cargo test`.
+- `layer_boundaries` is cancelled (never lands); `no_sync_io` lands anyway — as a *portable* lint: arch-lint enforces sync-IO discipline in this repo only, while the suite carries it to the owner's other projects.
+- The suite is **8 custom lints** (drop `layer_boundaries` from the §2 table).
+- The D10 trim scope narrows accordingly: only duties owned by strict-lints (T2/T3/T4/T5 lints) and clippy become pointers; `structure.md`'s layer text stays arch-lint-owned.
+- `require_thiserror` (landed in Task 2, committed and reviewed) duplicates arch-lint's AL005; accepted for landed work.
+- Task 6 of the plan (demolition + clippy parity) is skipped; `let_underscore_must_use` is not added.
+
 ## Out of scope
 
 - **cargo-deny** (advisories/bans/licenses/sources) — the one applicable security axis; registered as a deliberate follow-up cycle, per the still-unlanded step 5 of the 2026-08-30 research. dylint ships no stock security suite (verified against its `examples/` catalog; Trail of Bits' own Testing Handbook recommends Clippy favorites plus audit-specific custom lints), so no security lints join this cycle.
