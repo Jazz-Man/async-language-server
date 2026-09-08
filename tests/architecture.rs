@@ -41,7 +41,15 @@ fn architecture_rules_hold() {
         Box::new(TracingEnvInit::new()),
     ];
 
-    let mut builder = Analyzer::builder().root(root).exclude("**/target/**");
+    // `lints/` is a nested cargo workspace (the strict-lints dylint suite, on
+    // its own pinned nightly) with its own gates in CI's dylint job. Its
+    // fixture files deliberately contain rule violations — that is what the
+    // ui tests fire on — so arch-lint has no jurisdiction there. Product
+    // code under `src/`, `examples/`, `benches/`, and `macros/` stays scanned.
+    let mut builder = Analyzer::builder()
+        .root(root)
+        .exclude("**/target/**")
+        .exclude("lints/**");
     for rule in rules {
         builder = builder.rule_box(rule);
     }
