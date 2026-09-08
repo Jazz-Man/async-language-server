@@ -62,17 +62,10 @@ jobs:
           path: |
             ~/.dylint_drivers
             ~/.rustup/toolchains
-            lints/target
             target/dylint
-          key: dylint-${{ runner.os }}-${{ hashFiles('lints/Cargo.toml', 'lints/rust-toolchain.toml', 'dylint.toml') }}
-      - name: Lint (strict-lints + stock suites)
+          key: dylint-${{ runner.os }}-${{ hashFiles('dylint.toml') }}
+      - name: Lint (stock suites + perfectionist)
         run: cargo dylint --all -- --all-targets
-      - name: Suite self-check (fmt + clippy + test)
-        run: |
-          cd lints
-          cargo fmt --check
-          cargo clippy --all-targets -- -D warnings
-          cargo test
 
   release:
     needs: [checks, test, dylint]
