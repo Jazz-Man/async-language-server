@@ -43,10 +43,7 @@ fn architecture_rules_hold() {
     // fixture files deliberately contain rule violations — that is what the
     // ui tests fire on — so arch-lint has no jurisdiction there. Product
     // code under `src/`, `examples/`, `benches/`, and `macros/` stays scanned.
-    let mut builder = Analyzer::builder()
-        .root(root)
-        .exclude("**/target/**")
-        .exclude("lints/**");
+    let mut builder = Analyzer::builder().root(root).exclude("**/target/**");
     for rule in rules {
         builder = builder.rule_box(rule);
     }
