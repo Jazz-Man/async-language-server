@@ -57,12 +57,17 @@ jobs:
       # ~/.cargo (bin included) and prunes ./target of non-dependency
       # artifacts, so only what it never covers is cached here.
       - name: Cache dylint artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
-            ~/.dylint_drivers
-            ~/.rustup/toolchains
-            target/dylint
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/git/checkouts/
+            ~/.dylint_drivers/
+            ~/.rustup/toolchains/
+            target/
           key: dylint-${{ runner.os }}-${{ hashFiles('dylint.toml') }}
       - name: Lint (stock suites + perfectionist)
         run: cargo dylint --all -- --all-targets
