@@ -39,3 +39,25 @@ allowed_paths = [
     "src/server/with_state/**",
     "src/workspace/diagnostics.rs",
 ]
+
+[strict-lints.no_sync_io]
+# The deliberate synchronous-IO sites — the same set arch-lint's no-sync-io
+# rule blesses via `// arch-lint: allow` comments; both gates stay (arch-lint
+# covers this repo in `cargo test`, this portable lint carries the rule to
+# other projects):
+# - `documents.rs`: notification handlers must stay synchronous per the LSP
+#   spec; closing and fallbacks re-read files from disk.
+# - `workspace.rs` + `walker.rs`: workspace scanning is a synchronous batch
+#   pass over the ignore crate.
+# - `with_state/mod.rs`: the dispatch fallback reads one file per request.
+# - `oneshot/workspace_diagnostics.rs`: clientless batch file IO runs on the
+#   blocking pool.
+# - `benches/**`: bench setup runs before any async runtime exists.
+allowed_paths = [
+    "src/server/state/documents.rs",
+    "src/server/state/workspace.rs",
+    "src/workspace/walker.rs",
+    "src/server/with_state/mod.rs",
+    "src/oneshot/workspace_diagnostics.rs",
+    "benches/**",
+]

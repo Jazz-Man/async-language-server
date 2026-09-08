@@ -65,6 +65,14 @@ name = "ok_derived"
 path = "ui/require_thiserror/ok_derived.rs"
 
 [[example]]
+name = "default_config_fires"
+path = "ui/no_sync_io/default_config_fires.rs"
+
+[[example]]
+name = "ok_async_alt"
+path = "ui/no_sync_io/ok_async_alt.rs"
+
+[[example]]
 name = "bad_construct"
 path = "ui/wire_boundary/bad_construct.rs"
 

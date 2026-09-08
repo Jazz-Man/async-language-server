@@ -26,11 +26,14 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut rustc_lint
     dylint_linting::init_config(sess);
     error_display::register_lints(sess, lint_store);
     error_no_string::register_lints(sess, lint_store);
+    no_sync_io::register_lints(sess, lint_store);
     require_thiserror::register_lints(sess, lint_store);
     wire_boundary::register_lints(sess, lint_store);
 }
 
 mod error_display;
 mod error_no_string;
+mod globs;
+mod no_sync_io;
 mod require_thiserror;
 mod wire_boundary;
