@@ -70,7 +70,7 @@ fn convert_symbol_location(
 }
 
 #[cfg(test)]
-#[allow(
+#[expect(
     deprecated,
     reason = "fixtures construct `SymbolInformation`, whose upstream `deprecated` \
               field is marked `#[deprecated]` yet still required in struct literals"

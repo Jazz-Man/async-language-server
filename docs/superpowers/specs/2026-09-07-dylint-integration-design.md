@@ -1,7 +1,7 @@
 # DyLint integration — `strict-lints` suite — design
 
 **Date:** 2026-09-07
-**Status:** approved design, pre-implementation
+**Status:** implemented 2026-09-08; amended by the two addenda below (arch-lint retained; custom suite replaced by perfectionist)
 **Inputs:** owner directives 2026-09-07 (full DyLint integration with custom linters portable across the owner's Rust projects; arch-lint replaced within this cycle; stock width 21 curated; dylint runs in CI and the local battery), `docs/superpowers/research/2026-08-30-lint-toolchain-research.md` (its dylint verdict is reversed here — see Provenance), `.claude/rules/{error-handling,testing,tech,structure}.md`, dylint documentation at master `89aa879` (README, `docs/how_dylint_works.md`, `examples/README.md`, `examples/general/{Cargo.toml,rust-toolchain.toml}` — fetched 2026-09-07)
 **Branch:** `feature/DyLint`
 

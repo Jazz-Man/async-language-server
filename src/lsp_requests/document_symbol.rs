@@ -7,7 +7,7 @@
 pub(crate) struct DocumentSymbolRequest;
 
 #[cfg(test)]
-#[allow(
+#[expect(
     deprecated,
     reason = "fixtures construct `DocumentSymbol`, whose upstream `deprecated` \
               field is marked `#[deprecated]` yet still required in struct literals"

@@ -63,6 +63,10 @@ fingerprint = "db11ca6b346bce01"
 reason = "RangeExt::sub spec-matrix rows in tree_sitter_tests.rs (basic, empty, multiline, multi-line span): the three range_ext flavor files run the same spec in parallel; rows differ in inputs and expected byte/point values"
 
 [[ignore]]
+fingerprint = "7352c3c6c970a1fa"
+reason = "RangeExt::sub spec-matrix rows in tree_sitter_tests.rs (multiline, multi-line span) — exact pair since the 2026-09-08 lint-triage renames leveled the fixture-letter differences; same spec-matrix family as the entry above: one behavior row per test, inputs and expected byte/point values are the content, the call/assert template is shared by design"
+
+[[ignore]]
 fingerprint = "3084ed243e866d48"
 reason = "RangeExt::sub spec-matrix rows in lsp_tests.rs (basic, empty, multiline): the three range_ext flavor files run the same spec in parallel; rows differ in inputs and expected line/character values"
 
@@ -95,7 +99,7 @@ fingerprint = "73fbd547adb85775"
 reason = "RangeExt::sub_delimited_tri spec-matrix rows in lsp_tests.rs (basic, multiline): shared call/assert template, one behavior row per test"
 
 [[ignore]]
-fingerprint = "94470c0fadf2b930"
+fingerprint = "9b25c7eb50c26f02"
 reason = "RangeExt::sub_delimited_tri spec-matrix rows in tree_sitter_tests.rs (basic, multiline): shared call/assert template, one behavior row per test"
 
 [[ignore]]

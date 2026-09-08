@@ -38,11 +38,10 @@ fn architecture_rules_hold() {
         Box::new(TracingEnvInit::new()),
     ];
 
-    // `lints/` is a nested cargo workspace (the strict-lints dylint suite, on
-    // its own pinned nightly) with its own gates in CI's dylint job. Its
-    // fixture files deliberately contain rule violations — that is what the
-    // ui tests fire on — so arch-lint has no jurisdiction there. Product
-    // code under `src/`, `examples/`, `benches/`, and `macros/` stays scanned.
+    // Only build output is excluded: arch-lint scans `src/`, `examples/`,
+    // `benches/`, `macros/`, and this file. The lint suites in `dylint.toml`
+    // are external git dependencies — there is no nested workspace in this
+    // tree for the scan to fence off.
     let mut builder = Analyzer::builder().root(root).exclude("**/target/**");
     for rule in rules {
         builder = builder.rule_box(rule);

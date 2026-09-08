@@ -117,7 +117,7 @@ self_named_module_files = "warn"     # locks in the mod.rs layout
 str_to_string = "warn"
 cognitive_complexity = "warn"
 
-# Takes over arch-lint's no-unwrap-expect rule, test-aware via clippy.toml.
+# Owns the unwrap/expect axis, test-aware via clippy.toml.
 expect_used = "deny"
 unwrap_used = "deny"
 
