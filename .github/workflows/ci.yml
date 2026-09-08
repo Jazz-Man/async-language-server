@@ -130,6 +130,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/rust-setup
       - name: Docs
         run: cargo +nightly doc --workspace --no-deps
