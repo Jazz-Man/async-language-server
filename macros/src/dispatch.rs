@@ -7,10 +7,8 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{
-    Ident, Path, Token, parenthesized,
-    parse::{Parse, ParseStream},
-};
+use syn::parse::{Parse, ParseStream};
+use syn::{Ident, Path, Token, parenthesized};
 
 /// One dispatch-table row: the triple linking our `Server` trait method to
 /// the async-lsp `LanguageServer` method and the request marker type.
@@ -231,7 +229,7 @@ mod tests {
         assert_eq!(r.alsp, "hover");
         assert_eq!(
             r.request.to_token_stream().to_string(),
-            "crate :: lsp_requests :: HoverRequest"
+            "crate :: lsp_requests :: HoverRequest",
         );
         assert!(!r.resolve);
     }
@@ -263,7 +261,7 @@ mod tests {
         assert_eq!(
             text.matches("conversion_document").count(),
             1,
-            "the response step must reuse the request's conversion document"
+            "the response step must reuse the request's conversion document",
         );
     }
 

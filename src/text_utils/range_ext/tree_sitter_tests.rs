@@ -1,4 +1,4 @@
-// tree_sitter::Point/Range — same Ts… naming as tree_sitter.rs, the Ts… half of the RangeExt family.
+// tree_sitter::Point/Range — same Ts... naming as tree_sitter.rs, the Ts... half of the RangeExt family.
 use tree_sitter::{Point as TsPosition, Range as TsRange};
 
 use crate::text_utils::RangeError;
@@ -262,11 +262,11 @@ fn split_off_boundaries() {
     let range = r(0, p(0, 0), 5, p(0, 5));
     assert_eq!(
         range.split_off_left(text, p(0, 0)).expect("valid range"),
-        r(0, p(0, 0), 0, p(0, 0))
+        r(0, p(0, 0), 0, p(0, 0)),
     );
     assert_eq!(
         range.split_off_right(text, p(0, 5)).expect("valid range"),
-        r(5, p(0, 5), 5, p(0, 5))
+        r(5, p(0, 5), 5, p(0, 5)),
     );
 }
 
@@ -277,7 +277,7 @@ fn reversed_sub_positions_return_start_after_end() {
         r(0, p(0, 0), 5, p(0, 5))
             .sub(text, p(0, 3), p(0, 1))
             .unwrap_err(),
-        RangeError::StartAfterEnd
+        RangeError::StartAfterEnd,
     );
 }
 
@@ -288,7 +288,7 @@ fn multi_byte_delimiters_return_delimiter_not_single_byte() {
         r(0, p(0, 0), 9, p(0, 9))
             .sub_delimited(text, '—')
             .unwrap_err(),
-        RangeError::DelimiterNotSingleByte { delimiter: '—' }
+        RangeError::DelimiterNotSingleByte { delimiter: '—' },
     );
 }
 
@@ -302,7 +302,7 @@ fn mismatched_text_length_returns_text_range_mismatch() {
         RangeError::TextRangeMismatch {
             text_len: 5,
             range_len: 7
-        }
+        },
     );
 }
 
@@ -311,7 +311,7 @@ fn shrink_requires_a_single_line_range() {
     let multiline = r(0, p(0, 0), 2, p(1, 0)); // spans "a\nb"
     assert_eq!(
         multiline.shrink(1, 1).unwrap_err(),
-        RangeError::NotSingleLine
+        RangeError::NotSingleLine,
     );
 }
 
@@ -322,14 +322,14 @@ fn split_at_beyond_the_text_returns_position_out_of_range() {
         r(0, p(0, 0), 5, p(0, 5))
             .split_at(text, p(0, 9))
             .unwrap_err(),
-        RangeError::PositionOutOfRange
+        RangeError::PositionOutOfRange,
     );
     // A row past the last line is equally out of range.
     assert_eq!(
         r(0, p(0, 0), 5, p(0, 5))
             .split_at(text, p(2, 0))
             .unwrap_err(),
-        RangeError::PositionOutOfRange
+        RangeError::PositionOutOfRange,
     );
 }
 
@@ -340,13 +340,13 @@ fn sub_positions_beyond_the_text_return_position_out_of_range() {
         r(0, p(0, 0), 5, p(0, 5))
             .sub(text, p(0, 1), p(0, 9))
             .unwrap_err(),
-        RangeError::PositionOutOfRange
+        RangeError::PositionOutOfRange,
     );
     assert_eq!(
         r(0, p(0, 0), 5, p(0, 5))
             .sub(text, p(0, 9), p(0, 9))
             .unwrap_err(),
-        RangeError::PositionOutOfRange
+        RangeError::PositionOutOfRange,
     );
 }
 
@@ -360,6 +360,6 @@ fn split_at_mismatched_text_length_returns_text_range_mismatch() {
         RangeError::TextRangeMismatch {
             text_len: 5,
             range_len: 7
-        }
+        },
     );
 }

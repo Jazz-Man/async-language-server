@@ -1,6 +1,7 @@
 //! Shared harness for the wire-tier tests: a raw JSON-RPC client speaking
 //! real `Content-Length` framing over `tokio::io::duplex`, driving the
-//! actual middleware stack through `run_over_streams`. The client side
+//! actual middleware stack through
+//! [`run_over_streams`](crate::server::serve::run_over_streams). The client side
 //! deliberately uses no async-lsp code: it sees the exact bytes and stays
 //! isolated from async-lsp client-path bugs.
 //!
@@ -8,19 +9,18 @@
 //! traits by `tokio-util`'s `compat` — the same bridging async-lsp's own
 //! `tests/unit_test.rs` uses.
 
-use std::time::Duration;
-
+use crate::error::ServerResult;
+use crate::server::Server;
+use crate::server::serve::run_over_streams;
 use async_lsp::lsp_types::{Hover, HoverContents, HoverParams, MarkedString, Position, Range};
 use futures::AsyncReadExt as _;
 use serde_json::{Value, json};
+use std::time::Duration;
 use tokio::io::{
     AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream, ReadHalf,
     WriteHalf, split,
 };
 use tokio_util::compat::TokioAsyncReadCompatExt as _;
-
-use crate::error::ServerResult;
-use crate::server::{Server, serve::run_over_streams};
 
 pub(crate) const WIRE_TIMEOUT: Duration = Duration::from_secs(5);
 

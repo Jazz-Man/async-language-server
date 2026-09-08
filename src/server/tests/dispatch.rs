@@ -32,7 +32,7 @@ async fn unknown_methods_answer_method_not_found() {
         response["error"]["message"]
             .as_str()
             .is_some_and(|message| message.starts_with("No such method")),
-        "the router, not the dispatch engine, must answer: {response}"
+        "the router, not the dispatch engine, must answer: {response}",
     );
 
     drop(client);
@@ -62,13 +62,13 @@ async fn wired_methods_dispatch() {
         if method == "textDocument/hover" {
             assert!(
                 response.get("error").is_none(),
-                "hover is implemented and must succeed: {response}"
+                "hover is implemented and must succeed: {response}",
             );
         } else {
             let message = response["error"]["message"].as_str().unwrap_or_default();
             assert!(
                 !message.starts_with("No such method"),
-                "no dispatch row for {method}: a No-such-method producer answered"
+                "no dispatch row for {method}: a No-such-method producer answered",
             );
         }
     }

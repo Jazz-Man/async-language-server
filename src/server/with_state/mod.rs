@@ -1,28 +1,22 @@
-use std::{ops::ControlFlow, sync::Arc};
-
-use async_lsp::{
-    ClientSocket, ErrorCode, LanguageServer, ResponseError, Result,
-    lsp_types::{
-        CreateFilesParams, DeleteFilesParams, DidChangeConfigurationParams,
-        DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams,
-        DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-        InitializeParams, InitializeResult, InitializedParams, RenameFilesParams, Url,
-        WillSaveTextDocumentParams, WorkDoneProgressCancelParams, WorkspaceDiagnosticParams,
-        WorkspaceDiagnosticReportResult,
-    },
+use crate::documents::Document;
+use crate::lsp_requests::{Direction, convert_resolve_item};
+use crate::server::{Server, ServerState};
+use crate::text_utils::Encoding;
+use async_lsp::lsp_types::{
+    CreateFilesParams, DeleteFilesParams, DidChangeConfigurationParams,
+    DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    InitializeParams, InitializeResult, InitializedParams, RenameFilesParams, Url,
+    WillSaveTextDocumentParams, WorkDoneProgressCancelParams, WorkspaceDiagnosticParams,
+    WorkspaceDiagnosticReportResult,
 };
+use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError, Result};
 use futures::future::BoxFuture;
 use lsp_macros::lsp_dispatch;
 use ropey::Rope;
-
+use std::ops::ControlFlow;
+use std::sync::Arc;
 use tracing::debug;
-
-use crate::{
-    documents::Document,
-    lsp_requests::{Direction, convert_resolve_item},
-    server::{Server, ServerState},
-    text_utils::Encoding,
-};
 
 mod initialize;
 

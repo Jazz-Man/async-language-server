@@ -1,4 +1,4 @@
-// tree_sitter::Point/Range — the Ts… half of the RangeExt family, mirroring lsp.rs's Lsp… types.
+// tree_sitter::Point/Range — the Ts... half of the RangeExt family, mirroring lsp.rs's Lsp... types.
 use tree_sitter::{Point as TsPosition, Range as TsRange};
 
 use crate::error::RangeError;

@@ -1,20 +1,15 @@
-use async_lsp::{
-    ErrorCode,
-    lsp_types::{
-        ClientCapabilities, CreateFilesParams, DeleteFilesParams, DidChangeConfigurationParams,
-        DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams,
-        DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-        RenameFilesParams, ServerCapabilities, ServerInfo, WillSaveTextDocumentParams,
-        WorkDoneProgressCancelParams,
-    },
+use crate::documents::DocumentMatcher;
+use crate::error::{ServerError, ServerResult};
+use crate::server::{ServerOptions, ServerState};
+use async_lsp::ErrorCode;
+use async_lsp::lsp_types::{
+    ClientCapabilities, CreateFilesParams, DeleteFilesParams, DidChangeConfigurationParams,
+    DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    RenameFilesParams, ServerCapabilities, ServerInfo, WillSaveTextDocumentParams,
+    WorkDoneProgressCancelParams,
 };
 use lsp_macros::{lsp_method, lsp_resolve_method};
-
-use crate::{
-    documents::DocumentMatcher,
-    error::{ServerError, ServerResult},
-    server::{ServerOptions, ServerState},
-};
 
 /// The main entrypoint to LSP functionality for a server.
 ///

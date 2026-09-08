@@ -87,7 +87,7 @@ async fn panicking_handler_returns_structured_error() {
             .as_str()
             .expect("message is a string")
             .contains("panicked"),
-        "message was: {error:?}"
+        "message was: {error:?}",
     );
 
     drop(client);
@@ -215,6 +215,6 @@ async fn malformed_header_closes_the_connection() {
         .expect("serve loop completes within the timeout");
     assert!(
         outcome.is_err(),
-        "the loop must fail, not exit Ok: {outcome:?}"
+        "the loop must fail, not exit Ok: {outcome:?}",
     );
 }

@@ -5,10 +5,8 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{
-    Expr, Ident, Token, Type,
-    parse::{Parse, ParseStream},
-};
+use syn::parse::{Parse, ParseStream};
+use syn::{Expr, Ident, Token, Type};
 
 /// One row of the table: the request under test plus its fixture closures.
 struct TestRow {
@@ -241,7 +239,7 @@ mod tests {
             let err = expand(input.parse().expect("tokens")).expect_err("rejected");
             assert!(
                 err.to_string().contains(needle),
-                "case {i}: {needle:?} missing from {err}"
+                "case {i}: {needle:?} missing from {err}",
             );
         }
     }

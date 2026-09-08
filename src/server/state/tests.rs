@@ -1,20 +1,15 @@
-use std::fs;
-
-use async_lsp::{
-    ClientSocket,
-    lsp_types::{
-        DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-        DidSaveTextDocumentParams, FileChangeType, FileDelete, FileEvent, FileRename, Position,
-        Range, SemanticTokens, SemanticTokensResult, TextDocumentContentChangeEvent,
-        TextDocumentIdentifier, TextDocumentItem, Url, VersionedTextDocumentIdentifier,
-    },
-};
-
+use super::ServerState;
 use crate::lsp_requests::{Request, SemanticTokensFullRequest};
 use crate::server::{DocumentMatcher, Server, ServerOptions, WorkspaceDiagnostics};
 use crate::testing::{open_document, temp_workspace, token, url, workspace_folder};
-
-use super::ServerState;
+use async_lsp::ClientSocket;
+use async_lsp::lsp_types::{
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, FileChangeType, FileDelete, FileEvent, FileRename, Position, Range,
+    SemanticTokens, SemanticTokensResult, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+    TextDocumentItem, Url, VersionedTextDocumentIdentifier,
+};
+use std::fs;
 
 struct TestServer;
 
@@ -165,7 +160,7 @@ async fn workspace_refresh_rereads_changed_files_and_keeps_untouched_ones() {
             .document(&changed_uri)
             .expect("changed file is tracked")
             .text_contents(),
-        "short"
+        "short",
     );
 
     // Longer content: the size half of the stamp cannot match, so the gate
@@ -179,21 +174,21 @@ async fn workspace_refresh_rereads_changed_files_and_keeps_untouched_ones() {
     assert_eq!(
         urls.len(),
         2,
-        "untouched files stay tracked across refreshes"
+        "untouched files stay tracked across refreshes",
     );
     assert_eq!(
         state
             .document(&changed_uri)
             .expect("changed file stays tracked")
             .text_contents(),
-        "a longer replacement"
+        "a longer replacement",
     );
     assert_eq!(
         state
             .document(&stable_uri)
             .expect("untouched file stays tracked")
             .text_contents(),
-        "stable"
+        "stable",
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
@@ -475,7 +470,7 @@ fn document_save_removes_the_document_when_no_text_and_no_file() {
     });
     assert!(
         state.document(&uri).is_some(),
-        "document is tracked before save"
+        "document is tracked before save",
     );
 
     let _ = state.handle_document_save(DidSaveTextDocumentParams {
@@ -485,7 +480,7 @@ fn document_save_removes_the_document_when_no_text_and_no_file() {
 
     assert!(
         state.document(&uri).is_none(),
-        "document is removed on failure"
+        "document is removed on failure",
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
@@ -543,7 +538,7 @@ async fn watched_files_change_rereads_mutated_workspace_document() {
     assert_eq!(
         state.document_workspace_version(&uri),
         None,
-        "the refreshed snapshot stays Workspace-origin"
+        "the refreshed snapshot stays Workspace-origin",
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
@@ -634,7 +629,7 @@ async fn watched_delete_and_file_operations_evict_cached_semantic_tokens() {
     assert!(state.document(&urls[0]).is_none());
     assert!(
         state.cached_semantic_tokens(&urls[0]).is_none(),
-        "a watched delete evicts the cache"
+        "a watched delete evicts the cache",
     );
 
     let _ = state.handle_files_renamed(vec![FileRename {
@@ -644,7 +639,7 @@ async fn watched_delete_and_file_operations_evict_cached_semantic_tokens() {
     assert!(state.document(&urls[1]).is_none());
     assert!(
         state.cached_semantic_tokens(&urls[1]).is_none(),
-        "a rename evicts the old URL's cache"
+        "a rename evicts the old URL's cache",
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
@@ -723,7 +718,7 @@ async fn open_documents_keep_their_cached_semantic_tokens_across_file_operations
     assert!(state.document(&uri).is_some());
     assert!(
         state.cached_semantic_tokens(&uri).is_some(),
-        "an open document keeps its cache across file operations"
+        "an open document keeps its cache across file operations",
     );
 
     let _ = state.handle_files_deleted(vec![FileDelete {
@@ -771,13 +766,13 @@ async fn workspace_refresh_evicts_tokens_of_dropped_documents() {
     assert!(state.document(dropped_uri).is_none());
     assert!(
         state.cached_semantic_tokens(dropped_uri).is_none(),
-        "a document the refresh drops loses its cache"
+        "a document the refresh drops loses its cache",
     );
     let kept_uri = &kept[0];
     assert!(state.document(kept_uri).is_some());
     assert!(
         state.cached_semantic_tokens(kept_uri).is_some(),
-        "a document the refresh keeps keeps its cache"
+        "a document the refresh keeps keeps its cache",
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");

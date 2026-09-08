@@ -89,7 +89,7 @@ async fn workspace_configuration_request_is_served_mid_request() {
         .await;
     assert!(
         response.get("result").is_some(),
-        "initialize succeeds: {response}"
+        "initialize succeeds: {response}",
     );
     client.notify("initialized", json!({})).await;
 
@@ -125,7 +125,7 @@ async fn workspace_configuration_request_is_served_mid_request() {
     let report = client.await_response(2).await;
     assert!(
         report.get("result").is_some(),
-        "diagnostics report returns: {report}"
+        "diagnostics report returns: {report}",
     );
 
     drop(client);

@@ -1,34 +1,26 @@
-use std::{
-    collections::HashMap,
-    future::Future,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicU64, Ordering},
-    },
+use crate::lsp_requests::Request;
+use crate::server::{
+    Server, ServerOptions, ServerState, WorkspaceDiagnostics, WorkspaceDiagnosticsSetting,
 };
-
-use async_lsp::{
-    ErrorCode, ResponseError, Result,
-    lsp_types::{
-        ClientCapabilities, ConfigurationParams, DiagnosticServerCapabilities,
-        DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportKind,
-        DocumentDiagnosticReportResult, FullDocumentDiagnosticReport, InitializeResult, LSPAny,
-        OneOf, PartialResultParams, Registration, RegistrationParams, TextDocumentIdentifier, Url,
-        WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReport,
-        WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
-        WorkspaceFoldersServerCapabilities, WorkspaceFullDocumentDiagnosticReport,
-        WorkspaceServerCapabilities, WorkspaceUnchangedDocumentDiagnosticReport,
-        request::{RegisterCapability, WorkspaceConfiguration, WorkspaceDiagnosticRefresh},
-    },
+use crate::workspace::for_each_bounded;
+use async_lsp::lsp_types::request::{
+    RegisterCapability, WorkspaceConfiguration, WorkspaceDiagnosticRefresh,
 };
-
-use crate::{
-    lsp_requests::Request,
-    server::{
-        Server, ServerOptions, ServerState, WorkspaceDiagnostics, WorkspaceDiagnosticsSetting,
-    },
-    workspace::for_each_bounded,
+use async_lsp::lsp_types::{
+    ClientCapabilities, ConfigurationParams, DiagnosticServerCapabilities,
+    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportKind,
+    DocumentDiagnosticReportResult, FullDocumentDiagnosticReport, InitializeResult, LSPAny, OneOf,
+    PartialResultParams, Registration, RegistrationParams, TextDocumentIdentifier, Url,
+    WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReport,
+    WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
+    WorkspaceFoldersServerCapabilities, WorkspaceFullDocumentDiagnosticReport,
+    WorkspaceServerCapabilities, WorkspaceUnchangedDocumentDiagnosticReport,
 };
+use async_lsp::{ErrorCode, ResponseError, Result};
+use std::collections::HashMap;
+use std::future::Future;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 #[derive(Debug, Clone)]
 pub(crate) struct WorkspaceDiagnosticsState {
@@ -59,7 +51,7 @@ impl WorkspaceDiagnosticsState {
                 options: options.workspace_diagnostics.clone(),
                 supported: AtomicBool::new(!matches!(
                     &options.workspace_diagnostics,
-                    WorkspaceDiagnostics::Disabled
+                    WorkspaceDiagnostics::Disabled,
                 )),
                 enabled: AtomicBool::new(enabled),
                 client_configuration: AtomicBool::new(false),
@@ -115,15 +107,15 @@ impl WorkspaceDiagnosticsState {
         );
         self.inner.client_dynamic_configuration.store(
             workspace
-                .and_then(|w| w.did_change_configuration.as_ref())
-                .and_then(|c| c.dynamic_registration)
+                .and_then(|config| config.did_change_configuration.as_ref())
+                .and_then(|did_change_configuration| did_change_configuration.dynamic_registration)
                 .unwrap_or(false),
             Ordering::Relaxed,
         );
         self.inner.client_refresh.store(
             workspace
-                .and_then(|w| w.diagnostic.as_ref())
-                .and_then(|d| d.refresh_support)
+                .and_then(|diag| diag.diagnostic.as_ref())
+                .and_then(|diagnostic| diagnostic.refresh_support)
                 .unwrap_or(false),
             Ordering::Relaxed,
         );
@@ -417,7 +409,10 @@ where
                 .await
                 .map_err(ResponseError::from)?;
 
-            if state.document_version(&url).is_some_and(|v| v != version) {
+            if state
+                .document_version(&url)
+                .is_some_and(|current| current != version)
+            {
                 return Err(ResponseError::new(
                     ErrorCode::CONTENT_MODIFIED,
                     "document was modified during processing",
@@ -586,30 +581,29 @@ fn push_related_reports(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, num::NonZeroUsize, path::PathBuf, sync::Arc, time::Duration};
-
-    use async_lsp::{
-        ClientSocket,
-        lsp_types::{
-            DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-            PartialResultParams, RelatedFullDocumentDiagnosticReport,
-            UnchangedDocumentDiagnosticReport, WorkDoneProgressParams, WorkspaceDiagnosticParams,
-        },
-    };
-    use tokio::sync::{Semaphore, mpsc};
-
-    use crate::{
-        error::ServerResult,
-        server::{DocumentMatcher, Server, ServerOptions, ServerState, WorkspaceDiagnostics},
-        testing::{temp_workspace, workspace_folder},
-    };
-
     use super::{
         FullDocumentDiagnosticReport, Url, WorkspaceDocumentDiagnosticReport,
         WorkspaceFullDocumentDiagnosticReport, WorkspaceReportSink,
         WorkspaceUnchangedDocumentDiagnosticReport, push_workspace_report,
         workspace_diagnostic_items,
     };
+    use crate::error::ServerResult;
+    use crate::server::{
+        DocumentMatcher, Server, ServerOptions, ServerState, WorkspaceDiagnostics,
+    };
+    use crate::testing::{temp_workspace, workspace_folder};
+    use async_lsp::ClientSocket;
+    use async_lsp::lsp_types::{
+        DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+        PartialResultParams, RelatedFullDocumentDiagnosticReport,
+        UnchangedDocumentDiagnosticReport, WorkDoneProgressParams, WorkspaceDiagnosticParams,
+    };
+    use std::fs;
+    use std::num::NonZeroUsize;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio::sync::{Semaphore, mpsc};
 
     const ENTRY_TIMEOUT: Duration = Duration::from_secs(5);
     const ABSENCE_TIMEOUT: Duration = Duration::from_millis(250);
@@ -771,7 +765,7 @@ mod tests {
             tokio::time::timeout(ABSENCE_TIMEOUT, entered_rx.recv())
                 .await
                 .is_err(),
-            "no fourth document exists to enter"
+            "no fourth document exists to enter",
         );
 
         gate.add_permits(3);
@@ -804,7 +798,7 @@ mod tests {
             tokio::time::timeout(ABSENCE_TIMEOUT, entered_rx.recv())
                 .await
                 .is_err(),
-            "width 1 must serialize handlers"
+            "width 1 must serialize handlers",
         );
 
         gate.add_permits(1);

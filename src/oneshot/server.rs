@@ -1,23 +1,15 @@
-use std::{
-    ops::ControlFlow,
-    path::{Path, PathBuf},
+use crate::error::{ServerError, ServerResult};
+use crate::server::{LanguageServerWithState, Server};
+use crate::workspace::path_to_url;
+use async_lsp::lsp_types::{
+    ClientCapabilities, DidOpenTextDocumentParams, DocumentDiagnosticParams,
+    DocumentDiagnosticReportResult, GeneralClientCapabilities, InitializeParams, InitializedParams,
+    PartialResultParams, PositionEncodingKind, TextDocumentIdentifier, TextDocumentItem,
+    WorkDoneProgressParams, WorkspaceFolder,
 };
-
-use async_lsp::{
-    ClientSocket, LanguageServer, ResponseError,
-    lsp_types::{
-        ClientCapabilities, DidOpenTextDocumentParams, DocumentDiagnosticParams,
-        DocumentDiagnosticReportResult, GeneralClientCapabilities, InitializeParams,
-        InitializedParams, PartialResultParams, PositionEncodingKind, TextDocumentIdentifier,
-        TextDocumentItem, WorkDoneProgressParams, WorkspaceFolder,
-    },
-};
-
-use crate::{
-    error::{ServerError, ServerResult},
-    server::{LanguageServerWithState, Server},
-    workspace::path_to_url,
-};
+use async_lsp::{ClientSocket, LanguageServer, ResponseError};
+use std::ops::ControlFlow;
+use std::path::{Path, PathBuf};
 
 pub(super) struct OneshotServer<S: Server> {
     inner: LanguageServerWithState<S>,

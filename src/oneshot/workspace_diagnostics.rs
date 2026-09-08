@@ -1,18 +1,14 @@
-use std::{fs, path::PathBuf};
-
+use super::server::{OneshotDocument, OneshotServer};
+use crate::documents::DocumentMatchers;
+use crate::error::{ServerError, ServerResult};
+use crate::server::Server;
+use crate::workspace::{WorkspaceWalkConfig, WorkspaceWalker, for_each_bounded, path_to_url};
 use async_lsp::lsp_types::{
     Diagnostic, DocumentDiagnosticReport, DocumentDiagnosticReportKind,
     DocumentDiagnosticReportResult, Url,
 };
-
-use crate::{
-    documents::DocumentMatchers,
-    error::{ServerError, ServerResult},
-    server::Server,
-    workspace::{WorkspaceWalkConfig, WorkspaceWalker, for_each_bounded, path_to_url},
-};
-
-use super::server::{OneshotDocument, OneshotServer};
+use std::fs;
+use std::path::PathBuf;
 
 /// Configuration for running a language server once over a workspace.
 #[derive(Debug, Clone)]
@@ -131,7 +127,7 @@ impl DocumentDiagnostics {
 ///
 /// # Examples
 ///
-/// Run a `Server` over a directory without an LSP client:
+/// Run a [`Server`] over a directory without an LSP client:
 ///
 /// ```
 /// use async_lsp::lsp_types::{
@@ -294,18 +290,18 @@ fn diagnostics_from_report_kind(report: &DocumentDiagnosticReportKind) -> &[Diag
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, num::NonZeroUsize, sync::Arc, time::Duration};
-
+    use super::{WorkspaceDiagnosticConfig, workspace_diagnostics};
+    use crate::server::{DocumentMatcher, Server, ServerOptions, ServerResult, ServerState};
+    use crate::testing::{diagnostic, temp_workspace};
     use async_lsp::lsp_types::{
         Diagnostic, DocumentDiagnosticParams, FullDocumentDiagnosticReport,
         RelatedFullDocumentDiagnosticReport,
     };
+    use std::fs;
+    use std::num::NonZeroUsize;
+    use std::sync::Arc;
+    use std::time::Duration;
     use tokio::sync::{Barrier, mpsc};
-
-    use crate::server::{DocumentMatcher, Server, ServerOptions, ServerResult, ServerState};
-    use crate::testing::{diagnostic, temp_workspace};
-
-    use super::{WorkspaceDiagnosticConfig, workspace_diagnostics};
 
     struct TestServer;
 
@@ -359,13 +355,13 @@ mod tests {
             report
                 .documents
                 .iter()
-                .any(|doc| doc.uri.path().ends_with("/a.test"))
+                .any(|doc| doc.uri.path().ends_with("/a.test")),
         );
         assert!(
             report
                 .documents
                 .iter()
-                .any(|doc| doc.uri.path().ends_with("/nested/c.test"))
+                .any(|doc| doc.uri.path().ends_with("/nested/c.test")),
         );
 
         fs::remove_dir_all(root).expect("temp workspace can be removed");
@@ -412,7 +408,7 @@ mod tests {
             report
                 .documents
                 .iter()
-                .any(|doc| doc.uri.path().ends_with("/ignored/b.test"))
+                .any(|doc| doc.uri.path().ends_with("/ignored/b.test")),
         );
 
         fs::remove_dir_all(root).expect("temp workspace can be removed");

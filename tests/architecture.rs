@@ -17,16 +17,13 @@
 //!   already cover every function in the crate.
 //! - Per-site suppressions use the comment form with a mandatory reason.
 
-use std::path::Path;
-
-use arch_lint::{
-    Analyzer, RuleBox, Severity,
-    declarative::load_rules_from_toml,
-    rules::{
-        NoErrorSwallowing, NoSilentResultDrop, NoSyncIo, RequireThiserror, RequireTracing,
-        TracingEnvInit,
-    },
+use arch_lint::declarative::load_rules_from_toml;
+use arch_lint::rules::{
+    NoErrorSwallowing, NoSilentResultDrop, NoSyncIo, RequireThiserror, RequireTracing,
+    TracingEnvInit,
 };
+use arch_lint::{Analyzer, RuleBox, Severity};
+use std::path::Path;
 
 #[test]
 fn architecture_rules_hold() {
@@ -67,6 +64,6 @@ fn architecture_rules_hold() {
     assert!(
         !analysis.has_violations_at(Severity::Error),
         "{}",
-        analysis.format_test_report(Severity::Error)
+        analysis.format_test_report(Severity::Error),
     );
 }

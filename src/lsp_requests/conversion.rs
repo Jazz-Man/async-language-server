@@ -1,4 +1,4 @@
-//! Centralized position-encoding conversion for the `Request` hooks.
+//! Centralized position-encoding conversion for the [`Request`] hooks.
 //!
 //! Two verb families live here: `convert_*` helpers are
 //! direction-parameterized (`Direction::Incoming` = client encoding to
@@ -7,6 +7,9 @@
 //! fixed-direction composites that mix per-document and per-URL conversion —
 //! no pure direction pins over a `convert_*` helper remain.
 
+use super::Request;
+use crate::server::{CachedSemanticTokens, Document, ServerState};
+use crate::text_utils::{Encoding, position_to_encoding};
 use async_lsp::lsp_types::{
     CallHierarchyIncomingCall, CallHierarchyItem, CallHierarchyOutgoingCall, CodeLens,
     ColorInformation, ColorPresentation, CompletionTextEdit, Diagnostic,
@@ -17,13 +20,6 @@ use async_lsp::lsp_types::{
     SemanticTokensFullDeltaResult, SemanticTokensRangeResult, SemanticTokensResult, SignatureHelp,
     TextEdit, TypeHierarchyItem, Url, WorkspaceEdit,
 };
-
-use crate::{
-    server::{CachedSemanticTokens, Document, ServerState},
-    text_utils::{Encoding, position_to_encoding},
-};
-
-use super::Request;
 
 /// Direction of an encoding conversion between the client's negotiated
 /// position encoding and the crate-internal UTF-8.
@@ -747,7 +743,7 @@ pub(crate) fn convert_semantic_tokens_data(
 ///
 /// Token deltas — including client-supplied incoming ones — are untrusted:
 /// every reconstruction and re-relativization saturates, so no input can
-/// panic or wrap the walk, even where `position_to_encoding` clamps
+/// panic or wrap the walk, even where [`position_to_encoding`] clamps
 /// out-of-range positions against the document.
 fn convert_seeded_token_stream(
     state: &ServerState,

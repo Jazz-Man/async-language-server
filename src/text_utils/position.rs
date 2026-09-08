@@ -76,7 +76,7 @@ impl From<Position> for LspPosition {
     }
 }
 
-// tree_sitter::Point — the Ts… alias keeps tree-sitter coordinates distinct from the LSP Position they convert against.
+// tree_sitter::Point — the Ts... alias keeps tree-sitter coordinates distinct from the LSP Position they convert against.
 #[cfg(feature = "tree-sitter")]
 use tree_sitter::Point as TsPoint;
 

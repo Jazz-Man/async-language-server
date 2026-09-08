@@ -28,12 +28,10 @@ pub use self::serve::serve;
 pub use self::server_trait::Server;
 pub(crate) use self::state::CachedSemanticTokens;
 pub use self::state::ServerState;
-pub use crate::documents::DocumentMatcher;
-pub use crate::documents::{Document, DocumentReader};
+pub use crate::documents::{Document, DocumentMatcher, DocumentReader};
 pub use crate::error::{RangeError, ServerError, ServerErrorCode, ServerResult};
 
 #[cfg(feature = "tree-sitter")]
 pub use crate::documents::DocumentQueryCapture;
 
-pub(crate) use self::with_state::LanguageServerWithState;
-pub(crate) use self::with_state::read_document_from_disk;
+pub(crate) use self::with_state::{LanguageServerWithState, read_document_from_disk};

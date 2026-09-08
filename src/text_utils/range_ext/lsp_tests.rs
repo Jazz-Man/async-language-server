@@ -3,7 +3,7 @@ use crate::text_utils::RangeError;
 
 use super::RangeExt;
 
-const T: &str = ""; // LSP range & position do not need text information
+const TEXT: &str = ""; // LSP range & position do not need text information
 const LF: char = '\n';
 const D1: char = '/';
 const D2: char = '@';
@@ -13,7 +13,7 @@ const D2: char = '@';
 #[test]
 fn basic_split_at() {
     let (left, right) = line_range(line_position(0, 0), line_position(0, 10))
-        .split_at(T, line_position(0, 5))
+        .split_at(TEXT, line_position(0, 5))
         .expect("valid range");
     assert_eq!(left, line_range(line_position(0, 0), line_position(0, 5)));
     assert_eq!(right, line_range(line_position(0, 5), line_position(0, 10)));
@@ -22,7 +22,7 @@ fn basic_split_at() {
 #[test]
 fn basic_split_off_left() {
     let left = line_range(line_position(0, 0), line_position(0, 10))
-        .split_off_left(T, line_position(0, 3))
+        .split_off_left(TEXT, line_position(0, 3))
         .expect("valid range");
     assert_eq!(left, line_range(line_position(0, 0), line_position(0, 3)));
 }
@@ -30,7 +30,7 @@ fn basic_split_off_left() {
 #[test]
 fn basic_split_off_right() {
     let right = line_range(line_position(0, 0), line_position(0, 10))
-        .split_off_right(T, line_position(0, 7))
+        .split_off_right(TEXT, line_position(0, 7))
         .expect("valid range");
     assert_eq!(right, line_range(line_position(0, 7), line_position(0, 10)));
 }
@@ -46,11 +46,11 @@ fn basic_shrink() {
 #[test]
 fn basic_sub() {
     let sub_range = line_range(line_position(0, 0), line_position(0, 10))
-        .sub(T, line_position(0, 2), line_position(0, 8))
+        .sub(TEXT, line_position(0, 2), line_position(0, 8))
         .expect("valid range");
     assert_eq!(
         sub_range,
-        line_range(line_position(0, 2), line_position(0, 8))
+        line_range(line_position(0, 2), line_position(0, 8)),
     );
 }
 
@@ -61,11 +61,11 @@ fn basic_sub_delimited() {
         .expect("valid range");
     assert_eq!(
         left,
-        Some(line_range(line_position(0, 0), line_position(0, 3)))
+        Some(line_range(line_position(0, 0), line_position(0, 3))),
     );
     assert_eq!(
         right,
-        Some(line_range(line_position(0, 4), line_position(0, 7)))
+        Some(line_range(line_position(0, 4), line_position(0, 7))),
     );
 }
 
@@ -78,15 +78,15 @@ fn basic_sub_delimited_tri() {
         .expect("valid range");
     assert_eq!(
         first,
-        Some(line_range(line_position(0, 0), line_position(0, 3)))
+        Some(line_range(line_position(0, 0), line_position(0, 3))),
     );
     assert_eq!(
         second,
-        Some(line_range(line_position(0, 4), line_position(0, 7)))
+        Some(line_range(line_position(0, 4), line_position(0, 7))),
     );
     assert_eq!(
         third,
-        Some(line_range(line_position(0, 8), line_position(0, 13)))
+        Some(line_range(line_position(0, 8), line_position(0, 13))),
     );
 }
 
@@ -95,25 +95,25 @@ fn basic_sub_delimited_tri() {
 #[test]
 fn split_at_boundaries() {
     let (left, right) = line_range(line_position(1, 5), line_position(1, 15))
-        .split_at(T, line_position(0, 0))
+        .split_at(TEXT, line_position(0, 0))
         .expect("valid range");
     assert_eq!(left, line_range(line_position(1, 5), line_position(1, 5)));
     assert_eq!(right, line_range(line_position(1, 5), line_position(1, 15)));
 
     let (left, right) = line_range(line_position(1, 5), line_position(1, 15))
-        .split_at(T, line_position(0, 10))
+        .split_at(TEXT, line_position(0, 10))
         .expect("valid range");
     assert_eq!(left, line_range(line_position(1, 5), line_position(1, 15)));
     assert_eq!(
         right,
-        line_range(line_position(1, 15), line_position(1, 15))
+        line_range(line_position(1, 15), line_position(1, 15)),
     );
 }
 
 #[test]
 fn split_at_multiline() {
     let (left, right) = line_range(line_position(0, 0), line_position(2, 5))
-        .split_at(T, line_position(1, 3))
+        .split_at(TEXT, line_position(1, 3))
         .expect("valid range");
     assert_eq!(left, line_range(line_position(0, 0), line_position(1, 3)));
     assert_eq!(right, line_range(line_position(1, 3), line_position(2, 5)));
@@ -122,22 +122,22 @@ fn split_at_multiline() {
 #[test]
 fn sub_empty_range() {
     let sub_range = line_range(line_position(1, 5), line_position(1, 15))
-        .sub(T, line_position(0, 3), line_position(0, 3))
+        .sub(TEXT, line_position(0, 3), line_position(0, 3))
         .expect("valid range");
     assert_eq!(
         sub_range,
-        line_range(line_position(1, 8), line_position(1, 8))
+        line_range(line_position(1, 8), line_position(1, 8)),
     );
 }
 
 #[test]
 fn sub_multiline() {
     let sub_range = line_range(line_position(0, 0), line_position(2, 10))
-        .sub(T, line_position(0, 5), line_position(1, 3))
+        .sub(TEXT, line_position(0, 5), line_position(1, 3))
         .expect("valid range");
     assert_eq!(
         sub_range,
-        line_range(line_position(0, 5), line_position(1, 3))
+        line_range(line_position(0, 5), line_position(1, 3)),
     );
 }
 
@@ -149,7 +149,7 @@ fn sub_delimited_delimiter_at_start() {
     assert_eq!(left, None);
     assert_eq!(
         right,
-        Some(line_range(line_position(0, 1), line_position(0, 4)))
+        Some(line_range(line_position(0, 1), line_position(0, 4))),
     );
 }
 
@@ -160,7 +160,7 @@ fn sub_delimited_delimiter_at_end() {
         .expect("valid range");
     assert_eq!(
         left,
-        Some(line_range(line_position(0, 0), line_position(0, 3)))
+        Some(line_range(line_position(0, 0), line_position(0, 3))),
     );
     assert_eq!(right, None);
 }
@@ -172,7 +172,7 @@ fn sub_delimited_no_delimiter() {
         .expect("valid range");
     assert_eq!(
         left,
-        Some(line_range(line_position(0, 0), line_position(0, 3)))
+        Some(line_range(line_position(0, 0), line_position(0, 3))),
     );
     assert_eq!(right, None);
 }
@@ -180,7 +180,7 @@ fn sub_delimited_no_delimiter() {
 #[test]
 fn sub_delimited_empty_text() {
     let (left, right) = line_range(line_position(0, 0), line_position(0, 0))
-        .sub_delimited(T, D1)
+        .sub_delimited(TEXT, D1)
         .expect("valid range");
     assert_eq!(left, None);
     assert_eq!(right, None);
@@ -193,11 +193,11 @@ fn sub_delimited_multiline() {
         .expect("valid range");
     assert_eq!(
         left,
-        Some(line_range(line_position(0, 0), line_position(0, 3)))
+        Some(line_range(line_position(0, 0), line_position(0, 3))),
     );
     assert_eq!(
         right,
-        Some(line_range(line_position(1, 0), line_position(1, 3)))
+        Some(line_range(line_position(1, 0), line_position(1, 3))),
     );
 }
 
@@ -208,11 +208,11 @@ fn sub_delimited_tri_partial() {
         .expect("valid range");
     assert_eq!(
         first,
-        Some(line_range(line_position(0, 0), line_position(0, 3)))
+        Some(line_range(line_position(0, 0), line_position(0, 3))),
     );
     assert_eq!(
         second,
-        Some(line_range(line_position(0, 4), line_position(0, 7)))
+        Some(line_range(line_position(0, 4), line_position(0, 7))),
     );
     assert_eq!(third, None);
 }
@@ -224,7 +224,7 @@ fn sub_delimited_tri_no_delimiters() {
         .expect("valid range");
     assert_eq!(
         first,
-        Some(line_range(line_position(0, 0), line_position(0, 3)))
+        Some(line_range(line_position(0, 0), line_position(0, 3))),
     );
     assert_eq!(second, None);
     assert_eq!(third, None);
@@ -237,15 +237,15 @@ fn sub_delimited_tri_multiline() {
         .expect("valid range");
     assert_eq!(
         first,
-        Some(line_range(line_position(0, 0), line_position(0, 3)))
+        Some(line_range(line_position(0, 0), line_position(0, 3))),
     );
     assert_eq!(
         second,
-        Some(line_range(line_position(1, 0), line_position(2, 0)))
+        Some(line_range(line_position(1, 0), line_position(2, 0))),
     );
     assert_eq!(
         third,
-        Some(line_range(line_position(2, 1), line_position(2, 3)))
+        Some(line_range(line_position(2, 1), line_position(2, 3))),
     );
 }
 
@@ -256,15 +256,15 @@ fn split_off_boundaries() {
     let range = line_range(line_position(1, 5), line_position(1, 15));
     assert_eq!(
         range
-            .split_off_left(T, line_position(0, 0))
+            .split_off_left(TEXT, line_position(0, 0))
             .expect("valid range"),
-        line_range(line_position(1, 5), line_position(1, 5))
+        line_range(line_position(1, 5), line_position(1, 5)),
     );
     assert_eq!(
         range
-            .split_off_right(T, line_position(0, 10))
+            .split_off_right(TEXT, line_position(0, 10))
             .expect("valid range"),
-        line_range(line_position(1, 15), line_position(1, 15))
+        line_range(line_position(1, 15), line_position(1, 15)),
     );
 }
 
@@ -272,15 +272,15 @@ fn split_off_boundaries() {
 fn out_of_range_positions_return_position_out_of_range() {
     assert_eq!(
         line_range(line_position(0, 0), line_position(0, 10))
-            .split_at(T, line_position(0, 11))
+            .split_at(TEXT, line_position(0, 11))
             .unwrap_err(),
-        RangeError::PositionOutOfRange
+        RangeError::PositionOutOfRange,
     );
     assert_eq!(
         line_range(line_position(0, 0), line_position(0, 10))
-            .sub(T, line_position(0, 3), line_position(0, 11))
+            .sub(TEXT, line_position(0, 3), line_position(0, 11))
             .unwrap_err(),
-        RangeError::PositionOutOfRange
+        RangeError::PositionOutOfRange,
     );
 }
 
@@ -288,9 +288,9 @@ fn out_of_range_positions_return_position_out_of_range() {
 fn reversed_sub_positions_return_start_after_end() {
     assert_eq!(
         line_range(line_position(0, 0), line_position(0, 10))
-            .sub(T, line_position(0, 7), line_position(0, 3))
+            .sub(TEXT, line_position(0, 7), line_position(0, 3))
             .unwrap_err(),
-        RangeError::StartAfterEnd
+        RangeError::StartAfterEnd,
     );
 }
 
@@ -300,7 +300,7 @@ fn multi_byte_delimiters_return_delimiter_not_single_byte() {
         line_range(line_position(0, 0), line_position(0, 7))
             .sub_delimited("one—two", '—')
             .unwrap_err(),
-        RangeError::DelimiterNotSingleByte { delimiter: '—' }
+        RangeError::DelimiterNotSingleByte { delimiter: '—' },
     );
 }
 
@@ -309,6 +309,6 @@ fn shrink_requires_a_single_line_range() {
     let multiline = line_range(line_position(0, 0), line_position(1, 0)); // spans "a\nb"
     assert_eq!(
         multiline.shrink(1, 1).unwrap_err(),
-        RangeError::NotSingleLine
+        RangeError::NotSingleLine,
     );
 }

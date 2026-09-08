@@ -9,10 +9,8 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{
-    Expr, Ident, ItemStruct, Path, Token, Type, parenthesized,
-    parse::{Parse, ParseStream},
-};
+use syn::parse::{Parse, ParseStream};
+use syn::{Expr, Ident, ItemStruct, Path, Token, Type, parenthesized};
 
 /// Parsed attribute content for one request.
 struct RequestSpec {
@@ -410,7 +408,7 @@ mod tests {
         let expr = syn::parse2(quote! { a.b.c }).expect("parses");
         assert_eq!(
             field_path(&expr).expect("path"),
-            ["a", "b", "c"].map(|s| syn::Ident::new(s, proc_macro2::Span::call_site()))
+            ["a", "b", "c"].map(|s| syn::Ident::new(s, proc_macro2::Span::call_site())),
         );
     }
 

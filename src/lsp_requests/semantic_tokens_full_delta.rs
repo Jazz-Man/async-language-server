@@ -8,18 +8,15 @@ pub(crate) struct SemanticTokensFullDeltaRequest;
 
 #[cfg(test)]
 mod tests {
-    use async_lsp::{
-        ClientSocket,
-        lsp_types::{
-            SemanticTokens, SemanticTokensDelta, SemanticTokensEdit, SemanticTokensFullDeltaResult,
-            SemanticTokensResult, Url,
-        },
-    };
-
     use crate::lsp_requests::{Request, SemanticTokensFullDeltaRequest, SemanticTokensFullRequest};
     use crate::server::{ServerOptions, ServerState};
     use crate::testing::{TestServer, open_document, token, url};
     use crate::text_utils::Encoding;
+    use async_lsp::ClientSocket;
+    use async_lsp::lsp_types::{
+        SemanticTokens, SemanticTokensDelta, SemanticTokensEdit, SemanticTokensFullDeltaResult,
+        SemanticTokensResult, Url,
+    };
 
     /// The two-line multibyte fixture: line 0 = "🙂abc" (the emoji spans
     /// bytes 0..4), line 1 = "x🙂z" ("z" sits at document byte 5, UTF-16

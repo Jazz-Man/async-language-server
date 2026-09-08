@@ -7,18 +7,18 @@ use std::collections::VecDeque;
 
 // lsp_types::Position/Range — aliased against the crate's own Position (below) and tree-sitter's Range (next line).
 use async_lsp::lsp_types::{Position as LspPosition, Range as LspRange};
-// tree_sitter::Point/Range — aliased against lsp_types' Range; Point follows the same Ts… convention.
+// tree_sitter::Point/Range — aliased against lsp_types' Range; Point follows the same Ts... convention.
 use tree_sitter::{Node, Point as TsPoint, Range as TsRange};
 
 pub use crate::error::QueryError;
 
 use crate::text_utils::Position;
 
-/// Converts a tree sitter `Point` to an LSP `Position`.
+/// Converts a tree sitter `Point` to an LSP [`Position`](LspPosition).
 ///
 /// # LSP Compatibility
 ///
-/// This function assumes that the returned LSP `Position` is one that will
+/// This function assumes that the returned LSP [`Position`](LspPosition) is one that will
 /// be used with this language server, using UTF-8 encoding specifically.
 #[must_use]
 pub fn ts_point_to_lsp_position(pos: TsPoint) -> LspPosition {
@@ -43,14 +43,14 @@ pub fn ts_range_to_lsp_range(range: TsRange) -> LspRange {
 }
 
 /// Returns `true` if the given tree sitter `Range`
-/// contains the given LSP `Position`, otherwise `false`.
+/// contains the given LSP [`Position`](LspPosition), otherwise `false`.
 ///
 /// This is an **inclusive** bounds check, meaning the position is
 /// considered *inside* even if it lies on a line or column boundary
 ///
 /// # LSP Compatibility
 ///
-/// This function assumes that the given LSP `Position` is one returned
+/// This function assumes that the given LSP [`Position`](LspPosition) is one returned
 /// by this language server, using UTF-8 encoding specifically. Using
 /// any other encoding **will** return an invalid result here.
 #[must_use]
@@ -72,11 +72,11 @@ pub const fn ts_range_contains_ts_point(range: TsRange, point: TsPoint) -> bool 
             || point.row == range.end_point.row && point.column <= range.end_point.column)
 }
 
-/// Converts an LSP `Position` to a tree sitter `Point`.
+/// Converts an LSP [`Position`](LspPosition) to a tree sitter `Point`.
 ///
 /// # LSP Compatibility
 ///
-/// This function assumes that the given LSP `Position` is one returned
+/// This function assumes that the given LSP [`Position`](LspPosition) is one returned
 /// by this language server, using UTF-8 encoding specifically. Using
 /// any other encoding **will** return an invalid result here.
 #[must_use]

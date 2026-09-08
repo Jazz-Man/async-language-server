@@ -8,14 +8,6 @@
 //! configurations). The group pins a 10 s measurement time in code, so
 //! `--measurement-time` on the command line will not change it.
 
-use std::{
-    io::Write as _,
-    num::NonZeroUsize,
-    path::{Path, PathBuf},
-    sync::atomic::{AtomicUsize, Ordering},
-    time::Duration,
-};
-
 use async_language_server::lsp_types::{
     DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
     FullDocumentDiagnosticReport, RelatedFullDocumentDiagnosticReport,
@@ -25,6 +17,11 @@ use async_language_server::server::{
     DocumentMatcher, Server, ServerOptions, ServerResult, ServerState,
 };
 use criterion::{Criterion, criterion_group, criterion_main};
+use std::io::Write as _;
+use std::num::NonZeroUsize;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 use tokio::runtime::Runtime;
 
 /// Documents in the synthetic workspace.
@@ -129,7 +126,7 @@ fn note(message: &str) {
     let _ = writeln!(std::io::stderr(), "oneshot_diagnostics: {message}");
 }
 
-fn bench_oneshot(c: &mut Criterion) {
+fn bench_oneshot(criterion: &mut Criterion) {
     let root = match make_workspace(FILES) {
         Ok(root) => root,
         Err(error) => {
@@ -156,7 +153,7 @@ fn bench_oneshot(c: &mut Criterion) {
         Ok(report) => {
             note(&format!(
                 "skipping: probe saw {} of {FILES} documents - matcher and workspace disagree",
-                report.documents.len()
+                report.documents.len(),
             ));
             remove_workspace(&root);
             return;
@@ -169,10 +166,10 @@ fn bench_oneshot(c: &mut Criterion) {
     }
 
     let failures = AtomicUsize::new(0);
-    let mut group = c.benchmark_group("oneshot_diagnostics");
+    let mut group = criterion.benchmark_group("oneshot_diagnostics");
     group.measurement_time(Duration::from_secs(10));
-    group.bench_function("parallel", |b| {
-        b.iter(|| {
+    group.bench_function("parallel", |bench| {
+        bench.iter(|| {
             let outcome = runtime.block_on(workspace_diagnostics(
                 BurnServer,
                 WorkspaceDiagnosticConfig::new(&root),
@@ -188,7 +185,7 @@ fn bench_oneshot(c: &mut Criterion) {
     let failed = failures.load(Ordering::Relaxed);
     if failed > 0 {
         note(&format!(
-            "{failed} measured iterations failed - ignore the numbers above"
+            "{failed} measured iterations failed - ignore the numbers above",
         ));
     }
 

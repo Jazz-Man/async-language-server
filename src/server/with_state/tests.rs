@@ -1,39 +1,33 @@
-use std::{
-    collections::HashMap,
-    fs,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
-
-use async_lsp::{
-    ClientSocket, ErrorCode, LanguageServer,
-    lsp_types::{
-        ClientCapabilities, CodeLens, CompletionItem, CompletionTextEdit, CreateFilesParams,
-        DeleteFilesParams, DiagnosticOptions, DiagnosticServerCapabilities,
-        DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-        DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-        DidSaveTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
-        DocumentDiagnosticReportKind, DocumentDiagnosticReportResult, DocumentLink, FileChangeType,
-        FileCreate, FileDelete, FileEvent, FileRename, FullDocumentDiagnosticReport,
-        GeneralClientCapabilities, Hover, HoverContents, HoverParams, InitializeParams, InlayHint,
-        InlayHintLabel, InlayHintLabelPart, Location, MarkupContent, MarkupKind, NumberOrString,
-        OneOf, PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
-        RelatedFullDocumentDiagnosticReport, RenameFilesParams, ServerCapabilities, SymbolKind,
-        TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-        TextDocumentPositionParams, TextDocumentSaveReason, TextEdit, Url,
-        VersionedTextDocumentIdentifier, WillSaveTextDocumentParams, WorkDoneProgressCancelParams,
-        WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
-        WorkspaceDocumentDiagnosticReport, WorkspaceEdit, WorkspaceFoldersChangeEvent,
-        WorkspaceLocation, WorkspaceSymbol, WorkspaceSymbolParams, WorkspaceSymbolResponse,
-    },
-};
-
 use crate::server::{
     DocumentMatcher, LanguageServerWithState, Server, ServerOptions, ServerResult, ServerState,
     WorkspaceDiagnostics,
 };
 use crate::testing::{diagnostic, line_position, same_line, temp_workspace, url, workspace_folder};
 use crate::text_utils::Encoding;
+use async_lsp::lsp_types::{
+    ClientCapabilities, CodeLens, CompletionItem, CompletionTextEdit, CreateFilesParams,
+    DeleteFilesParams, DiagnosticOptions, DiagnosticServerCapabilities,
+    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+    DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportKind, DocumentDiagnosticReportResult, DocumentLink, FileChangeType,
+    FileCreate, FileDelete, FileEvent, FileRename, FullDocumentDiagnosticReport,
+    GeneralClientCapabilities, Hover, HoverContents, HoverParams, InitializeParams, InlayHint,
+    InlayHintLabel, InlayHintLabelPart, Location, MarkupContent, MarkupKind, NumberOrString, OneOf,
+    PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
+    RelatedFullDocumentDiagnosticReport, RenameFilesParams, ServerCapabilities, SymbolKind,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    TextDocumentPositionParams, TextDocumentSaveReason, TextEdit, Url,
+    VersionedTextDocumentIdentifier, WillSaveTextDocumentParams, WorkDoneProgressCancelParams,
+    WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
+    WorkspaceDocumentDiagnosticReport, WorkspaceEdit, WorkspaceFoldersChangeEvent,
+    WorkspaceLocation, WorkspaceSymbol, WorkspaceSymbolParams, WorkspaceSymbolResponse,
+};
+use async_lsp::{ClientSocket, ErrorCode, LanguageServer};
+use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 struct TestServer;
 
@@ -715,7 +709,7 @@ fn initialize_ignores_unknown_client_encodings() {
 
     assert_eq!(
         init_result.capabilities.position_encoding,
-        Some(PositionEncodingKind::UTF16)
+        Some(PositionEncodingKind::UTF16),
     );
 
     // A client that offers only unknown encodings falls back to the
@@ -733,7 +727,7 @@ fn initialize_ignores_unknown_client_encodings() {
 
     assert_eq!(
         init_result.capabilities.position_encoding,
-        Some(PositionEncodingKind::UTF16)
+        Some(PositionEncodingKind::UTF16),
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
@@ -758,7 +752,7 @@ fn initialize_prefers_utf8_when_the_client_offers_it() {
 
     assert_eq!(
         init_result.capabilities.position_encoding,
-        Some(PositionEncodingKind::UTF8)
+        Some(PositionEncodingKind::UTF8),
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
@@ -783,7 +777,7 @@ fn initialize_prefers_utf32_over_utf16() {
 
     assert_eq!(
         init_result.capabilities.position_encoding,
-        Some(PositionEncodingKind::UTF32)
+        Some(PositionEncodingKind::UTF32),
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
@@ -847,7 +841,7 @@ async fn configurable_workspace_diagnostics_can_be_toggled() {
     };
     assert_eq!(
         report.full_document_diagnostic_report.items[0].message,
-        "disk"
+        "disk",
     );
 
     let _ = server.did_change_configuration(DidChangeConfigurationParams {
@@ -903,7 +897,7 @@ async fn configurable_workspace_diagnostics_read_initialization_options() {
     };
     assert_eq!(
         report.full_document_diagnostic_report.items[0].message,
-        "disk"
+        "disk",
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
@@ -932,7 +926,7 @@ async fn workspace_diagnostics_report_unopened_documents_without_versions() {
     assert_eq!(report.version, None);
     assert_eq!(
         report.full_document_diagnostic_report.items[0].message,
-        "disk"
+        "disk",
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
@@ -966,7 +960,7 @@ fn workspace_diagnostics_use_open_document_versions() {
     assert_eq!(report.version, Some(3));
     assert_eq!(
         report.full_document_diagnostic_report.items[0].message,
-        "open"
+        "open",
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
@@ -1004,7 +998,7 @@ async fn workspace_diagnostics_forward_previous_result_ids() {
     };
     assert_eq!(
         report.full_document_diagnostic_report.items[0].message,
-        "test:cached"
+        "test:cached",
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
@@ -1039,7 +1033,7 @@ async fn workspace_folder_changes_are_used_by_workspace_diagnostics() {
     };
     assert_eq!(
         report.full_document_diagnostic_report.items[0].message,
-        "second"
+        "second",
     );
 
     fs::remove_dir_all(first).expect("temp workspace can be removed");
@@ -1356,7 +1350,7 @@ fn url_less_response_converts_against_sole_document() {
     // outgoing hook, converting against the sole tracked document.
     assert_eq!(
         drive_will_create_files(&[("edit.txt", "🙂abc")]),
-        same_line(0, 2, 2)
+        same_line(0, 2, 2),
     );
 }
 
@@ -1369,7 +1363,7 @@ fn url_less_passes_through_without_sole_document() {
     // returned in the handler's UTF-8 columns, unconverted.
     assert_eq!(
         drive_will_create_files(&[("a.txt", "🙂abc"), ("b.txt", "🙂🙂")]),
-        same_line(0, 4, 4)
+        same_line(0, 4, 4),
     );
 }
 
@@ -1443,7 +1437,7 @@ fn untracked_url_converts_against_disk() {
     // Params side: the handler saw the disk text's UTF-8 byte column...
     assert_eq!(
         *received.lock().expect("capture mutex"),
-        Some(line_position(0, 4))
+        Some(line_position(0, 4)),
     );
     // ...and the response came back in the client's UTF-16 columns.
     let hover = hover.expect("hover present");
@@ -1487,7 +1481,7 @@ async fn notification_hooks_run_after_the_internal_handlers() {
             .document(&watched_url)
             .expect("watched document is tracked")
             .text_contents(),
-        "before"
+        "before",
     );
 
     // Mutate between the snapshot and the event: the hook must see the
@@ -1510,12 +1504,12 @@ async fn notification_hooks_run_after_the_internal_handlers() {
             "work_done_progress_cancel",
             "did_change_configuration",
             "did_change_workspace_folders",
-        ]
+        ],
     );
     assert_eq!(
         *watched_text.lock().expect("hook record mutex"),
         Some("after".into()),
-        "the watched-files hook observes the already-refreshed document"
+        "the watched-files hook observes the already-refreshed document",
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");

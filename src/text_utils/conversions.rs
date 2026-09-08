@@ -1,6 +1,6 @@
+use super::encoding::Encoding;
+use super::position::Position;
 use ropey::Rope;
-
-use super::{encoding::Encoding, position::Position};
 
 /// Converts a position from using one encoding to another.
 ///

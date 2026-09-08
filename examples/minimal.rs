@@ -59,7 +59,7 @@ impl Server for LongLineServer {
                         ),
                     ),
                     message: format!(
-                        "line is {length} bytes long, over the {MAX_LINE_BYTES}-byte limit"
+                        "line is {length} bytes long, over the {MAX_LINE_BYTES}-byte limit",
                     ),
                     ..Diagnostic::default()
                 });

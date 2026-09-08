@@ -1,14 +1,13 @@
-use async_lsp::{
-    client_monitor::ClientProcessMonitorLayer, concurrency::ConcurrencyLayer,
-    panic::CatchUnwindLayer, router::Router, server::LifecycleLayer, tracing::TracingLayer,
-};
+use crate::error::ServerResult;
+use crate::server::{LanguageServerWithState, Server};
+use async_lsp::client_monitor::ClientProcessMonitorLayer;
+use async_lsp::concurrency::ConcurrencyLayer;
+use async_lsp::panic::CatchUnwindLayer;
+use async_lsp::router::Router;
+use async_lsp::server::LifecycleLayer;
+use async_lsp::tracing::TracingLayer;
 use futures::{AsyncRead, AsyncWrite};
 use tower::ServiceBuilder;
-
-use crate::{
-    error::ServerResult,
-    server::{LanguageServerWithState, Server},
-};
 
 /// Serves a language server over the process standard input and output.
 ///

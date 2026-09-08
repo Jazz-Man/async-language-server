@@ -77,7 +77,7 @@ impl Server for LongLineServer {
                         ),
                     ),
                     message: format!(
-                        "line is {length} bytes long, over the {MAX_LINE_BYTES}-byte limit"
+                        "line is {length} bytes long, over the {MAX_LINE_BYTES}-byte limit",
                     ),
                     ..Diagnostic::default()
                 });
@@ -128,7 +128,7 @@ async fn main() -> ServerResult<()> {
     let _ = writeln!(
         out,
         "{found} diagnostics in {} files",
-        report.documents.len()
+        report.documents.len(),
     );
 
     if found > 0 {

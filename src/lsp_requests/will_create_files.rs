@@ -40,7 +40,7 @@ mod tests {
         // Keyed at the emoji document: UTF-8 byte 4 converts to client 2.
         assert_eq!(
             edits.values().next().expect("one file")[0].range,
-            same_line(0, 2, 2)
+            same_line(0, 2, 2),
         );
     }
 }

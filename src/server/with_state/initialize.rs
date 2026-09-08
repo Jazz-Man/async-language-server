@@ -1,17 +1,13 @@
-use async_lsp::{
-    ResponseError, Result,
-    lsp_types::{
-        InitializeParams, InitializeResult, SaveOptions, TextDocumentSyncCapability,
-        TextDocumentSyncKind, TextDocumentSyncOptions, TextDocumentSyncSaveOptions,
-        WorkspaceFolder,
-    },
+use super::{LanguageServerWithState, POSITION_ENCODING_PREFERRED_ORDER};
+use crate::server::Server;
+use crate::text_utils::Encoding;
+use async_lsp::lsp_types::{
+    InitializeParams, InitializeResult, SaveOptions, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextDocumentSyncOptions, TextDocumentSyncSaveOptions, WorkspaceFolder,
 };
+use async_lsp::{ResponseError, Result};
 use futures::future::BoxFuture;
 use tracing::info;
-
-use super::{LanguageServerWithState, POSITION_ENCODING_PREFERRED_ORDER};
-
-use crate::{server::Server, text_utils::Encoding};
 
 fn workspace_folders(params: &InitializeParams) -> Vec<WorkspaceFolder> {
     params.workspace_folders.clone().unwrap_or_default()
@@ -31,8 +27,8 @@ impl<T: Server + Send + Sync + 'static> LanguageServerWithState<T> {
             .capabilities
             .general
             .as_ref()
-            .and_then(|g| g.position_encodings.clone())
-            .filter(|e| !e.is_empty());
+            .and_then(|general| general.position_encodings.clone())
+            .filter(|encodings| !encodings.is_empty());
 
         // 2. Get server info & capabilities from the server implementor
         let mut result = InitializeResult {
@@ -97,7 +93,7 @@ impl<T: Server + Send + Sync + 'static> LanguageServerWithState<T> {
             lines.push(format!(
                 "{} workspace folder{}",
                 num_folders,
-                if num_folders == 1 { "" } else { "s" }
+                if num_folders == 1 { "" } else { "s" },
             ));
 
             // 6c. Position encoding
@@ -106,10 +102,8 @@ impl<T: Server + Send + Sync + 'static> LanguageServerWithState<T> {
                 negotiated_position_encoding.as_str().to_ascii_uppercase(),
             ));
 
-            info!(
-                "Client negotiation was successful\n- {}",
-                lines.join("\n- ")
-            );
+            let summary = lines.join("\n- ");
+            info!("Client negotiation was successful\n- {}", summary);
         }
 
         Box::pin(async move { Ok(result) })

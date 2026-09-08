@@ -14,7 +14,7 @@
 //! The byte- and tree-sitter `r()` helpers are deliberately not here: each
 //! flavor names its local range builder `r`, with types specific to that
 //! flavor — they are not (and need not be) the shared LSP fixtures
-//! (`line_position`, `line_range`, `same_line`).
+//! ([`line_position`], [`line_range`], [`same_line`]).
 //!
 //! The `conversion_tests!` macro — a procedural macro in the workspace
 //! `lsp_macros` crate, imported directly from there by test modules — is
@@ -23,22 +23,16 @@
 //! client assert). Rows pin the single-incoming-position shape; richer
 //! tests stay hand-written next to their `Request` impls.
 
-use std::{
-    fs,
-    path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
-};
-
-use async_lsp::{
-    ClientSocket,
-    lsp_types::{
-        Diagnostic, DidOpenTextDocumentParams, Position, Range, SemanticToken, TextDocumentItem,
-        Url, WorkspaceFolder,
-    },
-};
-
 use crate::server::{Server, ServerOptions, ServerState};
 use crate::text_utils::Encoding;
+use async_lsp::ClientSocket;
+use async_lsp::lsp_types::{
+    Diagnostic, DidOpenTextDocumentParams, Position, Range, SemanticToken, TextDocumentItem, Url,
+    WorkspaceFolder,
+};
+use std::fs;
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "tree-sitter")]
 use crate::server::DocumentMatcher;

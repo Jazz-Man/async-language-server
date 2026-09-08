@@ -1,7 +1,8 @@
-use std::{collections::HashMap, path::Path, sync::Arc};
-
 use async_lsp::lsp_types::Url;
 use globset::{Glob, GlobSet};
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Arc;
 
 #[cfg(feature = "tree-sitter")]
 use dashmap::DashMap;
@@ -176,7 +177,7 @@ impl DocumentMatchers {
                     tracing::warn!(
                         "Encountered invalid glob pattern '{}' in matcher '{}'",
                         glob,
-                        matcher.name
+                        matcher.name,
                     );
                 }
             }
@@ -212,7 +213,9 @@ impl DocumentMatchers {
     }
 
     pub(crate) fn find_url(&self, url: &Url) -> Option<Arc<DocumentMatcher>> {
-        url.to_file_path().ok().and_then(|p| self.find_path(&p))
+        url.to_file_path()
+            .ok()
+            .and_then(|path| self.find_path(&path))
     }
 
     pub(crate) fn find_path(&self, path: &Path) -> Option<Arc<DocumentMatcher>> {
@@ -225,11 +228,10 @@ impl DocumentMatchers {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path};
-
-    use async_lsp::lsp_types::Url;
-
     use super::{DocumentMatcher, DocumentMatchers};
+    use async_lsp::lsp_types::Url;
+    use std::fs;
+    use std::path::Path;
 
     #[test]
     fn find_matches_language_strings_case_insensitively() {
@@ -318,7 +320,7 @@ mod tests {
             .expect("query compiles");
         assert!(
             !Arc::ptr_eq(&first, &other),
-            "distinct sources compile apart"
+            "distinct sources compile apart",
         );
 
         assert!(matches!(
@@ -344,7 +346,7 @@ mod tests {
         assert_eq!(
             DocumentMatcher::new("bare").lang_grammar(),
             None,
-            "a bare matcher carries no grammar"
+            "a bare matcher carries no grammar",
         );
     }
 }

@@ -1,13 +1,11 @@
-use std::{ops::ControlFlow, sync::Arc};
-
-use async_lsp::{
-    Result,
-    lsp_types::{
-        DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-        DidSaveTextDocumentParams, FileChangeType, FileDelete, FileEvent, FileRename, Range, Url,
-    },
+use async_lsp::Result;
+use async_lsp::lsp_types::{
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, FileChangeType, FileDelete, FileEvent, FileRename, Range, Url,
 };
 use ropey::Rope;
+use std::ops::ControlFlow;
+use std::sync::Arc;
 
 #[cfg(feature = "tree-sitter")]
 use async_lsp::lsp_types::TextDocumentContentChangeEvent;
@@ -17,11 +15,8 @@ use tree_sitter::{InputEdit, Language, Parser, Point, Tree};
 
 use super::workspace::url_is_in_roots;
 use super::{DocumentEntry, DocumentOrigin, ServerState};
-
-use crate::{
-    documents::Document,
-    text_utils::{Encoding, position_to_encoding},
-};
+use crate::documents::Document;
+use crate::text_utils::{Encoding, position_to_encoding};
 
 impl ServerState {
     pub(super) fn insert_document(
@@ -263,7 +258,7 @@ impl ServerState {
             // considers it open, and handlers keep resolving it.
             tracing::warn!(
                 "did_change: incremental update failed and '{}' could not be re-read; keeping last-known text",
-                uri
+                uri,
             );
 
             // The kept tree may already carry `tree.edit()` calls for
@@ -391,7 +386,7 @@ impl ServerState {
                 // dropping one that handlers may still be resolving.
                 tracing::warn!(
                     "did_change_watched_files: '{}' could not be re-read; keeping last-known snapshot",
-                    event.uri
+                    event.uri,
                 );
             }
         }

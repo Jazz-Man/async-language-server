@@ -1,17 +1,12 @@
-use std::{path::PathBuf, sync::Arc};
-
-use async_lsp::{
-    ClientSocket,
-    lsp_types::{SemanticToken, Url},
-};
+use crate::documents::{Document, DocumentMatchers};
+use crate::server::{Server, ServerOptions};
+use crate::text_utils::Encoding;
+use crate::workspace::WorkspaceDiagnosticsState;
+use async_lsp::ClientSocket;
+use async_lsp::lsp_types::{SemanticToken, Url};
 use dashmap::DashMap;
-
-use crate::{
-    documents::{Document, DocumentMatchers},
-    server::{Server, ServerOptions},
-    text_utils::Encoding,
-    workspace::WorkspaceDiagnosticsState,
-};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 mod documents;
 mod workspace;

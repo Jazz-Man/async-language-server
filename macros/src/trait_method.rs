@@ -110,7 +110,7 @@ mod tests {
             for needle in needles {
                 assert!(
                     text.contains(needle),
-                    "case {i}: {needle:?} missing from {text}"
+                    "case {i}: {needle:?} missing from {text}",
                 );
             }
         }
@@ -148,7 +148,7 @@ mod tests {
             let err = expand(parse(decl), kind).expect_err("input rejected");
             assert!(
                 err.to_string().contains(needle),
-                "case {i}: {needle:?} missing from {err}"
+                "case {i}: {needle:?} missing from {err}",
             );
         }
     }

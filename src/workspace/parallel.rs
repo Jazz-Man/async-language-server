@@ -41,11 +41,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, time::Duration};
-
-    use tokio::sync::{Semaphore, mpsc};
-
     use super::for_each_bounded;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio::sync::{Semaphore, mpsc};
 
     async fn ok(value: u32) -> Result<u32, &'static str> {
         tokio::task::yield_now().await;
@@ -91,7 +90,7 @@ mod tests {
             tokio::time::timeout(Duration::from_millis(250), entered_rx.recv())
                 .await
                 .is_err(),
-            "the third item must wait for a width slot"
+            "the third item must wait for a width slot",
         );
         permits.add_permits(1);
         permits.add_permits(10);

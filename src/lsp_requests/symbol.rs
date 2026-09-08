@@ -194,7 +194,7 @@ mod tests {
         assert_eq!(location.range, same_line(0, 2, 3));
         assert_eq!(
             symbols[1].location,
-            OneOf::Right(WorkspaceLocation { uri: emoji })
+            OneOf::Right(WorkspaceLocation { uri: emoji }),
         );
     }
 }

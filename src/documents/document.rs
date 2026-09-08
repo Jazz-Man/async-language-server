@@ -1,10 +1,7 @@
-use std::{
-    io::{Read, Result},
-    sync::Arc,
-};
-
 use async_lsp::lsp_types::Url;
 use ropey::Rope;
+use std::io::{Read, Result};
+use std::sync::Arc;
 
 #[cfg(feature = "tree-sitter")]
 use async_lsp::lsp_types::{Position, Range};
@@ -12,11 +9,11 @@ use async_lsp::lsp_types::{Position, Range};
 use crate::server::DocumentMatcher;
 
 #[cfg(feature = "tree-sitter")]
-use crate::{
-    error::QueryError,
-    tree_sitter::{Language, Node, QueryCursor, StreamingIterator, TextProvider, Tree},
-    tree_sitter_utils::{lsp_position_to_ts_point, ts_range_to_lsp_range},
-};
+use crate::error::QueryError;
+#[cfg(feature = "tree-sitter")]
+use crate::tree_sitter::{Language, Node, QueryCursor, StreamingIterator, TextProvider, Tree};
+#[cfg(feature = "tree-sitter")]
+use crate::tree_sitter_utils::{lsp_position_to_ts_point, ts_range_to_lsp_range};
 
 /// A snapshot of a text document tracked by the language server.
 ///

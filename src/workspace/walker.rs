@@ -1,13 +1,10 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    sync::mpsc,
-};
-
+use crate::error::ServerError;
+use crate::server::ServerResult;
 use async_lsp::lsp_types::Url;
 use ignore::{WalkBuilder, WalkState};
-
-use crate::{error::ServerError, server::ServerResult};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 
 #[derive(Debug, Clone)]
 pub(crate) struct WorkspaceWalkConfig {
@@ -110,13 +107,10 @@ pub(crate) fn path_to_url(path: &Path) -> ServerResult<Url> {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs,
-        time::{SystemTime, UNIX_EPOCH},
-    };
-
     use super::{WorkspaceWalkConfig, WorkspaceWalker};
     use crate::testing::temp_workspace;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     // The walk's observable contract is the sorted `Vec`, identical for the
     // same tree no matter which order entries are delivered in: every file

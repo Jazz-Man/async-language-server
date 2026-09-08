@@ -203,13 +203,13 @@ mod tests {
                     },
                 },
             })),
-            Some(true)
+            Some(true),
         );
         assert_eq!(
             key.value(&serde_json::json!({
                 "test.workspaceDiagnostics.enabled": false,
             })),
-            Some(false)
+            Some(false),
         );
         assert_eq!(key.value(&serde_json::json!(true)), Some(true));
     }
@@ -224,7 +224,7 @@ mod tests {
                     "enabled": true,
                 },
             })),
-            Some(true)
+            Some(true),
         );
         assert_eq!(
             key.value(&serde_json::json!({
@@ -234,7 +234,7 @@ mod tests {
                     },
                 },
             })),
-            Some(false)
+            Some(false),
         );
     }
 
@@ -252,7 +252,7 @@ mod tests {
             narrowed
                 .with_diagnostics_parallelism(NonZeroUsize::new(1).expect("constant is nonzero"))
                 .diagnostics_parallelism(),
-            1
+            1,
         );
     }
 }

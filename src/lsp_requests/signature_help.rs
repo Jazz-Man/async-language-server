@@ -133,7 +133,7 @@ mod tests {
 
         assert_eq!(
             params.text_document_position_params.position,
-            line_position(0, 4)
+            line_position(0, 4),
         );
         let mut help = params
             .context

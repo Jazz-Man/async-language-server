@@ -1,17 +1,13 @@
-use std::{collections::HashSet, ops::ControlFlow, path::PathBuf, sync::Arc};
-
-use async_lsp::{
-    Result,
-    lsp_types::{DidChangeWorkspaceFoldersParams, Url, WorkspaceFolder},
-};
-
 use super::{DocumentOrigin, FileStamp, ServerState};
-
-use crate::{
-    error::ServerResult,
-    server::DocumentMatcher,
-    workspace::{WorkspaceWalkConfig, WorkspaceWalker, for_each_bounded, path_to_url},
-};
+use crate::error::ServerResult;
+use crate::server::DocumentMatcher;
+use crate::workspace::{WorkspaceWalkConfig, WorkspaceWalker, for_each_bounded, path_to_url};
+use async_lsp::Result;
+use async_lsp::lsp_types::{DidChangeWorkspaceFoldersParams, Url, WorkspaceFolder};
+use std::collections::HashSet;
+use std::ops::ControlFlow;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 impl ServerState {
     pub(crate) fn set_workspace_folders(&self, folders: impl IntoIterator<Item = WorkspaceFolder>) {

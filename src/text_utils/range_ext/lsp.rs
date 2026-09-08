@@ -1,4 +1,4 @@
-// lsp_types::Position/Range — the Lsp… half of the RangeExt family, mirrored by tree_sitter.rs's Ts… types.
+// lsp_types::Position/Range — the Lsp... half of the RangeExt family, mirrored by tree_sitter.rs's Ts... types.
 use async_lsp::lsp_types::{Position as LspPosition, Range as LspRange};
 
 use crate::error::RangeError;

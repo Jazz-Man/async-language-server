@@ -129,19 +129,19 @@ mod tests {
     fn try_from_lsp_returns_none_for_unknown_kinds() {
         assert_eq!(
             Encoding::try_from_lsp(&PositionEncodingKind::new("utf-7")),
-            None
+            None,
         );
         assert_eq!(
             Encoding::try_from_lsp(&PositionEncodingKind::UTF8),
-            Some(Encoding::UTF8)
+            Some(Encoding::UTF8),
         );
         assert_eq!(
             Encoding::try_from_lsp(&PositionEncodingKind::UTF16),
-            Some(Encoding::UTF16)
+            Some(Encoding::UTF16),
         );
         assert_eq!(
             Encoding::try_from_lsp(&PositionEncodingKind::UTF32),
-            Some(Encoding::UTF32)
+            Some(Encoding::UTF32),
         );
     }
 }
