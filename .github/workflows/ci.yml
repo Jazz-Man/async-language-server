@@ -29,6 +29,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      - name: Configure Rust Cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/git/checkouts/
+            ~/.dylint_drivers/
+            ~/.rustup/toolchains/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          # restore-keys: |
+          #   ${{ runner.os }}-cargo-
+
       - name: Format
         run: cargo fmt --check
       - name: Clippy
