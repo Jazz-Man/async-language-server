@@ -1,7 +1,8 @@
-use super::ServerState;
+use super::{DocumentOrigin, ServerState};
 use crate::lsp_requests::{Request, SemanticTokensFullRequest};
 use crate::server::{DocumentMatcher, Server, ServerOptions, WorkspaceDiagnostics};
 use crate::testing::{open_document, temp_workspace, token, url, workspace_folder};
+use crate::text_utils::Encoding;
 use async_lsp::ClientSocket;
 use async_lsp::lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
@@ -802,4 +803,55 @@ async fn disabling_workspace_diagnostics_evicts_cached_semantic_tokens() {
     assert!(state.cached_semantic_tokens(&uri).is_none());
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+#[test]
+fn enabling_workspace_diagnostics_keeps_workspace_documents() {
+    let state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default().with_workspace_diagnostics(
+            WorkspaceDiagnostics::setting("test").with_default_enabled(false),
+        ),
+    );
+    let uri = url("enable-keeps.test");
+    state.insert_document(
+        &uri,
+        "disk".into(),
+        0,
+        "test".into(),
+        DocumentOrigin::Workspace,
+    );
+    assert!(
+        state.document(&uri).is_some(),
+        "workspace document is tracked",
+    );
+
+    assert!(
+        state.set_workspace_diagnostics_enabled(true),
+        "enabling is a change",
+    );
+    assert!(
+        state.document(&uri).is_some(),
+        "enabling keeps workspace documents",
+    );
+
+    assert!(
+        state.set_workspace_diagnostics_enabled(false),
+        "disabling is a change",
+    );
+    assert!(
+        state.document(&uri).is_none(),
+        "disabling purges workspace documents",
+    );
+}
+
+#[test]
+fn position_encoding_setter_updates_negotiated_state() {
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    assert_eq!(state.get_position_encoding(), Encoding::UTF16);
+    state.set_position_encoding(Encoding::UTF8);
+    assert_eq!(state.get_position_encoding(), Encoding::UTF8);
 }

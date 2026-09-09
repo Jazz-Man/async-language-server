@@ -221,3 +221,7 @@ reason = "TextRangeMismatch convention pins in bytes_tests.rs (sub_delimited, su
 [[ignore]]
 fingerprint = "59fae27ce2e23bed"
 reason = "single-assert out-of-range error pins in bytes_tests.rs (reversed sub positions -> StartAfterEnd; split_at beyond the range length on a non-zero-start range -> PositionOutOfRange): one error-contract row per method, each kills a distinct mutant, and the method, range, position, and error variant are each row's content"
+
+[[ignore]]
+fingerprint = "3ffa2d6b3cf079fc"
+reason = "Configurable workspace-diagnostics server_options fixtures across tiers (wire RefreshServer in server/tests/workspace_diagnostics.rs, wrapper ConfigurableServer in with_state/tests.rs): the default_enabled values are load-bearing and opposite — the wrapper toggle test starts disabled so didChangeConfiguration is the enabler, the wire staleness test starts enabled so the same-value push pins the no-change path; a shared fixture couples suites the per-module layout keeps apart (fe902b81118cdf76/aee8589448a8b248 precedents) and cannot vary server_capabilities, which is an associated fn without self; dropping the no-op with_default_enabled(true) chain only moves the collision to termination.rs's identical no-chain fixture (b784a964c3143666 family), and Enabled/Disabled variants cannot drive these tests because every pin reads setting().is_some() (8cc63e9a2c94ab30 family of per-suite options pins)"

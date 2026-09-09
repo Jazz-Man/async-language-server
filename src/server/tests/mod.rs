@@ -7,3 +7,4 @@ mod lifecycle;
 mod robustness;
 mod staleness;
 mod termination;
+mod workspace_diagnostics;

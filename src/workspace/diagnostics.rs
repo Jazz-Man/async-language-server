@@ -582,10 +582,11 @@ fn push_related_reports(
 #[cfg(test)]
 mod tests {
     use super::{
-        FullDocumentDiagnosticReport, Url, WorkspaceDocumentDiagnosticReport,
-        WorkspaceFullDocumentDiagnosticReport, WorkspaceReportSink,
-        WorkspaceUnchangedDocumentDiagnosticReport, push_workspace_report,
-        workspace_diagnostic_items,
+        ClientCapabilities, DiagnosticServerCapabilities, DocumentDiagnosticReportKind,
+        FullDocumentDiagnosticReport, HashMap, InitializeResult, Url, WorkspaceDiagnosticsState,
+        WorkspaceDocumentDiagnosticReport, WorkspaceFullDocumentDiagnosticReport,
+        WorkspaceReportSink, WorkspaceUnchangedDocumentDiagnosticReport, configure_capabilities,
+        push_related_reports, push_workspace_report, workspace_diagnostic_items,
     };
     use crate::error::ServerResult;
     use crate::server::{
@@ -594,9 +595,11 @@ mod tests {
     use crate::testing::{temp_workspace, workspace_folder};
     use async_lsp::ClientSocket;
     use async_lsp::lsp_types::{
-        DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-        PartialResultParams, RelatedFullDocumentDiagnosticReport,
-        UnchangedDocumentDiagnosticReport, WorkDoneProgressParams, WorkspaceDiagnosticParams,
+        DiagnosticOptions, DiagnosticWorkspaceClientCapabilities,
+        DidChangeConfigurationClientCapabilities, DocumentDiagnosticParams,
+        DocumentDiagnosticReport, DocumentDiagnosticReportResult, PartialResultParams,
+        RelatedFullDocumentDiagnosticReport, ServerCapabilities, UnchangedDocumentDiagnosticReport,
+        WorkDoneProgressParams, WorkspaceClientCapabilities, WorkspaceDiagnosticParams,
     };
     use std::fs;
     use std::num::NonZeroUsize;
@@ -816,5 +819,211 @@ mod tests {
             .expect("diagnostics succeed");
         assert_eq!(items.len(), 3);
         fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
+
+    struct PlainServer;
+
+    impl Server for PlainServer {}
+
+    struct ProviderServer;
+
+    impl Server for ProviderServer {
+        fn server_capabilities(_client: ClientCapabilities) -> Option<ServerCapabilities> {
+            Some(ServerCapabilities {
+                diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
+                    DiagnosticOptions {
+                        workspace_diagnostics: true,
+                        ..Default::default()
+                    },
+                )),
+                ..ServerCapabilities::default()
+            })
+        }
+    }
+
+    fn configurable_state() -> WorkspaceDiagnosticsState {
+        let options = ServerOptions::default()
+            .with_workspace_diagnostics(WorkspaceDiagnostics::setting("gated"));
+        WorkspaceDiagnosticsState::new(&options)
+    }
+
+    /// Stores the three client capability flags `configure` reads, the way
+    /// an initializing client advertises them.
+    fn configure_client_gates(
+        state: &WorkspaceDiagnosticsState,
+        configuration: bool,
+        dynamic: bool,
+        refresh: bool,
+    ) {
+        state.configure(
+            &InitializeResult::default(),
+            &ClientCapabilities {
+                workspace: Some(WorkspaceClientCapabilities {
+                    configuration: Some(configuration),
+                    did_change_configuration: Some(DidChangeConfigurationClientCapabilities {
+                        dynamic_registration: Some(dynamic),
+                    }),
+                    diagnostic: Some(DiagnosticWorkspaceClientCapabilities {
+                        refresh_support: Some(refresh),
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+    }
+
+    #[test]
+    fn request_configuration_requires_client_capability_and_setting() {
+        let state = configurable_state();
+
+        configure_client_gates(&state, false, false, false);
+        assert!(
+            !state.can_request_configuration(),
+            "no interrogation without the client's configuration support",
+        );
+
+        configure_client_gates(&state, true, false, false);
+        assert!(
+            state.can_request_configuration(),
+            "the capability plus a Configurable setting enables the request",
+        );
+    }
+
+    #[test]
+    fn register_configuration_requires_dynamic_registration_support() {
+        let state = configurable_state();
+
+        configure_client_gates(&state, false, true, false);
+        assert!(
+            state.can_register_configuration(),
+            "dynamic registration plus a Configurable setting enables the registration",
+        );
+    }
+
+    #[test]
+    fn refresh_gate_tracks_client_refresh_support() {
+        let state = configurable_state();
+
+        for (refresh_support, expected) in [(false, false), (true, true)] {
+            configure_client_gates(&state, false, false, refresh_support);
+            assert_eq!(
+                state.can_refresh(),
+                expected,
+                "refresh_support = {refresh_support} must gate the refresh request",
+            );
+        }
+    }
+
+    #[test]
+    fn next_generation_is_monotonic() {
+        let state = WorkspaceDiagnosticsState::new(&ServerOptions::default());
+
+        assert_eq!(state.next_generation(), 1);
+        assert_eq!(state.next_generation(), 2);
+    }
+
+    #[test]
+    fn stale_generation_drops_the_response() {
+        let state = WorkspaceDiagnosticsState::new(&ServerOptions::default());
+
+        let captured = state.next_generation();
+        assert_eq!(
+            state.current_generation(),
+            captured,
+            "a fresh reply's generation equals the current one",
+        );
+
+        let superseding = state.next_generation();
+        assert_ne!(
+            state.current_generation(),
+            captured,
+            "advancing the counter makes the captured generation stale",
+        );
+        assert_eq!(state.current_generation(), superseding);
+    }
+
+    #[test]
+    fn disabled_options_force_workspace_diagnostics_capability_off() {
+        let state = ServerState::with_options::<ProviderServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default().with_workspace_diagnostics(WorkspaceDiagnostics::disabled()),
+        );
+        let mut result = InitializeResult {
+            server_info: None,
+            capabilities: ProviderServer::server_capabilities(ClientCapabilities::default())
+                .expect("the provider server advertises capabilities"),
+        };
+
+        configure_capabilities(&state, &mut result, &ClientCapabilities::default());
+
+        let Some(DiagnosticServerCapabilities::Options(options)) =
+            result.capabilities.diagnostic_provider
+        else {
+            panic!("expected diagnostic options");
+        };
+        assert!(
+            !options.workspace_diagnostics,
+            "Disabled options must clear the advertised workspace diagnostics flag",
+        );
+    }
+
+    #[test]
+    fn related_reports_merge_with_replace_false() {
+        let state = ServerState::with_options::<PlainServer>(
+            ClientSocket::new_closed(),
+            &ServerOptions::default(),
+        );
+        let main_uri = crate::testing::url("file:///tmp/related-main.diag");
+        let other_uri = crate::testing::url("file:///tmp/related-other.diag");
+        let mut sink = WorkspaceReportSink::default();
+        push_workspace_report(
+            &mut sink,
+            WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {
+                version: None,
+                uri: main_uri.clone(),
+                full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                    result_id: Some("main".into()),
+                    items: Vec::new(),
+                },
+            }),
+            true,
+        );
+
+        let related_documents = HashMap::from([
+            (
+                main_uri.clone(),
+                DocumentDiagnosticReportKind::Full(FullDocumentDiagnosticReport {
+                    result_id: Some("related".into()),
+                    items: Vec::new(),
+                }),
+            ),
+            (
+                other_uri.clone(),
+                DocumentDiagnosticReportKind::Unchanged(UnchangedDocumentDiagnosticReport {
+                    result_id: "related-unchanged".into(),
+                }),
+            ),
+        ]);
+        push_related_reports(&state, Some(related_documents), &mut sink);
+
+        assert_eq!(sink.reports.len(), 2, "both related reports merged in");
+        for (report, replace) in &sink.reports {
+            match report {
+                WorkspaceDocumentDiagnosticReport::Full(full) => {
+                    assert_eq!(full.uri, main_uri);
+                    assert_eq!(
+                        full.full_document_diagnostic_report.result_id.as_deref(),
+                        Some("main"),
+                        "a related report must not replace a main-document report",
+                    );
+                    assert!(*replace, "the main report keeps its replace flag");
+                }
+                WorkspaceDocumentDiagnosticReport::Unchanged(unchanged) => {
+                    assert_eq!(unchanged.uri, other_uri);
+                    assert!(!*replace, "related reports merge with replace = false");
+                }
+            }
+        }
     }
 }
