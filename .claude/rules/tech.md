@@ -35,7 +35,7 @@ remain (`make help` is authoritative):
 
 - `make fmt` — `cargo fmt --check`
 - `make clippy` — `cargo clippy --workspace --all-targets -- -D warnings`
-- `make doc` — `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`
+- `make doc` — `RUSTDOCFLAGS="--enable-index-page -Zunstable-options -D warnings" cargo +nightly doc --workspace --no-deps` (nightly with the pages-job flags: the target mirrors the deployed docs, deliberately diverging from the checks job's stable `cargo doc` build)
 - `make test` — `cargo nextest run --workspace --all-features`, then `cargo test --doc --workspace --all-features`
 - `make test-no-default-features` — `cargo nextest run --workspace --no-default-features`, then `cargo test --doc --workspace --no-default-features`
 - `make dylint` — `cargo dylint --all -- --all-targets`
