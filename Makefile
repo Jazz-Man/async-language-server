@@ -32,7 +32,7 @@ clippy:
 
 ## doc: build docs, doc warnings are errors (gate)
 doc:
-	@RUSTDOCFLAGS="-D warnings" $(CARGO_BIN) doc --workspace --no-deps
+	@RUSTDOCFLAGS="--enable-index-page -Zunstable-options -D warnings" $(CARGO_BIN) +nightly doc --workspace --no-deps
 
 ## test: all-features leg — nextest binaries, then doctests (gate)
 test:

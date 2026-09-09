@@ -160,7 +160,7 @@ the wrapper converts them to LSP error responses.
   grammars.
 
 The dependency directions between these modules are enforced by arch-lint
-(`arch-lint.toml` scopes + `deny-scope-dep`, green in `cargo test`).
+(`arch-lint.toml` scopes + `deny-scope-dep`, green in `make test`).
 
 ---
 _Every change respects the layer split and the UTF-8 invariant: new LSP

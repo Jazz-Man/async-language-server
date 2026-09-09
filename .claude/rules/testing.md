@@ -91,7 +91,7 @@ instructions in the test's own comment.
 
 ## The duplication gate
 
-`cargo dupes check` is a gate, not a report: `dupes.toml` pins
+`make dupes` is a gate, not a report: `dupes.toml` pins
 `max_exact_duplicates = 0` and `max_near_duplicates = 0`, and tests sit
 inside the analysis (owner call: tests are code). There is no
 `exclude_tests` knob and none is to be added. Deliberate parallelism —
@@ -99,8 +99,7 @@ spec-matrix rows, mirror pairs — carries one
 reasoned entry per group in `.dupes-ignore.toml`; a NEW unignored group
 must fail the check, and thresholds are never loosened to hide one. The
 command runs on demand or periodically, outside the per-task battery
-(see `tech.md`). The criterion bench (`cargo bench --bench
-oneshot_diagnostics`) also runs on demand, outside the battery.
+(see `tech.md`). The criterion bench (`make bench`) also runs on demand, outside the battery.
 
 ## Adding a test for a new `Server` method
 
