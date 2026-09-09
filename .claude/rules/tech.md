@@ -64,7 +64,10 @@ entry per deliberate leftover — together they encode the invariants, so a
 non-ignored group means new duplication, not a threshold to loosen.
 Criterion benches run on demand (`make bench`),
 not in CI: they exist for measuring the batch diagnostics pipeline when
-working on it, not as a gate. Nothing heavy runs concurrently with
+working on it, not as a gate. Mutation testing runs on demand too
+(`make mutants`, with `FILE=src/foo.rs` scoping the sweep to one file):
+exit code 2 reports survivors — a diagnostic sweep, not a gate — and the
+battery never runs it. Nothing heavy runs concurrently with
 `make mutants`: its per-scenario timeout is auto-derived from the baseline
 run, and a competing build poisons it.
 

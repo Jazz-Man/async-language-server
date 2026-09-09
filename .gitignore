@@ -25,3 +25,6 @@
 
 !.cargo/*
 .cargo/credentials.toml
+
+# Local mutation-testing baseline snapshots (regenerable; scratch)
+/.superpowers/mutants-baseline-*/
