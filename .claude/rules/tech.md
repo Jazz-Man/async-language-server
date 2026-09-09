@@ -71,6 +71,19 @@ battery never runs it. Nothing heavy runs concurrently with
 `make mutants`: its per-scenario timeout is auto-derived from the baseline
 run, and a competing build poisons it.
 
+Miri runs on demand (`make miri`, one-time preparation via
+`make miri-setup`): the no-default-features leg, cross-interpreted for
+`x86_64-apple-darwin` because the aarch64 host trips ropey/str_indices NEON
+intrinsics Miri cannot execute — the default leg stays out of scope
+regardless, tree-sitter's FFI being uninterpretable. Its toolchain is the
+dated `MIRI_TOOLCHAIN` pin, upgraded deliberately like dylint's nightly.
+The arch-lint rules test is excluded from the sweep by name: its
+workspace-wide fs walk does not terminate under the interpreter (>1 h
+observed) — an infeasibility scoping, not a suppressed failure. Tests that
+spin a tokio runtime die on `can't call foreign function 'kqueue'` — an
+interpreter limitation, not a defect — so the sweep exits non-zero today;
+the rest is green or slow.
+
 ## Lints
 
 Lint levels live in `Cargo.toml`, not in source attributes:
