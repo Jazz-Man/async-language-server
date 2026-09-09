@@ -8,7 +8,7 @@ survivors as the final stage, "Type first, test second" reaffirmed, rust-skills 
 consultation mandatory per finding; completed cargo-mutants run (`mutants.out/` on the
 working tree, 2026-09-09); empirical Miri run (aarch64 macOS, 2026-09-09);
 `.claude/rules/{testing,tech,structure}.md`
-**Branch:** `develop` (owner decision 2026-09-09: all work lands on the current branch)
+**Branch:** `feature/nextest` (owner decision 2026-09-09: all work lands on the current branch)
 
 ## Goal
 
