@@ -30,7 +30,7 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Configure Rust Cache
+      - name: Configure Rust Cache PIng
         uses: actions/cache@v6
         with:
           path: |
