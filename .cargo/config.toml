@@ -1,3 +1,5 @@
 [env]
 # Uncomment to inspect exactly which config rust-analyzer applies on startup:
 RA_DISABLE_INCREMENTAL_SYNC = "0"
+
+MIRIFLAGS = "-Zmiri-backtrace=full -Zmiri-disable-isolation"
