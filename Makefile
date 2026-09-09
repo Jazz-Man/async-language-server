@@ -10,9 +10,14 @@ else
 CARGO_BIN := cargo
 endif
 
+# Toolchains (dated pins; upgrades are deliberate, never casual).
+MIRI_TOOLCHAIN ?= nightly-2026-09-08
+
+TARGET := x86_64-apple-darwin
+
 .DEFAULT_GOAL := help
 .PHONY: help fmt fmt-fix clippy doc test test-no-default-features dylint battery \
-        dupes bench mutants
+        dupes bench mutants miri miri-setup
 
 ## help: list available targets
 help:
@@ -62,3 +67,17 @@ bench:
 ## mutants: mutation-testing sweep (on demand, heavy; run it alone — a concurrent build poisons its auto-derived per-scenario timeout). Optional FILE=src/foo.rs scopes the sweep to one file. Exit code 2 means survivors were found: this is a diagnostic sweep, not a gate — the battery never runs it.
 mutants:
 	@$(CARGO_BIN) mutants $(if $(FILE),-f $(FILE))
+
+## miri: UB interpreter over the no-default-features leg, cross-interpreted for
+## x86_64 (the ropey/str_indices NEON path is not interpretable on an aarch64 host);
+## on demand, slow — never in the battery
+# architecture_rules_hold is excluded by name: its workspace-wide fs walk does
+# not terminate under the interpreter (observed >1h) — infeasible, not failing.
+miri:
+	@$(CARGO_BIN) +$(MIRI_TOOLCHAIN) miri nextest run --target $(TARGET) --no-default-features -E 'not(test(architecture_rules_hold))'
+
+## miri-setup: one-time toolchain preparation for make miri
+miri-setup:
+	@rustup component add miri --toolchain $(MIRI_TOOLCHAIN)
+	@rustup target add $(TARGET) --toolchain $(MIRI_TOOLCHAIN)
+	@$(CARGO_BIN) +$(MIRI_TOOLCHAIN) miri setup --target $(TARGET)
