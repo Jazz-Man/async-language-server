@@ -255,4 +255,16 @@ mod tests {
             1,
         );
     }
+
+    #[test]
+    fn configuration_item_carries_the_section() {
+        let key = ConfigurationKey::new("test");
+
+        // The configuration request must name the section it reads, and
+        // the registration's section must match the key.
+        let item = key.item();
+        assert_eq!(item.scope_uri, None);
+        assert_eq!(item.section.as_deref(), Some("test"));
+        assert_eq!(key.section(), "test");
+    }
 }

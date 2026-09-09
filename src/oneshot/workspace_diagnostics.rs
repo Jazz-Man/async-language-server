@@ -290,13 +290,18 @@ fn diagnostics_from_report_kind(report: &DocumentDiagnosticReportKind) -> &[Diag
 
 #[cfg(test)]
 mod tests {
-    use super::{WorkspaceDiagnosticConfig, workspace_diagnostics};
-    use crate::server::{DocumentMatcher, Server, ServerOptions, ServerResult, ServerState};
-    use crate::testing::{diagnostic, temp_workspace};
-    use async_lsp::lsp_types::{
-        Diagnostic, DocumentDiagnosticParams, FullDocumentDiagnosticReport,
-        RelatedFullDocumentDiagnosticReport,
+    use super::{
+        DocumentDiagnostics, WorkspaceDiagnosticConfig, WorkspaceDiagnosticReport,
+        workspace_diagnostics,
     };
+    use crate::server::{DocumentMatcher, Server, ServerOptions, ServerResult, ServerState};
+    use crate::testing::{diagnostic, temp_workspace, url};
+    use async_lsp::lsp_types::{
+        Diagnostic, DocumentDiagnosticParams, DocumentDiagnosticReport,
+        DocumentDiagnosticReportKind, DocumentDiagnosticReportResult, FullDocumentDiagnosticReport,
+        Position, Range, RelatedFullDocumentDiagnosticReport, UnchangedDocumentDiagnosticReport,
+    };
+    use std::collections::HashMap;
     use std::fs;
     use std::num::NonZeroUsize;
     use std::sync::Arc;
@@ -518,5 +523,132 @@ mod tests {
                 },
             ),
         )
+    }
+
+    #[test]
+    fn is_empty_reflects_document_and_report_contents() {
+        let empty = DocumentDiagnostics {
+            uri: url("empty.test"),
+            version: 1,
+            report: full_report(Vec::new()),
+        };
+        let with_items = DocumentDiagnostics {
+            uri: url("items.test"),
+            version: 1,
+            report: full_report(vec![diagnostic("item")]),
+        };
+
+        // DocumentDiagnostics::is_empty mirrors its report contents.
+        assert!(empty.is_empty());
+        assert!(!with_items.is_empty());
+
+        // WorkspaceDiagnosticReport::is_empty holds only when every
+        // document is empty.
+        let all_empty = WorkspaceDiagnosticReport {
+            documents: vec![empty.clone()],
+        };
+        assert!(all_empty.is_empty());
+        let one_reporting = WorkspaceDiagnosticReport {
+            documents: vec![empty, with_items],
+        };
+        assert!(!one_reporting.is_empty());
+    }
+
+    #[test]
+    fn diagnostics_collects_full_and_unchanged_kinds() {
+        let document = DocumentDiagnostics {
+            uri: url("main.test"),
+            version: 1,
+            report: DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(
+                RelatedFullDocumentDiagnosticReport {
+                    related_documents: Some(HashMap::from([
+                        (
+                            url("related-full.test"),
+                            DocumentDiagnosticReportKind::Full(FullDocumentDiagnosticReport {
+                                result_id: None,
+                                items: vec![diagnostic("related full")],
+                            }),
+                        ),
+                        (
+                            url("related-unchanged.test"),
+                            DocumentDiagnosticReportKind::Unchanged(
+                                UnchangedDocumentDiagnosticReport {
+                                    result_id: "unchanged".into(),
+                                },
+                            ),
+                        ),
+                    ])),
+                    full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                        result_id: None,
+                        items: vec![diagnostic("main")],
+                    },
+                },
+            )),
+        };
+
+        // Related Full entries contribute their items, Unchanged entries
+        // contribute nothing, and the main items come last.
+        let messages: Vec<_> = document
+            .diagnostics()
+            .into_iter()
+            .map(|diag| diag.message.clone())
+            .collect();
+        assert_eq!(messages, ["related full", "main"]);
+    }
+
+    /// Reports one diagnostic at UTF-8 byte column 4, past the emoji
+    /// fixture. Handlers always speak UTF-8; the wrapper's negotiated
+    /// encoding decides what column the report carries.
+    struct Utf8ColumnServer;
+
+    impl Server for Utf8ColumnServer {
+        fn server_document_matchers() -> Vec<DocumentMatcher> {
+            vec![DocumentMatcher::new("Utf8Column").with_url_globs(["**/*.utf8", "*.utf8"])]
+        }
+
+        fn document_diagnostics(
+            &self,
+            _state: ServerState,
+            _params: DocumentDiagnosticParams,
+        ) -> impl std::future::Future<Output = ServerResult<DocumentDiagnosticReportResult>> + Send
+        {
+            std::future::ready(Ok(full_report(vec![Diagnostic {
+                range: Range {
+                    start: Position {
+                        line: 0,
+                        character: 4,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 5,
+                    },
+                },
+                message: "after the emoji".into(),
+                ..Diagnostic::default()
+            }])))
+        }
+    }
+
+    #[test]
+    fn oneshot_reports_byte_offsets_for_non_ascii_documents() {
+        let root = temp_workspace("oneshot", "utf8-columns");
+        fs::write(root.join("emoji.utf8"), "🙂abc\n").expect("emoji file can be written");
+
+        let report = futures::executor::block_on(workspace_diagnostics(
+            Utf8ColumnServer,
+            WorkspaceDiagnosticConfig::new(&root),
+        ))
+        .expect("workspace diagnostics succeeds");
+
+        // initialize_params advertises UTF-8, so the handler's byte column
+        // survives unchanged; a fallback to the LSP default UTF-16 would
+        // turn byte 4 into column 2.
+        assert_eq!(report.documents.len(), 1);
+        assert_eq!(
+            report.documents[0].diagnostics()[0].range.start.character,
+            4,
+        );
+
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 }

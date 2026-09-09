@@ -46,9 +46,12 @@ fn convert_response(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use async_lsp::lsp_types::{
-        CodeActionContext, CodeActionParams, Diagnostic, PartialResultParams,
-        TextDocumentIdentifier, WorkDoneProgressParams,
+        CodeAction, CodeActionContext, CodeActionOrCommand, CodeActionParams, Diagnostic,
+        PartialResultParams, TextDocumentIdentifier, TextEdit, WorkDoneProgressParams,
+        WorkspaceEdit,
     };
 
     use crate::testing::{same_line, state_with_documents};
@@ -78,5 +81,46 @@ mod tests {
 
         assert_eq!(params.range, same_line(0, 0, 4));
         assert_eq!(params.context.diagnostics[0].range, same_line(0, 4, 4));
+    }
+
+    #[test]
+    fn code_action_outgoing_hook_converts_diagnostics_and_edits() {
+        let (state, _, target) = state_with_documents();
+        let document = state.document(&target).unwrap();
+        let mut response = Some(vec![CodeActionOrCommand::CodeAction(CodeAction {
+            title: "action".into(),
+            diagnostics: Some(vec![Diagnostic {
+                range: same_line(0, 4, 4),
+                message: "diagnostic".into(),
+                ..Default::default()
+            }]),
+            edit: Some(WorkspaceEdit {
+                changes: Some(HashMap::from([(
+                    target.clone(),
+                    vec![TextEdit {
+                        range: same_line(0, 4, 4),
+                        new_text: "x".into(),
+                    }],
+                )])),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })]);
+
+        <CodeActionRequest as Request>::modify_response(&state, &document, &mut response);
+
+        let actions = response.unwrap();
+        let [CodeActionOrCommand::CodeAction(action)] = actions.as_slice() else {
+            panic!("expected one code action");
+        };
+        // Keyed at the emoji document: UTF-8 byte 4 converts to client 2.
+        assert_eq!(
+            action.diagnostics.as_ref().unwrap()[0].range,
+            same_line(0, 2, 2),
+        );
+        assert_eq!(
+            action.edit.as_ref().unwrap().changes.as_ref().unwrap()[&target][0].range,
+            same_line(0, 2, 2),
+        );
     }
 }

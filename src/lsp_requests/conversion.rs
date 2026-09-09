@@ -1127,13 +1127,20 @@ pub(crate) fn convert_workspace_edit(
 
 #[cfg(test)]
 mod tests {
+    use super::{
+        Direction, absolute_position, convert_seeded_token_stream, modify_outgoing_location_link,
+        splice_semantic_tokens_cache,
+    };
     use async_lsp::lsp_types::{
-        DocumentChanges, OneOf, OptionalVersionedTextDocumentIdentifier, TextDocumentEdit,
-        TextEdit, WorkspaceEdit,
+        DocumentChanges, LocationLink, OneOf, OptionalVersionedTextDocumentIdentifier,
+        SemanticToken, SemanticTokensEdit, TextDocumentEdit, TextEdit, WorkspaceEdit,
     };
 
     use crate::lsp_requests::{Request, WillCreateFilesRequest};
-    use crate::testing::{same_line, state_with_documents};
+    use crate::server::CachedSemanticTokens;
+    use crate::testing::{
+        line_position, open_document, same_line, state_with_documents, token, url,
+    };
 
     #[test]
     fn workspace_edit_document_changes_edits_convert_outgoing() {
@@ -1167,5 +1174,99 @@ mod tests {
         };
         // Keyed at the emoji document: UTF-8 byte 4 converts to client 2.
         assert_eq!(edit.range, same_line(0, 2, 2));
+    }
+
+    #[test]
+    fn location_link_outgoing_converts_origin_and_target_ranges() {
+        let (state, _plain, emoji) = state_with_documents();
+        let document = state.document(&emoji).expect("emoji document is tracked");
+        let mut link = LocationLink {
+            origin_selection_range: Some(same_line(0, 4, 4)),
+            target_uri: emoji,
+            target_range: same_line(0, 4, 4),
+            target_selection_range: same_line(0, 4, 4),
+        };
+
+        modify_outgoing_location_link(&state, &document, &mut link);
+
+        // Keyed at the emoji document: UTF-8 byte 4 converts to client 2.
+        assert_eq!(link.origin_selection_range, Some(same_line(0, 2, 2)));
+        assert_eq!(link.target_range, same_line(0, 2, 2));
+        assert_eq!(link.target_selection_range, same_line(0, 2, 2));
+    }
+
+    #[test]
+    fn seeded_token_stream_recomputes_deltas_across_lines() {
+        let (mut state, _, _) = state_with_documents();
+        let seeded = url("seeded.txt");
+        open_document(&mut state, seeded.clone(), "🙂ab\n🙂d");
+        let document = state.document(&seeded).expect("seeded document is tracked");
+
+        // Seeded at the first ASCII column: UTF-8 byte 4 is UTF-16 column 2.
+        let mut data = vec![token(0, 1, 1), token(1, 4, 1)];
+        convert_seeded_token_stream(
+            &state,
+            &document,
+            &mut data,
+            Direction::Outgoing,
+            line_position(0, 4),
+            line_position(0, 2),
+        );
+
+        // Token 0 accumulates onto the seed (byte 5 is client column 3, one
+        // past the seed). Token 1 crosses to line 1, past that line's own
+        // emoji: its absolute UTF-8 column 4 is client column 2, restarted
+        // rather than relativized on the new line.
+        assert_eq!(data, vec![token(0, 1, 1), token(1, 2, 1)]);
+    }
+
+    #[test]
+    fn absolute_position_folds_deltas() {
+        // Empty prefix: the fold starts from the document origin.
+        assert_eq!(absolute_position(&[]), line_position(0, 0));
+
+        // A line-crossing token restarts the column; the next same-line
+        // token accumulates onto it: (0,0) -> (1,3) -> (1,8).
+        let folded = absolute_position(&[token(1, 3, 1), token(0, 5, 1)]);
+        assert_eq!(folded, line_position(1, 8));
+    }
+
+    #[test]
+    fn splice_applies_edit_delete_counts_at_nonzero_offsets() {
+        let (state, plain, _) = state_with_documents();
+        let cached = CachedSemanticTokens {
+            result_id: "cached".into(),
+            data: vec![
+                token(0, 0, 1),
+                token(0, 2, 1),
+                token(0, 2, 1),
+                token(0, 2, 1),
+            ],
+        };
+        let edits = [SemanticTokensEdit {
+            start: 5,
+            delete_count: 3,
+            data: Some(vec![token(0, 6, 1)]),
+        }];
+
+        splice_semantic_tokens_cache(&state, &plain, Some(&cached), &edits, "next".into());
+
+        let spliced = state.cached_semantic_tokens(&plain).expect("cache stored");
+        assert_eq!(spliced.result_id, "next");
+        // The deleted span 5..8 is mid-token: token 1's tail numbers and
+        // token 2's head numbers merge into boundary-straddling chunks that
+        // keep their raw flat values (a token-granular splice would instead
+        // drop whole tokens) — the exact flat-array-span semantics.
+        let merged = SemanticToken {
+            delta_line: 0,
+            delta_start: 0,
+            length: 0,
+            token_type: 2,
+            token_modifiers_bitset: 1,
+        };
+        assert_eq!(
+            spliced.data,
+            vec![token(0, 0, 1), token(0, 6, 1), merged, merged],
+        );
     }
 }

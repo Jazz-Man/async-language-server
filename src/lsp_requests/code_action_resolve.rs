@@ -44,3 +44,58 @@ fn convert_code_action(
         convert_workspace_edit(state, document, edit, direction);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use async_lsp::lsp_types::{CodeAction, Diagnostic, Range, TextEdit, WorkspaceEdit};
+
+    use crate::lsp_requests::{CodeActionResolveRequest, Request};
+    use crate::testing::{same_line, state_with_documents};
+
+    #[test]
+    fn code_action_resolve_hooks_convert_in_both_directions() {
+        let (state, _, target) = state_with_documents();
+        let document = state.document(&target).unwrap();
+        let action = |range: Range| CodeAction {
+            title: "action".into(),
+            diagnostics: Some(vec![Diagnostic {
+                range,
+                message: "diagnostic".into(),
+                ..Default::default()
+            }]),
+            edit: Some(WorkspaceEdit {
+                changes: Some(HashMap::from([(
+                    target.clone(),
+                    vec![TextEdit {
+                        range,
+                        new_text: "x".into(),
+                    }],
+                )])),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        // Incoming: the resolve request arrives in the client encoding
+        // (UTF-16) and must reach the handler as UTF-8.
+        let mut incoming = action(same_line(0, 2, 2));
+        <CodeActionResolveRequest as Request>::modify_params(&state, &document, &mut incoming);
+        assert_eq!(incoming.diagnostics.unwrap()[0].range, same_line(0, 4, 4));
+        assert_eq!(
+            incoming.edit.unwrap().changes.unwrap()[&target][0].range,
+            same_line(0, 4, 4),
+        );
+
+        // Outgoing: the resolved action leaves as UTF-8 and must reach the
+        // client in its encoding.
+        let mut outgoing = action(same_line(0, 4, 4));
+        <CodeActionResolveRequest as Request>::modify_response(&state, &document, &mut outgoing);
+        assert_eq!(outgoing.diagnostics.unwrap()[0].range, same_line(0, 2, 2));
+        assert_eq!(
+            outgoing.edit.unwrap().changes.unwrap()[&target][0].range,
+            same_line(0, 2, 2),
+        );
+    }
+}
