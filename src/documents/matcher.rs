@@ -301,6 +301,15 @@ mod tests {
         fs::remove_dir_all(root).expect("temp dir can be removed");
     }
 
+    #[test]
+    fn lang_strings_returns_configured_identifiers() {
+        let matcher = DocumentMatcher::new("json").with_lang_strings(["json"]);
+
+        // The getter projects the configured identifiers verbatim — no
+        // trimming or casing, which is `DocumentMatchers::new`'s job.
+        assert_eq!(matcher.lang_strings(), ["json"]);
+    }
+
     #[cfg(feature = "tree-sitter")]
     #[test]
     fn compiled_query_is_cached_per_source_and_reports_compile_errors() {

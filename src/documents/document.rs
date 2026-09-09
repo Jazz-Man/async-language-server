@@ -389,78 +389,135 @@ pub struct DocumentQueryCapture {
 #[cfg(test)]
 mod tests {
     use std::io::Read as _;
+    use std::time::Duration;
 
     use ropey::Rope;
 
-    use super::DocumentReader;
+    use super::{Document, DocumentReader};
+
+    /// Ceiling for [`read_to_end_bounded`]: a correct reader drains any text
+    /// in microseconds, so a full wait means the read loop is livelocked —
+    /// the test must fail fast, not hang.
+    const READ_TIMEOUT: Duration = Duration::from_secs(5);
+
+    /// Reads fresh `text` to exhaustion through a [`DocumentReader`] with
+    /// `buf_len`-byte buffers on a worker thread, bounding the whole loop by
+    /// [`READ_TIMEOUT`]: a livelocked or panicking `read` fails the bounded
+    /// wait instead of hanging the test. `None` means the loop never
+    /// terminated.
+    fn read_to_end_bounded(text: Rope, buf_len: usize) -> Option<Vec<u8>> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut reader = DocumentReader {
+                chunks: text.chunks(),
+                current: None,
+                current_offset: 0,
+            };
+
+            let mut buf = vec![0; buf_len];
+            let mut actual = Vec::new();
+            for _ in 0..=text.len_bytes() {
+                match reader.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => actual.extend_from_slice(&buf[..n]),
+                }
+            }
+
+            let _ = tx.send(actual);
+        });
+        rx.recv_timeout(READ_TIMEOUT).ok()
+    }
 
     #[test]
     fn reader_preserves_unread_chunk_bytes() {
-        let text = Rope::from_str("hello");
-
-        let mut reader = DocumentReader {
-            chunks: text.chunks(),
-            current: None,
-            current_offset: 0,
-        };
-
-        let mut actual = Vec::new();
-        let mut buf = [0; 1];
-        while reader.read(&mut buf).unwrap() != 0 {
-            actual.push(buf[0]);
-        }
-
+        // A one-byte buffer routes every fill through the chunk-advance
+        // path, and the loop must end at EOF (Ok(0)) rather than spin.
+        let actual = read_to_end_bounded(Rope::from_str("hello"), 1).expect("read loop terminates");
         assert_eq!(actual, b"hello");
     }
 
-    #[cfg(feature = "tree-sitter")]
     #[test]
-    fn query_errors_on_invalid_query_and_grammarless_documents() {
-        use std::fs;
+    fn read_fills_multi_chunk_buffers_across_chunks() {
+        // 400 patterns = 4000 ASCII bytes: several rope chunks at ropey's
+        // ~1 KB chunk size.
+        const PATTERN: &str = "0123456789";
+        const PATTERN_REPEATS: usize = 400;
 
+        let text = PATTERN.repeat(PATTERN_REPEATS);
+        let rope = Rope::from_str(&text);
+        assert!(
+            rope.chunks().count() > 1,
+            "fixture spans multiple rope chunks",
+        );
+
+        // The fill sequence crosses chunk boundaries, so a mutated fill
+        // bound overruns the buffer instead of answering with exact bytes.
+        // Ropey-upgrade sensitivity: the `document.rs:359` panic-kill rides on
+        // a chunk boundary landing misaligned with the 8-byte buffer (4000 % 8
+        // keeps a straddling final read); the byte-fidelity assert below is
+        // boundary-independent and survives any chunking change.
+        let actual = read_to_end_bounded(rope, 8).expect("read loop terminates");
+        assert_eq!(actual, text.as_bytes());
+    }
+
+    #[test]
+    fn text_bytes_returns_the_document_bytes() {
+        #[cfg(feature = "tree-sitter")]
+        let syntax = (None, None);
+        #[cfg(not(feature = "tree-sitter"))]
+        let syntax = ();
+
+        let text = "🙂abc";
+        let document = Document::from_parts(
+            crate::testing::url("text-bytes.json"),
+            "json".into(),
+            None,
+            1,
+            Rope::from_str(text),
+            syntax,
+        );
+
+        assert_eq!(document.text_bytes(), text.as_bytes());
+    }
+
+    /// Opens `json_text` as a JSON document plus a grammarless `plain.txt`
+    /// neighbor against the shared json matchers, returning both document
+    /// snapshots. The tracking state is dropped; the snapshots stand alone.
+    #[cfg(feature = "tree-sitter")]
+    fn opened_json_fixtures(
+        root: &std::path::Path,
+        json_text: impl Into<String>,
+    ) -> (Document, Document) {
         use async_lsp::{
             ClientSocket,
             lsp_types::{DidOpenTextDocumentParams, TextDocumentItem, Url},
         };
 
-        use crate::error::QueryError;
         use crate::server::{DocumentMatcher, Server, ServerOptions, ServerState};
-        use crate::testing::json_matchers;
 
         struct JsonServer;
 
         impl Server for JsonServer {
             fn server_document_matchers() -> Vec<DocumentMatcher> {
-                json_matchers()
+                crate::testing::json_matchers()
             }
         }
-
-        let root = crate::testing::temp_workspace("documents", "query");
-        let uri = Url::from_file_path(root.join("doc.json")).expect("path converts to a URL");
 
         let mut state = ServerState::with_options::<JsonServer>(
             ClientSocket::new_closed(),
             &ServerOptions::default(),
         );
+
+        let uri = Url::from_file_path(root.join("doc.json")).expect("path converts to a URL");
         let _ = state.handle_document_open(DidOpenTextDocumentParams {
-            text_document: TextDocumentItem::new(
-                uri.clone(),
-                "json".into(),
-                1,
-                r#"{"a": 1}"#.into(),
-            ),
+            text_document: TextDocumentItem::new(uri.clone(), "json".into(), 1, json_text.into()),
         });
         let document = state.document(&uri).expect("document is tracked");
 
-        // Malformed query syntax: the typed compile failure, not a bare None.
-        assert!(matches!(
-            document.query("(node"),
-            Err(QueryError::InvalidQuery { .. })
-        ));
-
-        // A document with no grammar/tree answers NoTree, distinctly:
-        // same state, different URL, language string no matcher claims.
-        let plain_uri = Url::from_file_path(root.join("plain.txt")).expect("path converts");
+        // A language string no matcher claims, on a URL no glob matches:
+        // tracked, but grammarless.
+        let plain_uri =
+            Url::from_file_path(root.join("plain.txt")).expect("path converts to a URL");
         let _ = state.handle_document_open(DidOpenTextDocumentParams {
             text_document: TextDocumentItem::new(
                 plain_uri.clone(),
@@ -470,7 +527,99 @@ mod tests {
             ),
         });
         let plain = state.document(&plain_uri).expect("document is tracked");
+
+        (document, plain)
+    }
+
+    #[cfg(feature = "tree-sitter")]
+    #[test]
+    fn query_errors_on_invalid_query_and_grammarless_documents() {
+        use std::fs;
+
+        use crate::error::QueryError;
+
+        let root = crate::testing::temp_workspace("documents", "query");
+        let (document, plain) = opened_json_fixtures(&root, r#"{"a": 1}"#);
+
+        // Malformed query syntax: the typed compile failure, not a bare None.
+        assert!(matches!(
+            document.query("(node"),
+            Err(QueryError::InvalidQuery { .. })
+        ));
+
+        // A document with no grammar/tree answers NoTree, distinctly.
         assert!(matches!(plain.query("(node"), Err(QueryError::NoTree)));
+
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
+
+    #[cfg(feature = "tree-sitter")]
+    #[test]
+    fn node_accessors_resolve_positions_in_parsed_documents() {
+        use std::fs;
+
+        use crate::testing::line_position;
+
+        let root = crate::testing::temp_workspace("documents", "node-accessors");
+        let (document, plain) = opened_json_fixtures(&root, r#"{"aa": 1, "b": 2}"#);
+
+        // A parsed document has a root; a grammarless one has nothing.
+        let tree_root = document.node_at_root().expect("parsed document has a root");
+        assert_eq!(tree_root.kind(), "document");
+        assert!(plain.node_at_root().is_none());
+        assert!(plain.node_at_position(line_position(0, 0)).is_none());
+        assert!(plain.node_at_position_named(line_position(0, 0)).is_none());
+
+        // The smallest node at the pair key's inner column is the key's
+        // string content, not the string around it.
+        let key = document
+            .node_at_position(line_position(0, 2))
+            .expect("position inside the tree");
+        assert_eq!(key.kind(), "string_content");
+        assert_eq!(key.byte_range(), 2..4);
+
+        // At the anonymous ':' the unfiltered accessor answers the token,
+        // the named-only one its nearest named ancestor, the pair. Past the
+        // source the points clamp to the outermost spanning node — only a
+        // grammarless document answers None here.
+        let colon = document
+            .node_at_position(line_position(0, 5))
+            .expect("position inside the tree");
+        assert_eq!(colon.kind(), ":");
+        let named = document
+            .node_at_position_named(line_position(0, 5))
+            .expect("a named node spans the anonymous token");
+        assert_eq!(named.kind(), "pair");
+        let clamped = document
+            .node_at_position(line_position(5, 0))
+            .expect("out-of-tree positions clamp to a node");
+        assert_eq!(clamped.kind(), "document");
+
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
+
+    #[cfg(feature = "tree-sitter")]
+    #[test]
+    fn node_text_returns_the_node_slice() {
+        use std::fs;
+
+        use crate::testing::line_position;
+
+        let root = crate::testing::temp_workspace("documents", "node-text");
+        let (document, _plain) = opened_json_fixtures(&root, r#"{"aa": 1, "b": 2}"#);
+
+        let tree_root = document.node_at_root().expect("parsed document has a root");
+        assert_eq!(document.node_text(tree_root), r#"{"aa": 1, "b": 2}"#);
+
+        let key = document
+            .node_at_position(line_position(0, 2))
+            .expect("position inside the tree");
+        assert_eq!(document.node_text(key), "aa");
+
+        let value = document
+            .node_at_position(line_position(0, 7))
+            .expect("position inside the tree");
+        assert_eq!(document.node_text(value), "1");
 
         fs::remove_dir_all(root).expect("temp workspace can be removed");
     }

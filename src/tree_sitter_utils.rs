@@ -117,7 +117,7 @@ where
 
 /// Finds the first descendant node that matches the given predicate.
 ///
-/// This will search descendants in a depth-first manner.
+/// This will search descendants in a breadth-first manner.
 #[must_use]
 pub fn find_descendant<'a, F>(node: Node<'a>, predicate: F) -> Option<Node<'a>>
 where
@@ -219,5 +219,190 @@ mod tests {
         assert!(ts_range_contains_ts_point(range, p(3, 2)));
         assert!(!ts_range_contains_ts_point(range, p(1, 4)));
         assert!(!ts_range_contains_ts_point(range, p(3, 3)));
+    }
+
+    use async_lsp::lsp_types::{Position as LspPosition, Range as LspRange};
+    use tree_sitter::{Node, Parser, Tree};
+
+    use super::{
+        find_ancestor, find_child, find_descendant, find_nearest, lsp_position_to_ts_point,
+        ts_point_to_lsp_position, ts_range_contains_lsp_position, ts_range_to_lsp_range,
+    };
+    use crate::text_utils::Position;
+
+    /// Parses `text` with the JSON grammar — the established dev-dependency
+    /// fixture — for the navigation tests.
+    fn json_tree(text: &str) -> Tree {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_json::LANGUAGE.into())
+            .expect("json grammar loads");
+        parser.parse(text, None).expect("json source parses")
+    }
+
+    fn id(node: Option<Node<'_>>) -> Option<usize> {
+        node.map(|found| found.id())
+    }
+
+    #[test]
+    fn ts_point_and_range_convert_to_lsp_coordinates() {
+        let point = LspPosition {
+            line: 1,
+            character: 5,
+        };
+        assert_eq!(ts_point_to_lsp_position(p(1, 5)), point);
+
+        let expected = LspRange {
+            start: LspPosition {
+                line: 1,
+                character: 5,
+            },
+            end: LspPosition {
+                line: 3,
+                character: 2,
+            },
+        };
+        assert_eq!(ts_range_to_lsp_range(r(p(1, 5), p(3, 2))), expected);
+    }
+
+    #[test]
+    fn lsp_position_containment_matches_ts_point_containment() {
+        let range = r(p(1, 5), p(3, 2));
+        let inside = LspPosition {
+            line: 2,
+            character: 0,
+        };
+        let start = LspPosition {
+            line: 1,
+            character: 5,
+        };
+        let end = LspPosition {
+            line: 3,
+            character: 2,
+        };
+        let before = LspPosition {
+            line: 1,
+            character: 4,
+        };
+        let after = LspPosition {
+            line: 3,
+            character: 3,
+        };
+
+        for pos in [inside, start, before, after] {
+            assert_eq!(
+                ts_range_contains_lsp_position(range, pos),
+                ts_range_contains_ts_point(range, lsp_position_to_ts_point(pos)),
+                "LSP containment must match point containment at {pos:?}",
+            );
+        }
+
+        // Inclusive bounds: the start and end corners are inside.
+        assert!(ts_range_contains_lsp_position(range, start));
+        assert!(ts_range_contains_lsp_position(range, end));
+        assert!(!ts_range_contains_lsp_position(range, before));
+        assert!(!ts_range_contains_lsp_position(range, after));
+    }
+
+    #[test]
+    fn find_child_ancestor_descendant_traverse_as_documented() {
+        let tree = json_tree(r#"{"aa": 1, "b": 2}"#);
+        let root = tree.root_node();
+        let object = root.child(0).expect("the document's object child");
+        let pair = object.child(1).expect("the object's first pair");
+        let string = pair.named_child(0).expect("the pair's key string");
+        let number = pair.named_child(1).expect("the pair's value number");
+
+        // find_child: direct children only — the object is found, the pairs
+        // (grandchildren) are not.
+        assert_eq!(
+            id(find_child(root, |n| n.kind() == "object")),
+            Some(object.id()),
+        );
+        assert_eq!(
+            id(find_child(root, |n| n.kind() == "pair")),
+            None,
+            "pairs are grandchildren of the document node",
+        );
+
+        // find_ancestor: parents upward, never the node itself.
+        assert_eq!(
+            id(find_ancestor(string, |n| n.kind() == "pair")),
+            Some(pair.id()),
+        );
+        assert_eq!(
+            id(find_ancestor(pair, |n| n.kind() == "document")),
+            Some(root.id()),
+        );
+        assert_eq!(
+            id(find_ancestor(root, |_| true)),
+            None,
+            "the root has no ancestors",
+        );
+
+        // find_descendant: matches below the node.
+        assert_eq!(
+            id(find_descendant(root, |n| n.kind() == "pair")),
+            Some(pair.id()),
+        );
+        assert_eq!(
+            id(find_descendant(pair, |n| n.kind() == "number")),
+            Some(number.id()),
+        );
+        assert_eq!(
+            id(find_descendant(string, |n| n.kind() == "number")),
+            None,
+            "a string has no numeric descendants",
+        );
+    }
+
+    #[test]
+    fn find_nearest_prefers_node_then_child_then_descendant_then_ancestor() {
+        let tree = json_tree(r#"{"aa": 1, "b": 2}"#);
+        let root = tree.root_node();
+        let object = root.child(0).expect("the document's object child");
+        let pair = object.child(1).expect("the object's first pair");
+        let string = pair.named_child(0).expect("the pair's key string");
+        let second_pair = object.child(3).expect("the object's second pair");
+        let other_string = second_pair
+            .named_child(0)
+            .expect("the second pair's key string");
+
+        // ASCII source: byte columns on line 0 equal byte offsets.
+        let at = |col: usize| Position { line: 0, col };
+
+        // 1. The node itself wins when it matches, over any matching child.
+        assert_eq!(
+            id(find_nearest(object, at(2), |n| n.kind() == "object")),
+            Some(object.id()),
+        );
+        assert_eq!(
+            id(find_nearest(object, at(2), |_| true)),
+            Some(object.id()),
+            "the containing node beats a matching child",
+        );
+
+        // 2. Otherwise a position-containing direct child, over a matching
+        //    deeper descendant.
+        assert_eq!(
+            id(find_nearest(object, at(2), |n| n.kind() != "object")),
+            Some(pair.id()),
+            "the containing child beats a matching descendant",
+        );
+
+        // 3. Otherwise a position-containing descendant: the pair holds the
+        //    position but fails this predicate, the key string passes both.
+        assert_eq!(
+            id(find_nearest(object, at(2), |n| n.kind() == "string")),
+            Some(string.id()),
+        );
+
+        // 4. Otherwise an ancestor: the second key string does not hold the
+        //    value position; its pair holds it but fails the predicate, so
+        //    the object answers.
+        assert_eq!(
+            id(find_nearest(other_string, at(15), |n| n.kind() == "object")),
+            Some(object.id()),
+        );
     }
 }
