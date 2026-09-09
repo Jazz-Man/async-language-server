@@ -59,6 +59,6 @@ dupes:
 bench:
 	@$(CARGO_BIN) bench --bench oneshot_diagnostics
 
-## mutants: mutation-testing sweep (on demand, heavy; run it alone — a concurrent build poisons its auto-derived per-scenario timeout). Optional FILE=src/foo.rs scopes the sweep to one file. Exit code 1 means survivors were found: this is a diagnostic sweep, not a gate — the battery never runs it.
+## mutants: mutation-testing sweep (on demand, heavy; run it alone — a concurrent build poisons its auto-derived per-scenario timeout). Optional FILE=src/foo.rs scopes the sweep to one file. Exit code 2 means survivors were found: this is a diagnostic sweep, not a gate — the battery never runs it.
 mutants:
 	@$(CARGO_BIN) mutants $(if $(FILE),-f $(FILE))
