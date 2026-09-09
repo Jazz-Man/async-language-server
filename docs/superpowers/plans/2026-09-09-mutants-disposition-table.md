@@ -18,8 +18,9 @@ clean auto-derived 20 s timeout, nothing concurrent):
 
 **Total rows: 161** = 149 baseline misses + 3 real timeouts + 9 verified artifacts.
 
-**Tally: (a) 0 · (b) 125 · (c) 20 · (d) 16.** Core inventory (152, artifacts excluded):
-116 b + 20 c + 16 d.
+**Tally: (a) 0 · (b) 124 · (c) 20 · (d) 17** (lsp.rs:94 revised b→d by owner
+decision 2026-09-09, confirmed equivalent). Core inventory (152, artifacts excluded):
+115 b + 20 c + 17 d.
 
 - **(a) is zero, deliberately.** Testing rule: a type must remove a representable invalid state
   or separate a genuinely confusable pair. Every survivor here is either a value-space behavior
@@ -115,7 +116,7 @@ mid-text, or boundary asymmetry. (c) rows: nextest never runs the trait doctests
 | function@file | mutation | disp | reason | covering test / doctest |
 |---|---|---|---|---|
 | `LspRange::sub` @ lsp.rs:76 | `+ with -` (`start.line + from.line`) | b | mod.rs:110–121 contract: relative positions resolved against the range's start; trait doctest is byte-flavored only, existing lsp_tests use `from.line == 0` | W0 `sub_converts_relative_positions_across_lines` (lsp_tests.rs): start line 5, `from` (2, 3) → absolute line 7 |
-| `LspRange::sub` @ lsp.rs:94 | `&& with \|\|` (from bounds check) | b | `PositionOutOfRange` contract (mod.rs:117): mutated, the from-check can never fire | W0 `sub_rejects_from_beyond_range_end` (lsp_tests.rs): from past `self.end` → `Err(PositionOutOfRange)` |
+| `LspRange::sub` @ lsp.rs:94 | `&& with \|\|` (from bounds check) | d | **revised (b) → (d) by owner decision 2026-09-09: accept as equivalent mutant.** The from-check is unreachable in the original — after the `from > to` → `StartAfterEnd` gate, the absolute mapping is monotone (line-major `Ord`; the `line == 0` character split cannot invert order), so `from_absolute ≤ to_absolute ≤ end`, and `from_absolute ≥ start` holds unconditionally. The De Morgan mutant fires only when both bounds are violated — jointly impossible. Evidence: monotonicity proof (Task 2 report, FLAGGED ROW), brute force 115,200 inputs (0 differences), reviewer re-derivation from source, and the full 268-test suite passing under the applied baseline patch. The check stays as a defense-in-depth invariant; this mutant is a permanent, documented survivor in every sweep | — |
 
 ### tree_sitter.rs — 10 rows (10 b, 0 c) — all gated `#[cfg(feature = "tree-sitter")]`
 

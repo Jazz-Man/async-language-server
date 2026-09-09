@@ -312,3 +312,14 @@ fn shrink_requires_a_single_line_range() {
         RangeError::NotSingleLine,
     );
 }
+
+#[test]
+fn sub_converts_relative_positions_across_lines() {
+    let sub_range = line_range(line_position(5, 0), line_position(7, 10))
+        .sub(TEXT, line_position(2, 3), line_position(2, 8))
+        .expect("valid range");
+    assert_eq!(
+        sub_range,
+        line_range(line_position(7, 3), line_position(7, 8)),
+    );
+}

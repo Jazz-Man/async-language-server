@@ -205,3 +205,19 @@ reason = "gated_params in diagnostics.rs' own test module vs workspace_diagnosti
 [[ignore]]
 fingerprint = "b784a964c3143666"
 reason = "server_capabilities impls in examples/batch_diagnostics.rs (LongLineServer) and tests/termination.rs (ConfigurableServer): the example must read standalone (6c4db5f43053b240 precedent) while the test needs its own trait-mandated impl (f83853ca365213c9 capture-server precedent); the shared diagnostic_provider shape is the trait's, not drift"
+
+[[ignore]]
+fingerprint = "402d6036935ae5bd"
+reason = "RangeExt::sub_delimited_tri spec-matrix rows in tree_sitter_tests.rs (basic, multiline, non-zero-start remainder slicing): shared call/assert template, one behavior row per test; the third row is the mutant-kill pin for the remainder slicing at a non-zero start_byte, and its per-slice byte/point expectations are the content (family of 9b25c7eb50c26f02)"
+
+[[ignore]]
+fingerprint = "ce08440ea8201512"
+reason = "TextRangeMismatch convention pins in tree_sitter_tests.rs (sub_delimited, split_at, sub_delimited_tri on a non-zero-start range): the same error-convention check through a third entry point, whose non-zero start_byte is the kill condition for the check_text_length mutation at tree_sitter.rs:275 — at a zero start the range length is masked (successor of 5ca4f3c71b23d3e0)"
+
+[[ignore]]
+fingerprint = "270a3360975a3706"
+reason = "TextRangeMismatch convention pins in bytes_tests.rs (sub_delimited, sub_delimited_tri on a non-zero-start range): the same error-convention check with exact error fields through a second entry point; the non-zero start is the kill condition for the check_text_length mutation at bytes.rs:82, which a zero-start range masks (successor of 5ca4f3c71b23d3e0)"
+
+[[ignore]]
+fingerprint = "59fae27ce2e23bed"
+reason = "single-assert out-of-range error pins in bytes_tests.rs (reversed sub positions -> StartAfterEnd; split_at beyond the range length on a non-zero-start range -> PositionOutOfRange): one error-contract row per method, each kills a distinct mutant, and the method, range, position, and error variant are each row's content"

@@ -363,3 +363,118 @@ fn split_at_mismatched_text_length_returns_text_range_mismatch() {
         },
     );
 }
+
+// Relative-position tests on ranges that do not start at zero: points are
+// offset by the range start, not taken as absolute text coordinates.
+
+#[test]
+fn split_at_validates_text_length_on_nonzero_start_ranges() {
+    let text = "one/two";
+    let end_byte = 5 + text.len();
+    let (left, right) = r(5, p(0, 3), end_byte, p(0, 10))
+        .split_at(text, p(0, 2))
+        .expect("valid range");
+    assert_eq!(left, r(5, p(0, 3), 7, p(0, 5)));
+    assert_eq!(right, r(7, p(0, 5), end_byte, p(0, 10)));
+
+    assert_eq!(
+        r(5, p(0, 3), end_byte, p(0, 10))
+            .split_at("one/tw", p(0, 2))
+            .unwrap_err(),
+        RangeError::TextRangeMismatch {
+            text_len: 6,
+            range_len: 7
+        },
+    );
+}
+
+#[test]
+fn split_at_offsets_columns_by_range_start_column() {
+    let text = "ab\ncd";
+    let (left, right) = r(5, p(1, 3), 10, p(2, 2))
+        .split_at(text, p(0, 1))
+        .expect("valid range");
+    assert_eq!(left, r(5, p(1, 3), 6, p(1, 4)));
+    assert_eq!(right, r(6, p(1, 4), 10, p(2, 2)));
+}
+
+#[test]
+fn sub_offsets_rows_by_range_start() {
+    let text = "ab\ncd";
+    let sub_range = r(0, p(2, 0), 5, p(3, 2))
+        .sub(text, p(1, 0), p(1, 2))
+        .expect("valid range");
+    assert_eq!(sub_range, r(3, p(3, 0), 5, p(3, 2)));
+}
+
+#[test]
+fn sub_resolves_positions_in_and_at_the_end_of_text() {
+    let text = "ab\ncd\nef";
+    let range = r(0, p(0, 0), 8, p(2, 2));
+
+    // Mid-text positions resolve to their byte offsets.
+    let sub_range = range.sub(text, p(0, 1), p(1, 1)).expect("valid range");
+    assert_eq!(sub_range, r(1, p(0, 1), 4, p(1, 1)));
+
+    // The exact end-of-text position resolves to the range's end byte.
+    let sub_range = range.sub(text, p(2, 2), p(2, 2)).expect("valid range");
+    assert_eq!(sub_range, r(8, p(2, 2), 8, p(2, 2)));
+}
+
+#[test]
+fn sub_rejects_end_of_text_position_mismatches() {
+    // A position past its row's text is nowhere in the text even though
+    // later rows exist.
+    let text = "ab\ncd\nef";
+    assert_eq!(
+        r(0, p(0, 0), 8, p(2, 2))
+            .sub(text, p(0, 3), p(1, 0))
+            .unwrap_err(),
+        RangeError::PositionOutOfRange,
+    );
+
+    // The end-of-text check must match row and column exactly: a position
+    // whose column coincides with the end point's, on an empty row, is
+    // still nowhere in the text.
+    let text = "ab\n\ncd";
+    assert_eq!(
+        r(0, p(0, 0), 6, p(2, 2))
+            .sub(text, p(1, 2), p(2, 0))
+            .unwrap_err(),
+        RangeError::PositionOutOfRange,
+    );
+
+    // A row past the last line is equally out of range.
+    let text = "hello";
+    assert_eq!(
+        r(0, p(0, 0), 5, p(0, 5))
+            .sub(text, p(0, 1), p(1, 5))
+            .unwrap_err(),
+        RangeError::PositionOutOfRange,
+    );
+}
+
+#[test]
+fn sub_delimited_tri_validates_text_length_on_nonzero_start_ranges() {
+    let text = "one/tw";
+    assert_eq!(
+        r(5, p(0, 3), 12, p(0, 10))
+            .sub_delimited_tri(text, D1, D2)
+            .unwrap_err(),
+        RangeError::TextRangeMismatch {
+            text_len: 6,
+            range_len: 7
+        },
+    );
+}
+
+#[test]
+fn sub_delimited_tri_slices_remainder_from_nonzero_start() {
+    let text = "a/b@c";
+    let (first, second, third) = r(5, p(1, 3), 10, p(1, 8))
+        .sub_delimited_tri(text, D1, D2)
+        .expect("valid range");
+    assert_eq!(first, Some(r(5, p(1, 3), 6, p(1, 4))));
+    assert_eq!(second, Some(r(7, p(1, 5), 8, p(1, 6))));
+    assert_eq!(third, Some(r(9, p(1, 7), 10, p(1, 8))));
+}

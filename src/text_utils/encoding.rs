@@ -144,4 +144,32 @@ mod tests {
             Some(Encoding::UTF32),
         );
     }
+
+    #[test]
+    fn from_lsp_round_trips_all_supported_kinds() {
+        assert_eq!(
+            Encoding::from_lsp(&PositionEncodingKind::UTF8),
+            Encoding::UTF8,
+        );
+        assert_eq!(
+            Encoding::from_lsp(&PositionEncodingKind::UTF16),
+            Encoding::UTF16,
+        );
+        assert_eq!(
+            Encoding::from_lsp(&PositionEncodingKind::UTF32),
+            Encoding::UTF32,
+        );
+
+        // The `From` impls delegate to `from_lsp`; each must map its
+        // argument through instead of decaying to the default encoding.
+        assert_eq!(Encoding::from(&Encoding::UTF8), Encoding::UTF8);
+        assert_eq!(Encoding::from(&PositionEncodingKind::UTF8), Encoding::UTF8);
+        assert_eq!(Encoding::from(PositionEncodingKind::UTF8), Encoding::UTF8);
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported position encoding kind")]
+    fn from_lsp_panics_on_unknown_kind() {
+        let _ = Encoding::from_lsp(&PositionEncodingKind::new("utf-7"));
+    }
 }
