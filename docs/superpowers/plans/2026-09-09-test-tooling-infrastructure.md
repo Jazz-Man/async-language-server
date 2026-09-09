@@ -144,7 +144,7 @@ cp -R mutants.out/caught.txt mutants.out/missed.txt mutants.out/timeout.txt \
 ## scopes the sweep to one file. Exit code 1 means survivors were found: this is a
 ## diagnostic sweep, not a gate — the battery never runs it.
 mutants:
-	cargo mutants $(if $(FILE),-f $(FILE))
+	@$(CARGO_BIN) mutants $(if $(FILE),-f $(FILE))
 ```
 
 - [ ] **Step 3: Scoped verification**
@@ -212,13 +212,13 @@ MIRI_TOOLCHAIN ?= nightly-<the date recorded in Step 1>
 ## x86_64 (the ropey/str_indices NEON path is not interpretable on an aarch64 host);
 ## on demand, slow — never in the battery
 miri:
-	cargo +$(MIRI_TOOLCHAIN) miri nextest run --target x86_64-apple-darwin --no-default-features
+	@$(CARGO_BIN) +$(MIRI_TOOLCHAIN) miri nextest run --target x86_64-apple-darwin --no-default-features
 
 ## miri-setup: one-time toolchain preparation for make miri
 miri-setup:
-	rustup component add miri --toolchain $(MIRI_TOOLCHAIN)
-	rustup target add x86_64-apple-darwin --toolchain $(MIRI_TOOLCHAIN)
-	cargo +$(MIRI_TOOLCHAIN) miri setup --target x86_64-apple-darwin
+	@rustup component add miri --toolchain $(MIRI_TOOLCHAIN)
+	@rustup target add x86_64-apple-darwin --toolchain $(MIRI_TOOLCHAIN)
+	@$(CARGO_BIN) +$(MIRI_TOOLCHAIN) miri setup --target x86_64-apple-darwin
 ```
 
 Then `make miri-setup` (idempotent re-verification) and `make miri` must both run. `tech.md` gains the miri paragraph (what it covers: no-default leg only, why cross-target, on-demand).
