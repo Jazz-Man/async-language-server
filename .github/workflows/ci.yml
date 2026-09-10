@@ -30,21 +30,27 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Configure Rust Cache PIng
-        uses: actions/cache@v6
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.dylint_drivers/
+            ~/.rustup/toolchains/
+            target/dylint/
+          key: dylint-${{ runner.os }}-${{ hashFiles('dylint.toml') }}
+          restore-keys: dylint-${{ runner.os }}-
+
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
+            ~/.cargo/registry/src/
             ~/.cargo/git/db/
             ~/.cargo/git/checkouts/
-            ~/.dylint_drivers/
-            ~/.rustup/toolchains/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          # restore-keys: |
-          #   ${{ runner.os }}-cargo-
+          restore-keys: ${{ runner.os }}-cargo-
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
