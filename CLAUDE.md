@@ -13,6 +13,7 @@ Library crate (no binary) that wraps `async-lsp` to make language servers with l
 - `cargo nextest run <filter>` — run a single test; tests are inline `#[cfg(test)] mod tests` blocks inside each `src/` module, or sibling `tests.rs` files for the larger modules
 - `make clippy` — `clippy::all` is `deny` in `Cargo.toml` `[workspace.lints.clippy]`, so default lints are hard errors; `pedantic`/`cargo` deny, with an explicit allow list there
 - `make dylint` — nightly-pinned dylint pass running the stock Trail of Bits suites + the third-party `perfectionist` suite (configured in `dylint.toml`); part of the battery
+- `make deny` — cargo-deny dependency-hygiene policies over `deny.toml` (advisories, duplicate bans, licenses, sources); on demand, not in the battery — deny-level findings gate, warnings advise
 - `make fmt` — rustfmt and clippy are pinned via `rust-toolchain.toml`
 - Feature gates matter: the default feature is `tree-sitter` (`tracing` is permanent, not a feature). Changes touching `#[cfg(feature = "tree-sitter")]` paths should also be checked with `make test-no-default-features`
 - Doctests are enabled and run as part of `make test` and `make test-no-default-features` in every feature configuration CI runs; keep them free of tree-sitter-gated API

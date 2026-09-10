@@ -17,7 +17,7 @@ TARGET := x86_64-apple-darwin
 
 .DEFAULT_GOAL := help
 .PHONY: help fmt fmt-fix clippy doc test test-no-default-features dylint battery \
-        dupes bench mutants miri miri-setup
+        dupes deny bench mutants miri miri-setup
 
 ## help: list available targets
 help:
@@ -59,6 +59,10 @@ battery: fmt clippy doc test test-no-default-features dylint
 ## dupes: duplication gate (on demand)
 dupes:
 	@$(CARGO_BIN) dupes check
+
+## deny: dependency policies — advisories, duplicate bans, licenses, sources (on demand; deny-level findings gate)
+deny:
+	@$(CARGO_BIN) deny check
 
 ## bench: oneshot diagnostics benchmark (on demand)
 bench:

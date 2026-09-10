@@ -25,6 +25,12 @@ deny-level finding is either fixed (dependency upgrade) or carries a reasoned ex
   `wildcards = "deny"`. `[licenses]`: allow MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause,
   ISC, Unicode-3.0, Zlib; `unused-allowed-license = "warn"` keeps the list honest.
   `[sources]`: crates.io only; unknown registry/source = deny.
+  *Amended 2026-09-10, post-review:* the owner trimmed the license list to the three
+  actually-encountered (MIT, Apache-2.0, Unicode-3.0) — the four unused allowances
+  warned; a minimal list deny-gates any future non-listed license into a conscious
+  list-addition instead. Schema drift vs the original D1 wording (`unmaintained` scope
+  semantics, dropped `vulnerability`/`severity-threshold` keys, `unknown-git` spelling)
+  is recorded in `deny.toml` comments and the task report.
 - **D2 — Exception discipline.** Every exemption lands in `deny.toml` via the tool's
   native mechanism (`[advisories] ignore`, `[[bans.skip]]`, `[[licenses.exceptions]]`)
   with a reason comment in the `.dupes-ignore.toml` style: what fires, why it is

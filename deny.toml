@@ -4,30 +4,40 @@
 
 [advisories]
 version = 2
-vulnerability = "deny"
-unmaintained = "warn"
+# cargo-deny 0.18+ schema: vulnerabilities are unconditionally error-level (no
+# key); unmaintained/unsound are scopes, and anything in scope is error-level.
+# D1 asked for unmaintained = warn — inexpressible on this schema; owner
+# ratified "all" (error on unmaintained advisories) 2026-09-10.
+unmaintained = "all"
 yanked = "warn"
-severity-threshold = "low"
 
 [bans]
 multiple-versions = "deny"
 wildcards = "deny"
-skip = []
+# Structural duplicates (first-run triage 2026-09-10): every entry states what
+# fires, why it is accepted, and the condition that removes it. Fix was
+# exhausted first — each pinned side is the newest release of its dependent,
+# so no lock-compatible `cargo update` can merge them today.
+skip = [
+    { name = "bitflags", version = "1", reason = "duplicate of 2.9.0: lsp-types 0.95.1 requires bitflags ^1.0.1 (every lsp-types release through the newest 0.97.0 still does; async-lsp 0.2.4 pins lsp-types ^0.95.0), so no lock-compatible upgrade can merge them; removed when an async-lsp upgrade adopts an lsp-types on bitflags 2" },
+    { name = "hashbrown", version = "0.14", reason = "duplicate of 0.17.1: dashmap 6.2.1 (the newest dashmap release) requires hashbrown ^0.14.5 while indexmap 2.14.0 brings 0.17.1, so no lock-compatible upgrade can merge them; removed when a dashmap release using hashbrown 0.15+ lands" },
+    { name = "syn", version = "2", reason = "duplicate of 3.0.4: the syn 2 side is upstream proc-macro crates (serde_repr, tracing-attributes, miette-derive, the url/icu and zerovec/yoke chains, arch-lint dev tools), the syn 3 side is serde_derive, thiserror-impl, tokio-macros, futures-macro and the workspace-internal lsp_macros; a major-version split cannot be merged by cargo update; removed when the syn 2 dependents release syn 3-compatible versions" },
+    { name = "windows-sys", version = "0.59", reason = "duplicate of 0.61.2: waitpid-any 0.3.0 (the newest release, via async-lsp 0.2.4) requires windows-sys ^0.59 and rustix 1.0.7 / errno 0.3.11 pin 0.59 as well, so no lock-compatible upgrade can merge them; removed when a waitpid-any release allowing windows-sys 0.60+ lands, then cargo update -p errno -p rustix and delete this skip" },
+]
 
 [licenses]
 version = 2
+# Minimal allow-list: trimmed to the licenses actually encountered in the tree
+# (first-run triage + owner call 2026-09-10). A dependency needing anything
+# else deny-gates here and the list grows consciously, entry by entry.
 allow = [
     "MIT",
     "Apache-2.0",
-    "BSD-2-Clause",
-    "BSD-3-Clause",
-    "ISC",
     "Unicode-3.0",
-    "Zlib",
 ]
 unused-allowed-license = "warn"
 
 [sources]
 unknown-registry = "deny"
-unknown-source = "deny"
+unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
