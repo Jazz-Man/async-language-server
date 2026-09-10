@@ -466,3 +466,36 @@ Two observations beyond the verdict:
 Raw evidence: `/tmp/b6_mutants_full.log`, `mutants.out/` (this sweep's scratch);
 diff inputs preserved in the Task 6 report
 (`.superpowers/sdd/task-b6-report.md`).
+
+## Final sweep outcome — acceptance run (2026-09-10, owner-executed, cycle close)
+
+The acceptance sweep (full `make mutants`, nothing concurrent; the controller-side run
+was killed by system sleep and re-executed by the owner in their terminal) closed the
+cycle:
+
+**859 mutants: 592 caught · 28 missed · 0 timeouts · 239 unviable.**
+Fix-loop B7 (clusters 11–13) landed between the Task 6 reconciliation and this run; its
+18 kills plus the 4 owner-ratified (b)→(d) revisions are reflected below. Survivors:
+161 (baseline) → 46 (Task 6 sweep) → **28 (final)**, and all 28 map to table rows:
+
+| class | count | rows |
+|---|---|---|
+| (c) — nextest/doctest blind spot, as dispositioned | 7 | `Encoding::as_str` @ encoding.rs:49 ×2; bytes.rs `sub_delimited` :56 ×2, :62; `sub_delimited_tri` :93 ×2 |
+| (d) — accepted / ratified equivalent | 20 | Document accessors ×9 (`language` ×2, `matched_name` ×3, `has_syntax_language` ×2, `has_syntax_tree` ×2); oneshot `process_id`, `workspace_folders`; `Server` trait defaults ×4 (`server_info`, `server_options`, `server_capabilities`, `server_document_matchers`); `LspRange::sub` @ lsp.rs:94; documents.rs :207:39, :571, :572, :574 |
+| (b) — killed, invisible to this sweep by cfg | 1 | `replace_full_text` @ documents.rs:519 — the mutated fn exists only under `#[cfg(not(feature = "tree-sitter"))]`; the all-features sweep cannot compile it. Kill verified on the `--no-default-features` leg (Task B7, typed assert 17 ms). A future no-default sweep leg would count it caught |
+
+Zero (b) rows remain unexplained. One (d) row was killed incidentally since the Task 6
+sweep: `AsRef<Rope> for Document` @ document.rs:327 (now in caught.txt) — final (d)
+survivor count is 20 of 21.
+
+Per-class reconciliation against the ratified table: every survivor's row and reason
+hold as written; no survivor required a new argument. Viable-mutant sensitivity across
+the cycle: 459/620 caught (baseline, ~74%) → 592/620 (~95%), with the kill evidence
+carried per-row by the patch-loop replays (B2–B7) and this full-sweep run (B8).
+
+**Cycle close.** The disposition table is complete and stable: 161 rows, tally
+(a) 0 · (b) 120 · (c) 20 · (d) 21. The baseline snapshot
+(`.superpowers/mutants-baseline-2026-09-09/`) served as the frozen inventory
+throughout and is now deletable by the owner; `mutants.out/` remains scratch for the
+next run. Future sweeps: scoped `make mutants FILE=<path>` for routine work; a full
+sweep as the acceptance gate at disposition-cycle close.
