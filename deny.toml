@@ -1,0 +1,33 @@
+# Dependency-hygiene policies (spec: docs/superpowers/specs/2026-09-10-cargo-deny-integration-design.md).
+# Run: make deny. Deny-level findings gate; warnings advise. Every exception carries
+# a reason: what fires, why it is accepted, what would remove it.
+
+[advisories]
+version = 2
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "warn"
+severity-threshold = "low"
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+skip = []
+
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+unused-allowed-license = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-source = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
