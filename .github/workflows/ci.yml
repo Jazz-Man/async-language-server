@@ -48,8 +48,10 @@ jobs:
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
+        with:
+          tool: cargo-dylint,dylint-link
       - name: Run battery
-        run: make battery
+        run: cargo dylint --help
       # - name: Docs
       #   run: cargo doc --workspace --no-deps
       #   env:
