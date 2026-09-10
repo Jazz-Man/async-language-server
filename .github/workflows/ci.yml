@@ -51,7 +51,9 @@ jobs:
         with:
           tool: cargo-dylint,dylint-link
       - name: Run battery
-        run: cargo dylint --help
+        run: |
+            cargo dylint --help
+            cargo nextest --help
       # - name: Docs
       #   run: cargo doc --workspace --no-deps
       #   env:
