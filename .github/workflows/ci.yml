@@ -63,24 +63,6 @@ jobs:
       - run: make test
       - run: make test-no-default-features
       - run: make dylint
-      # - name: Docs
-      #   run: cargo doc --workspace --no-deps
-      #   env:
-      #     RUSTDOCFLAGS: "-D warnings"
-
-  # test:
-  #   runs-on: ubuntu-latest
-  #   name: test (${{ matrix.features }})
-  #   strategy:
-  #     matrix:
-  #       features: ["--all-features", "--no-default-features"]
-  #   steps:
-  #     - uses: actions/checkout@v7
-  #       with:
-  #         persist-credentials: false
-  #     - uses: ./.github/actions/rust-setup
-  #     - name: Test (${{ matrix.features }})
-  #       run: cargo test --workspace ${{ matrix.features }} --verbose
 
   # dylint:
   #   runs-on: ubuntu-latest
