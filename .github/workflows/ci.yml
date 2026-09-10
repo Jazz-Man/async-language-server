@@ -51,7 +51,7 @@ jobs:
         with:
           tool: cargo-dylint,dylint-link,cargo-nextest
 
-      - name: Run battery
+      - name: Run battery PING
         run: make battery
       # - name: Docs
       #   run: cargo doc --workspace --no-deps
