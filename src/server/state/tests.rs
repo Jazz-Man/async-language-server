@@ -5,10 +5,11 @@ use crate::testing::{open_document, temp_workspace, token, url, workspace_folder
 use crate::text_utils::Encoding;
 use async_lsp::ClientSocket;
 use async_lsp::lsp_types::{
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, FileChangeType, FileDelete, FileEvent, FileRename, Position, Range,
-    SemanticTokens, SemanticTokensResult, TextDocumentContentChangeEvent, TextDocumentIdentifier,
-    TextDocumentItem, Url, VersionedTextDocumentIdentifier,
+    DidChangeTextDocumentParams, DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, FileChangeType, FileDelete, FileEvent,
+    FileRename, Position, Range, SemanticTokens, SemanticTokensResult,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Url,
+    VersionedTextDocumentIdentifier, WorkspaceFoldersChangeEvent,
 };
 use std::fs;
 
@@ -21,6 +22,18 @@ impl Server for TestServer {
                 .with_url_globs(["**/*.test", "*.test"])
                 .with_lang_strings(["test"]),
         ]
+    }
+}
+
+/// Serves the shared json matchers, so `.json` documents parse with the
+/// tree-sitter json grammar through the store's normal install path.
+#[cfg(feature = "tree-sitter")]
+struct JsonServer;
+
+#[cfg(feature = "tree-sitter")]
+impl Server for JsonServer {
+    fn server_document_matchers() -> Vec<DocumentMatcher> {
+        crate::testing::json_matchers()
     }
 }
 
@@ -349,14 +362,6 @@ fn failed_incremental_change_keeps_document_when_reread_fails() {
 #[cfg(feature = "tree-sitter")]
 #[test]
 fn failed_incremental_change_reparses_kept_text_tree() {
-    struct JsonServer;
-
-    impl Server for JsonServer {
-        fn server_document_matchers() -> Vec<DocumentMatcher> {
-            crate::testing::json_matchers()
-        }
-    }
-
     let root = temp_workspace("state", "keep-last-known-tree");
     let uri = {
         let file_path = root.join("missing.json");
@@ -854,4 +859,282 @@ fn position_encoding_setter_updates_negotiated_state() {
     assert_eq!(state.get_position_encoding(), Encoding::UTF16);
     state.set_position_encoding(Encoding::UTF8);
     assert_eq!(state.get_position_encoding(), Encoding::UTF8);
+}
+
+/// A successful ranged edit on a grammar-carrying document must re-parse
+/// the tree: the query runs against the installed generation, so a skipped
+/// (or un-finalized) re-parse leaves the pre-edit structure visible.
+#[cfg(feature = "tree-sitter")]
+#[test]
+fn incremental_did_change_updates_the_syntax_tree() {
+    let mut state = ServerState::with_options::<JsonServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    let uri = url("incremental-tree.json");
+    open_document(&mut state, uri.clone(), r#"{"a": 1}"#);
+
+    let _ = state.handle_document_change(DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier::new(uri.clone(), 2),
+        content_changes: vec![TextDocumentContentChangeEvent {
+            range: Some(Range::new(Position::new(0, 7), Position::new(0, 7))),
+            range_length: None,
+            text: r#", "b": 2"#.into(),
+        }],
+    });
+
+    let document = state.document(&uri).expect("document stays tracked");
+    assert_eq!(document.text_contents(), r#"{"a": 1, "b": 2}"#);
+    let pairs = document
+        .query("(pair) @p")
+        .expect("tree is coherent with the edited text");
+    assert_eq!(pairs.len(), 2, "the re-parsed tree sees the inserted pair");
+}
+
+/// The chunked-input parse callback must slice each rope chunk relative to
+/// the chunk's own start: a fixture spanning several chunks fails loudly
+/// otherwise, while single-chunk documents mask the offset arithmetic.
+#[cfg(feature = "tree-sitter")]
+#[test]
+fn parse_rope_serves_multi_chunk_ropes() {
+    let mut state = ServerState::with_options::<JsonServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    let text = format!(
+        "{{{}}}",
+        (0..400)
+            .map(|i| format!(r#""k{i:03}": {i}"#))
+            .collect::<Vec<_>>()
+            .join(","),
+    );
+    let uri = url("multi-chunk.json");
+    open_document(&mut state, uri.clone(), text);
+
+    let document = state.document(&uri).expect("document is tracked");
+    assert!(
+        document.as_ref().chunks().count() > 1,
+        "fixture spans multiple rope chunks",
+    );
+    let pairs = document
+        .query("(pair) @p")
+        .expect("tree reflects the full multi-chunk text");
+    assert_eq!(pairs.len(), 400, "every pair across all chunks is parsed");
+}
+
+/// The incremental `InputEdit` must count the inserted text exactly —
+/// byte offsets, the newline-driven row advance, and byte columns — so the
+/// re-parsed tree stays coherent with the edited text.
+#[cfg(feature = "tree-sitter")]
+#[test]
+fn tree_sitter_edit_computes_new_end_from_inserted_text() {
+    use std::fmt::Write as _;
+
+    // A non-zero start, multi-line, multi-byte insert: every computed field
+    // of the edit (start/new end bytes, row, byte columns) has to be exact.
+    let mut state = ServerState::with_options::<JsonServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    let uri = url("incremental-edit.json");
+    open_document(&mut state, uri.clone(), r#"{"a": 1}"#);
+
+    let _ = state.handle_document_change(DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier::new(uri.clone(), 2),
+        content_changes: vec![TextDocumentContentChangeEvent {
+            range: Some(Range::new(Position::new(0, 6), Position::new(0, 7))),
+            range_length: None,
+            text: "2,\n  \"b\": \"🙂\"".into(),
+        }],
+    });
+
+    let document = state.document(&uri).expect("document stays tracked");
+    assert_eq!(
+        document.text_contents(),
+        r#"{"a": 2,
+  "b": "🙂"}"#,
+    );
+    let pairs = document
+        .query("(pair) @p")
+        .expect("tree is coherent with the edited text");
+    assert_eq!(pairs.len(), 2, "the re-parsed tree sees the inserted pair");
+    assert_eq!(pairs[1].text, r#""b": "🙂""#);
+    assert_eq!(
+        pairs[1].range.start,
+        Position::new(1, 2),
+        "the inserted newline lands the second pair on row 1, byte column 2",
+    );
+
+    // A long tail after the edit: tree-sitter carries the reused tail
+    // across the incremental re-parse shifted by the edit's new-end delta,
+    // so a new-end byte that does not count the inserted text poisons the
+    // tail's mapping and surfaces as a truncated tree. Tree-sitter-upgrade
+    // sensitivity: the truncation rides on the reuse decision; the pair
+    // count is the discriminator.
+    let mut state = ServerState::with_options::<JsonServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    let mut text = String::from(r#"{"a": 1"#);
+    for i in 0..100 {
+        write!(text, r#", "t{i:03}": {i}"#).expect("writing to a String cannot fail");
+    }
+    text.push('}');
+    let uri = url("incremental-edit-tail.json");
+    open_document(&mut state, uri.clone(), text);
+
+    let _ = state.handle_document_change(DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier::new(uri.clone(), 2),
+        content_changes: vec![TextDocumentContentChangeEvent {
+            range: Some(Range::new(Position::new(0, 6), Position::new(0, 7))),
+            range_length: None,
+            text: "9,\n  \"x\": 5".into(),
+        }],
+    });
+
+    let document = state.document(&uri).expect("document stays tracked");
+    let pairs = document
+        .query("(pair) @p")
+        .expect("tree is coherent with the edited text");
+    assert_eq!(
+        pairs.len(),
+        102,
+        "the whole tail survives the incremental edit",
+    );
+    assert_eq!(
+        pairs.last().expect("pairs are collected").range.start,
+        Position::new(1, 1188),
+        "the tail rides one row down at the delta-shifted column",
+    );
+}
+
+/// The early-return paths of a workspace refresh must still report the
+/// documents the state tracks, not an empty batch.
+#[tokio::test]
+async fn refresh_without_roots_reports_tracked_documents() {
+    let uri = url("early-return-urls.test");
+
+    let mut disabled = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default().with_workspace_diagnostics(WorkspaceDiagnostics::disabled()),
+    );
+    open_document(&mut disabled, uri.clone(), "open");
+    let urls = disabled
+        .refresh_workspace_documents()
+        .await
+        .expect("refresh succeeds");
+    assert_eq!(
+        urls,
+        vec![uri.clone()],
+        "the disabled-diagnostics early return reports tracked documents",
+    );
+
+    let mut rootless = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    open_document(&mut rootless, uri.clone(), "open");
+    let urls = rootless
+        .refresh_workspace_documents()
+        .await
+        .expect("refresh succeeds");
+    assert_eq!(
+        urls,
+        vec![uri],
+        "the no-roots early return reports tracked documents",
+    );
+}
+
+/// Folder removal drops only Workspace-origin snapshots inside the removed
+/// roots: open documents survive anywhere, and workspace snapshots outside
+/// the removed roots survive too.
+#[tokio::test]
+async fn removing_folder_roots_keeps_open_drops_workspace_documents() {
+    let root_a = temp_workspace("state", "remove-roots-a");
+    let root_b = temp_workspace("state", "remove-roots-b");
+    fs::write(root_a.join("a.test"), "open").expect("test file can be written");
+    fs::write(root_a.join("c.test"), "dropped").expect("test file can be written");
+    fs::write(root_b.join("b.test"), "kept").expect("test file can be written");
+    let uri_of = |path: std::path::PathBuf| {
+        let manifest = fs::canonicalize(path).expect("test file can be canonicalized");
+        Url::from_file_path(manifest).expect("path can be converted to a URL")
+    };
+    let a_uri = uri_of(root_a.join("a.test"));
+    let c_uri = uri_of(root_a.join("c.test"));
+    let b_uri = uri_of(root_b.join("b.test"));
+
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    state.set_workspace_folders([workspace_folder(&root_a), workspace_folder(&root_b)]);
+    open_document(&mut state, a_uri.clone(), "open");
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("workspace documents can be refreshed");
+    assert_eq!(
+        urls.len(),
+        3,
+        "two workspace files load; the open document is reported",
+    );
+
+    let _ = state.handle_workspace_folders_change(DidChangeWorkspaceFoldersParams {
+        event: WorkspaceFoldersChangeEvent {
+            removed: vec![workspace_folder(&root_a)],
+            added: Vec::new(),
+        },
+    });
+
+    assert!(
+        state.document(&a_uri).is_some(),
+        "the open document survives its folder's removal",
+    );
+    assert!(
+        state.document(&c_uri).is_none(),
+        "the workspace snapshot inside the removed root is dropped",
+    );
+    assert!(
+        state.document(&b_uri).is_some(),
+        "the workspace snapshot outside the removed root survives",
+    );
+
+    fs::remove_dir_all(root_a).expect("temp workspace can be removed");
+    fs::remove_dir_all(root_b).expect("temp workspace can be removed");
+}
+
+/// The refresh's retention predicate must keep open documents on the
+/// `Open` disjunct alone: an open document inside the roots whose file
+/// vanished from disk is absent from the freshly walked set and still may
+/// not be evicted.
+#[tokio::test]
+async fn refresh_retains_open_documents_absent_from_the_fresh_set() {
+    let root = temp_workspace("state", "refresh-absent-open");
+    let file_path = root.join("vanishing.test");
+    fs::write(&file_path, "open").expect("test file can be written");
+    let manifest = fs::canonicalize(&file_path).expect("test file can be canonicalized");
+    let uri = Url::from_file_path(manifest).expect("path can be converted to a URL");
+
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    state.set_workspace_folders([workspace_folder(&root)]);
+    open_document(&mut state, uri.clone(), "open");
+
+    fs::remove_file(&file_path).expect("test file can be removed");
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("refresh succeeds");
+    assert!(
+        urls.is_empty(),
+        "precondition: the vanished file is absent from the walk",
+    );
+    assert!(
+        state.document(&uri).is_some(),
+        "an open document whose file vanished stays tracked across a refresh",
+    );
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }

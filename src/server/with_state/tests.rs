@@ -17,7 +17,8 @@ use async_lsp::lsp_types::{
     PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
     RelatedFullDocumentDiagnosticReport, RenameFilesParams, ServerCapabilities, SymbolKind,
     TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, TextDocumentSaveReason, TextEdit, Url,
+    TextDocumentPositionParams, TextDocumentSaveReason, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextDocumentSyncSaveOptions, TextEdit, Url,
     VersionedTextDocumentIdentifier, WillSaveTextDocumentParams, WorkDoneProgressCancelParams,
     WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
     WorkspaceDocumentDiagnosticReport, WorkspaceEdit, WorkspaceFoldersChangeEvent,
@@ -731,6 +732,41 @@ fn initialize_ignores_unknown_client_encodings() {
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+/// The wrapper owns document-sync advertisement: incremental sync with
+/// open/close and save notifications. A compliant client stops sending
+/// `didOpen`/`didChange`/`didSave` if any of the three goes missing.
+#[test]
+fn initialize_advertises_incremental_sync_with_open_close_and_save() {
+    let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
+
+    let init_result = futures::executor::block_on(server.initialize(InitializeParams::default()))
+        .expect("server can initialize");
+
+    let Some(TextDocumentSyncCapability::Options(sync)) =
+        init_result.capabilities.text_document_sync
+    else {
+        panic!("expected text document sync options");
+    };
+    assert_eq!(
+        sync.change,
+        Some(TextDocumentSyncKind::INCREMENTAL),
+        "sync is advertised as incremental",
+    );
+    assert_eq!(
+        sync.open_close,
+        Some(true),
+        "open/close notifications are advertised",
+    );
+    let Some(TextDocumentSyncSaveOptions::SaveOptions(save)) = sync.save else {
+        panic!("expected save options");
+    };
+    assert_eq!(
+        save.include_text,
+        Some(true),
+        "save notifications are advertised with text",
+    );
 }
 
 #[test]

@@ -18,9 +18,9 @@ clean auto-derived 20 s timeout, nothing concurrent):
 
 **Total rows: 161** = 149 baseline misses + 3 real timeouts + 9 verified artifacts.
 
-**Tally: (a) 0 · (b) 124 · (c) 20 · (d) 17** (lsp.rs:94 revised b→d by owner
-decision 2026-09-09, confirmed equivalent). Core inventory (152, artifacts excluded):
-115 b + 20 c + 17 d.
+**Tally: (a) 0 · (b) 120 · (c) 20 · (d) 21** (lsp.rs:94 b→d 2026-09-09; documents.rs
+:207:39, :572*, :574* b→d 2026-09-10 — all owner-ratified equivalent mutants).
+Core inventory (152, artifacts excluded): 111 b + 20 c + 21 d.
 
 - **(a) is zero, deliberately.** Testing rule: a type must remove a representable invalid state
   or separate a genuinely confusable pair. Every survivor here is either a value-space behavior
@@ -306,7 +306,7 @@ installed generation cannot diverge from the working text"; `query()`'s document
 
 | function@file | mutation | disp | reason | covering test / doctest |
 |---|---|---|---|---|
-| `handle_document_change` @ documents.rs:207 | `&& with \|\|` (finalize gate) | b | Finalize must run exactly when the incremental update succeeded and the tree was edited; mutated, the gate mis-fires on the failure path | W0 `incremental_did_change_updates_the_syntax_tree` (state/tests.rs, gated): edit a grammar-carrying doc → query sees the new structure |
+| `handle_document_change` @ documents.rs:207 | `&& with \|\|` (finalize gate) | d | **revised (b) → (d) by owner decision 2026-09-10: equivalent mutant.** The gate mis-fire is absorbed: on success∧¬edited every change was a full-text replace whose `replace_full_text` already installed a fresh tree, so the extra finalize re-parses consistent text with a consistent hint; on failure∧edited the recovery path (`recover_failed_incremental_update`) unconditionally re-installs a tree — the finalized result never survives the call. Empirical: full all-features suite passes under the applied diff; residual divergence is a transient window observable only by racing a concurrent request (no deterministic test can reach it; lsp.rs:94 precedent) | — |
 | `handle_document_change` @ documents.rs:207 | `delete !` — **artifact** (Miri-masked timeout; MISSED in isolated re-run) | b | `delete !` inverts: finalize only on failure → successful edits leave a stale tree | same test |
 | `finalize_edited_tree` @ documents.rs:465 | `with ()` | b | The re-parse is what keeps the installed generation equal to the working text | same test |
 | `parse_rope` @ documents.rs:486 | `== with !=` (EOF check) | b | Flipped, the chunk callback answers "" for every in-range offset → empty parse → stale/empty tree | same test (post-edit query non-empty) |
@@ -315,11 +315,11 @@ installed generation cannot diverge from the working text"; `query()`'s document
 | `tree_sitter_edit` @ documents.rs:553 | `-> Option<InputEdit> with None` | b | `None` skips `tree.edit` → stale tree while text advances | W0 `tree_sitter_edit_computes_new_end_from_inserted_text` (gated): asymmetric edits → tree coherent |
 | `tree_sitter_edit` @ documents.rs:558 | `+ with -` (`start_byte + text.len()`) | b | InputEdit's new_end_byte must count the inserted bytes | same test (non-zero start + non-empty insert) |
 | `tree_sitter_edit` @ documents.rs:558 | `+ with *` (same site) | b | Same | same test |
-| `tree_sitter_edit` @ documents.rs:571 | `== with !=` (`ch == '\n'`) | b | Newline handling drives the new end row/column of the edit | same test (insert containing `\n`) |
+| `tree_sitter_edit` @ documents.rs:571 | `== with !=` (`ch == '\n'`) | d | **revised (b) → (d) by owner decision 2026-09-10: equivalent mutant.** The mutated fold feeds only `InputEdit.new_end_position`; its sole consumer is `Tree::edit`, whose edited tree serves only as the reuse hint for the immediate finalize reparse — nothing of the hint's points survives into the installed tree. Empirical: 100-pair reuse probe shows a byte-identical tree dump under the mutant while the byte-arithmetic mutant `:558 +→*` visibly corrupts (14 pairs + ERROR), which is also why `:558` stays killable. Note: the `+→-` siblings' kills ride debug-profile usize underflow panics | — |
 | `tree_sitter_edit` @ documents.rs:572 | `+ with -` (`row + 1`) | b | Row advance per newline | same test |
-| `tree_sitter_edit` @ documents.rs:572 | `+ with *` — **artifact** | b | Same | same test |
+| `tree_sitter_edit` @ documents.rs:572 | `+ with *` — **artifact** | d | Same new_end_position normalization as the :571 revision (owner decision 2026-09-10, equivalent mutant; byte-identical probe) | — |
 | `tree_sitter_edit` @ documents.rs:574 | `+ with -` (`col_bytes + len_utf8`) | b | Column accumulation in bytes (UTF-8 invariant) | same test (insert with 🙂) |
-| `tree_sitter_edit` @ documents.rs:574 | `+ with *` — **artifact** | b | Same | same test |
+| `tree_sitter_edit` @ documents.rs:574 | `+ with *` — **artifact** | d | Same new_end_position normalization as the :571 revision (owner decision 2026-09-10, equivalent mutant; byte-identical probe) | — |
 
 ## 12. state workspace — 6 rows (6 b, 0 c, 0 d)
 
@@ -390,3 +390,79 @@ client requests, observable only as client-bound messages). Of the 20 (c) rows: 
 - Implementation distribution for Tasks 2–5: cluster 1–2 → Task 2; 3–4 → Task 3; 5, 8, 11–13 →
   Task 4; 6–7, 9–10 → Task 5 (adjusting for the plan's cluster grouping; the table is the
   contract, not the task boundaries).
+
+---
+
+## Final sweep outcome (Task 6, 2026-09-10) — close-out
+
+Full `make mutants` on `feature/nextest` @ `1a3824f`, run alone (battery green first, nothing
+concurrent, ~2 h). The mutant set is byte-identical to the baseline (859 total = 620 tested +
+239 unviable; tested and unviable lists diff clean), so every comparison below is per-mutant
+exact, not per-line approximate.
+
+**Sweep: 574 caught · 43 missed · 3 timeouts · 239 unviable**
+(baseline: 459 caught · 149 missed · 12 timeouts · 239 unviable; survivors 161 → 46).
+
+**Acceptance verdict: END STATE NOT ACHIEVED.** Zero live (b) rows in clusters 1–10, all 17
+(d) rows survived as dispositioned — but **22 of the 23 (b) rows in clusters 11–13 are still
+live** (20 missed + 2 timeouts). Root cause: Task 4's issued brief covered only clusters 5 + 8
+(~20 rows); the plan's "5, 8, 11–13 → Task 4" distribution never reached an implementation
+task, so no covering test exists in `src/` for any of the 23 cluster-11–13 rows (the eight
+table-proposed test names are all absent). The one kill in those clusters came from outside:
+
+- `parse_rope` @ documents.rs:486 (`== with !=`, EOF check) — **killed** by Task 3's
+  `node_accessors_resolve_positions_in_parsed_documents` /
+  `node_text_returns_the_node_slice` (scenario log names them); no cluster-11-targeted test
+  exists.
+
+The 22 live rows (fix-loop scope; baseline `missed.txt`/`timeout.txt` identities preserved):
+
+- `handle_document_change` :207 (`&& with ||`; `delete !` — **timeout**)
+- `finalize_edited_tree` :465 `with ()`; `parse_rope` :490 (`- with +`);
+  `replace_full_text` :519 `with ()`; `tree_sitter_edit` :553 `→ None`, :558 (`+ with -`,
+  `+ with *`), :571 (`== with !=` — **timeout**), :572 (`+ with -`, `+ with *`),
+  :574 (`+ with -`, `+ with *`) — all `src/server/state/documents.rs`
+- `document_urls` :59; `refresh_workspace_documents` :118 (`|| with &&`);
+  `remove_workspace_documents_in_roots` :132 `with ()`, :137 (`== with !=`, `|| with &&`,
+  `delete !`) — all `src/server/state/workspace.rs`
+- `initialize` :64 (`delete field change` — **timeout**), :65 (`delete field open_close`),
+  :66 (`delete field save`) — all `src/server/with_state/initialize.rs`
+
+Per-cluster outcome (killed = observed in the fresh sweep's `caught.txt`):
+
+| # | cluster | (b) rows | (b) killed | (c) survived / 20 | (d) survived / 17 |
+|---|---|---|---|---|---|
+| 1 | text_utils conversions | 14 | 14 ✓ | 2 / 2 | 0 |
+| 2 | RangeExt | 18 | 18 ✓ (lsp.rs:94 is (d)) | 5 / 18 | 1 / 1 |
+| 3 | tree-sitter navigation | 12 | 12 ✓ | — | — |
+| 4 | Document accessors & reader | 12 | 12 ✓ — incl. all 3 former `DocumentReader::read` real timeouts, now caught by the bounded read-loop tests | — | 10 / 10 |
+| 5 | workspace/diagnostics state machine | 17 | 17 ✓ | — | — |
+| 6 | oneshot | 9 | 9 ✓ | — | 2 / 2 |
+| 7 | server defaults & options | 3 | 3 ✓ | — | 4 / 4 |
+| 8 | state (mod) | 3 | 3 ✓ | — | — |
+| 9 | lsp_requests conversions | 10 | 10 ✓ | — | — |
+| 10 | matcher | 3 | 3 ✓ | — | — |
+| 11 | state documents | 14 | **1** (:486, incidental) | — | — |
+| 12 | state workspace | 6 | **0** | — | — |
+| 13 | with_state initialize | 3 | **0** | — | — |
+| | **total** | **124** | **102** | **7** | **17** |
+
+Two observations beyond the verdict:
+
+- **13 (c) rows were killed by the new W0 tests** — the (c) disposition ("survives nextest,
+  killed by the doctest only") is obsolete for them: bytes.rs :51 (`== with !=`),
+  :56 (`>= with <`), :59 ×2, :75 ×8, :82 (`- with /`). Scenario logs name Task 2's
+  `sub_delimited_requires_exact_text_length` /
+  `sub_delimited_tri_requires_exact_text_length` fixtures as killers (non-zero-start ranges
+  assert exact part ranges, pinning what the doctests pinned). The 7 remaining (c)
+  survivors are exactly: `Encoding::as_str` ×2 + bytes.rs :56 (`+ with -`, `+ with *`),
+  :62 (`delete !`), :93 ×2 — the documented nextest/doctest blind spot, as dispositioned.
+- The fresh sweep's only 3 timeouts are the anomaly rows flagged above (:207, :571,
+  initialize :64) — two of them baseline artifacts that timed out again under full-sweep
+  load instead of completing as they did in the isolated re-runs. No legitimate row timed
+  out; the baseline's 12-timeout column is fully resolved (3 caught by Task 3's bounded
+  read-loop tests, the rest accounted here).
+
+Raw evidence: `/tmp/b6_mutants_full.log`, `mutants.out/` (this sweep's scratch);
+diff inputs preserved in the Task 6 report
+(`.superpowers/sdd/task-b6-report.md`).
