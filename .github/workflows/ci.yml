@@ -57,8 +57,12 @@ jobs:
         with:
           tool: cargo-dylint,dylint-link,cargo-nextest
 
-      - name: Run battery PING
-        run: make battery
+      - run: make fmt
+      - run: make clippy
+      - run: make doc
+      - run: make test
+      - run: make test-no-default-features
+      - run: make dylint
       # - name: Docs
       #   run: cargo doc --workspace --no-deps
       #   env:
