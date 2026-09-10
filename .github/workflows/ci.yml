@@ -46,14 +46,13 @@ jobs:
           # restore-keys: |
           #   ${{ runner.os }}-cargo-
 
-      - name: Install cargo-nextest PING
+      - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
         with:
           tool: cargo-dylint,dylint-link,cargo-nextest
+
       - name: Run battery
-        run: |
-            cargo dylint --help
-            cargo nextest --help
+        run: make battery
       # - name: Docs
       #   run: cargo doc --workspace --no-deps
       #   env:
