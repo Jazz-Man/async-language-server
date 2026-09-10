@@ -162,7 +162,7 @@ Second mid-cycle owner decision: the maintenance cost of custom lint code is acc
 
 ## Out of scope
 
-- **cargo-deny** (advisories/bans/licenses/sources) — the one applicable security axis; registered as a deliberate follow-up cycle, per the still-unlanded step 5 of the 2026-08-30 research. dylint ships no stock security suite (verified against its `examples/` catalog; Trail of Bits' own Testing Handbook recommends Clippy favorites plus audit-specific custom lints), so no security lints join this cycle.
+- **cargo-deny** (advisories/bans/licenses/sources) — the one applicable security axis; registered as a deliberate follow-up cycle, per the still-unlanded step 5 of the 2026-08-30 research. dylint ships no stock security suite (verified against its `examples/` catalog; Trail of Bits' own Testing Handbook recommends Clippy favorites plus audit-specific custom lints), so no security lints join this cycle. (landed 2026-09-10 — see docs/superpowers/specs/2026-09-10-cargo-deny-integration-design.md)
 - Migrating clippy-expressible rules into the suite (the division of labor is fixed: per-project clippy config, dylint only beyond clippy).
 - `cargo modules` / `cargo machete` CI additions — the rest of the unlanded 2026-08-30 step 5.
 - The declarative `[[restrict-use]]`/`[[require-use]]` arch-lint forms (unused in `arch-lint.toml` today); `layer_boundaries` is designed so they can be added later.

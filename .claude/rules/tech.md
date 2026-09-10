@@ -62,6 +62,10 @@ creeping back after the dupes refactor. `dupes.toml` sets the analysis knobs
 (`min_nodes`, `max_exact_duplicates`, `max_near_duplicates`) and `.dupes-ignore.toml` carries one reasoned
 entry per deliberate leftover — together they encode the invariants, so a
 non-ignored group means new duplication, not a threshold to loosen.
+`make deny` runs on demand as well (cargo-deny over the committed
+`deny.toml`): deny-level findings — vulnerabilities, duplicate versions,
+wildcard dependencies, unknown sources — gate; warnings (unused license
+allowances, yanked crates) advise.
 Criterion benches run on demand (`make bench`),
 not in CI: they exist for measuring the batch diagnostics pipeline when
 working on it, not as a gate. Mutation testing runs on demand too
