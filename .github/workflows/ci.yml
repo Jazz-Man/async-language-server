@@ -46,7 +46,7 @@ jobs:
           # restore-keys: |
           #   ${{ runner.os }}-cargo-
 
-      - name: Install cargo-nextest
+      - name: Install cargo-nextest PING
         uses: taiki-e/install-action@nextest
         with:
           tool: cargo-dylint,dylint-link,cargo-nextest
