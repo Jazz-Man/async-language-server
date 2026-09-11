@@ -1,10 +1,35 @@
 name: Rust setup
-description: Cargo build caching (Swatinem/rust-cache, pinned; cache saves on main only). Call only after actions/checkout — local actions resolve from the workspace.
+description: Installs Rust toolchain and caches cargo build artifacts.
 
 runs:
   using: composite
   steps:
-    - name: Cache cargo build
-      uses: Swatinem/rust-cache@v2.9.2
+    - uses: dtolnay/rust-toolchain@stable
       with:
-        save-if: ${{ github.ref == 'refs/heads/main' }}
+        components: rustfmt, clippy
+    - uses: actions/cache@v6
+      with:
+        path: |
+          ~/.dylint_drivers/
+          ~/.rustup/toolchains/
+          target/dylint/
+        key: dylint-${{ runner.os }}-${{ hashFiles('dylint.toml') }}
+        restore-keys: dylint-${{ runner.os }}-
+
+    - uses: actions/cache@v6
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/registry/src/
+          ~/.cargo/git/db/
+          ~/.cargo/git/checkouts/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-cargo-
+
+    - name: Install cargo-nextest
+      uses: taiki-e/install-action@nextest
+      with:
+        tool: cargo-dylint,dylint-link,cargo-nextest
