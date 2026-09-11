@@ -35,83 +35,69 @@ jobs:
       - run: make test-no-default-features
       - run: make dylint
 
-  doc_list:
-     needs: [checks]
-     runs-on: ubuntu-latest
-     steps:
-       - uses: actions/checkout@v7
-         with:
-           persist-credentials: false
-       - uses: ./.github/actions/rust-setup
-       - run: make doc
-       - run: ls -la "./target/doc"
+  release:
+    needs: [checks]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bump version and push tag
+        uses: anothrNick/github-tag-action@v1
+        id: bump
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MAJOR_STRING_TOKEN: '#major'
+          MINOR_STRING_TOKEN: '#minor'
+          PATCH_STRING_TOKEN: '#patch'
+          NONE_STRING_TOKEN: '#none'
+          TAG_PREFIX: v
+          VERBOSE: false
+      - name: Build changelog
+        id: changelog
+        uses: loopwerk/tag-changelog@v1
+        with:
+          token: ${{ github.token }}
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ github.token }}
+          generate_release_notes: true
+          append_body: true
+          make_latest: true
+          tag_name: ${{ steps.bump.outputs.tag }}
+          name: ${{ steps.bump.outputs.tag }}
+          body: ${{ steps.changelog.outputs.changelog }}
 
-  # release:
-  #   needs: [checks]
-  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     contents: write
-  #   steps:
-  #     - uses: actions/checkout@v7
-  #       with:
-  #         fetch-depth: 0
-  #         persist-credentials: false
-  #     - name: Bump version and push tag
-  #       uses: anothrNick/github-tag-action@v1
-  #       id: bump
-  #       env:
-  #         GITHUB_TOKEN: ${{ github.token }}
-  #         MAJOR_STRING_TOKEN: '#major'
-  #         MINOR_STRING_TOKEN: '#minor'
-  #         PATCH_STRING_TOKEN: '#patch'
-  #         NONE_STRING_TOKEN: '#none'
-  #         TAG_PREFIX: v
-  #         VERBOSE: false
-  #     - name: Build changelog
-  #       id: changelog
-  #       uses: loopwerk/tag-changelog@v1
-  #       with:
-  #         token: ${{ github.token }}
-  #     - name: Release
-  #       uses: softprops/action-gh-release@v2
-  #       with:
-  #         token: ${{ github.token }}
-  #         generate_release_notes: true
-  #         append_body: true
-  #         make_latest: true
-  #         tag_name: ${{ steps.bump.outputs.tag }}
-  #         name: ${{ steps.bump.outputs.tag }}
-  #         body: ${{ steps.changelog.outputs.changelog }}
+  pages:
+    needs: [release]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
 
-  # pages:
-  #   needs: [release]
-  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-  #   runs-on: ubuntu-latest
-  #   environment:
-  #     name: github-pages
-  #     url: ${{ steps.deployment.outputs.page_url }}
-  #   permissions:
-  #     contents: read
-  #     pages: write
-  #     id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-setup
+      - run: make doc
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "./target/doc"
 
-  #   steps:
-  #     - uses: actions/checkout@v7
-  #       with:
-  #         persist-credentials: false
-  #     - uses: ./.github/actions/rust-setup
-  #     - name: Docs
-  #       run: cargo +nightly doc --workspace --no-deps
-  #       env:
-  #         RUSTDOCFLAGS: "--enable-index-page -Zunstable-options"
-  #     - name: Setup Pages
-  #       uses: actions/configure-pages@v5
-  #     - name: Upload artifact
-  #       uses: actions/upload-pages-artifact@v3
-  #       with:
-  #         path: "./target/doc"
-
-  #     - name: Deploy to GitHub Pages
-  #       id: deployment
-  #       uses: actions/deploy-pages@v5
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
