@@ -68,7 +68,7 @@ jobs:
      needs: [checks]
      runs-on: ubuntu-latest
      steps:
-       - run: "./target/doc"
+       - run: ls -la "./target/doc"
 
   # release:
   #   needs: [checks]
