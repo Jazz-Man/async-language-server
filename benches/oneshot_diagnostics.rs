@@ -1,11 +1,13 @@
-//! On-demand wall-clock benchmark of the batch diagnostics pipeline over a
+//! On-demand wall-clock benchmarks of the batch diagnostics pipeline over a
 //! synthetic workspace: a CPU-bound stand-in handler, `FILES` matching
 //! documents, and the full `oneshot::workspace_diagnostics`
-//! walk-open-diagnose path.
+//! walk-open-diagnose path, plus the two costs a `workspace/diagnostic`
+//! poll pays in gitignore handling (`GlobSet` rebuild, fresh parallel walk)
+//! extracted from the 2026-09-15 lsp-poc performance research.
 //!
 //! Run with `cargo bench --bench oneshot_diagnostics`; not part of the CI
 //! battery (`--all-targets` builds and lints it in all feature
-//! configurations). The group pins a 10 s measurement time in code, so
+//! configurations). The groups pin a 10 s measurement time in code, so
 //! `--measurement-time` on the command line will not change it.
 
 use async_language_server::lsp_types::{
@@ -17,6 +19,8 @@ use async_language_server::server::{
     DocumentMatcher, Server, ServerOptions, ServerResult, ServerState,
 };
 use criterion::{Criterion, criterion_group, criterion_main};
+use globset::{Glob, GlobSet, GlobSetBuilder};
+use ignore::{WalkBuilder, WalkState};
 use std::io::Write as _;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
@@ -126,6 +130,171 @@ fn note(message: &str) {
     let _ = writeln!(std::io::stderr(), "oneshot_diagnostics: {message}");
 }
 
+/// Patterns in the synthetic gitignore-scale set.
+const PATTERNS: usize = 100;
+
+/// Paths in the synthetic match corpus.
+const CORPUS: usize = 2_000;
+
+/// Directories (each with [`FILES_PER_DIR`] files) in the synthetic walk tree.
+const DIRS: usize = 50;
+
+/// Files per directory in the synthetic walk tree.
+const FILES_PER_DIR: usize = 10;
+
+/// Builds one representative mid-path `**` pattern — the glob class that
+/// falls through to globset's Regex strategy and dominates gitignore
+/// compiles (globset logs a `converted to regex` line exactly for these).
+fn pattern(index: usize) -> String {
+    format!("**/module{index}-cache/**/*.tmp")
+}
+
+/// The synthetic gitignore-scale pattern set.
+fn pattern_set() -> Vec<String> {
+    (0..PATTERNS).map(pattern).collect()
+}
+
+/// Absolute synthetic paths, roughly one in `2 * PATTERNS` matching the set.
+fn corpus() -> Vec<String> {
+    (0..CORPUS)
+        .map(|i| {
+            let module = i % (PATTERNS * 2);
+            format!("/ws/src/module{module}/gen/file{}.rs", i % 7)
+        })
+        .collect()
+}
+
+/// Creates the synthetic walk tree: `DIRS` directories with
+/// [`FILES_PER_DIR`] files each, under a millisecond-unique temp directory.
+///
+/// # Errors
+///
+/// Fails when the temp directory or any file cannot be created; the caller
+/// skips the bench.
+fn make_tree() -> std::io::Result<PathBuf> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos());
+    let dir = std::env::temp_dir().join(format!(
+        "als-bench-glob-walk-{}-{nanos}",
+        std::process::id()
+    ));
+    for dir_index in 0..DIRS {
+        let sub = dir.join(format!("module{dir_index}"));
+        // arch-lint: allow(no-sync-io) reason="bench setup runs before any async runtime exists; there is nothing to block"
+        std::fs::create_dir_all(&sub)?;
+        for file_index in 0..FILES_PER_DIR {
+            // arch-lint: allow(no-sync-io) reason="bench setup runs before any async runtime exists; there is nothing to block"
+            std::fs::write(sub.join(format!("file{file_index}.rs")), "x\n")?;
+        }
+    }
+    Ok(dir)
+}
+
+/// Compiles the synthetic set once for the match benchmark; returns `None`
+/// and reports when a controlled pattern fails to compile (a bench bug,
+/// never an expected path).
+fn compiled_set(patterns: &[String]) -> Option<GlobSet> {
+    let mut builder = GlobSetBuilder::new();
+    for source in patterns {
+        match Glob::new(source) {
+            Ok(glob) => {
+                builder.add(glob);
+            }
+            Err(error) => {
+                note(&format!(
+                    "skipping: pattern {source:?} failed to compile: {error}"
+                ));
+                return None;
+            }
+        }
+    }
+    match builder.build() {
+        Ok(set) => Some(set),
+        Err(error) => {
+            note(&format!("skipping: glob set failed to build: {error}"));
+            None
+        }
+    }
+}
+
+/// Benchmarks the gitignore-handling costs a `workspace/diagnostic` poll
+/// pays while walks run per request: the `GlobSet` rebuild over a
+/// gitignore-scale set, match throughput with a prebuilt set, and the fresh
+/// parallel walk the refresh performs.
+fn bench_glob_walk(criterion: &mut Criterion) {
+    let patterns = pattern_set();
+    let paths = corpus();
+    let Some(set) = compiled_set(&patterns) else {
+        return;
+    };
+
+    let root = match make_tree() {
+        Ok(root) => root,
+        Err(error) => {
+            note(&format!("skipping: tree setup failed: {error}"));
+            return;
+        }
+    };
+
+    let mut group = criterion.benchmark_group("glob_walk");
+    group.measurement_time(Duration::from_secs(10));
+
+    // The per-rebuild cost: what every fresh `GlobSet::new` pays for a
+    // gitignore-scale set — the cost each gitignore compilation inside a
+    // walk pays, several times per request.
+    group.bench_function("build_gitignore_scale_set", |bench| {
+        bench.iter(|| {
+            let mut builder = GlobSetBuilder::new();
+            for source in &patterns {
+                if let Ok(glob) = Glob::new(source) {
+                    builder.add(glob);
+                }
+            }
+            std::hint::black_box(builder.build())
+        });
+    });
+
+    // Match throughput over the corpus with a prebuilt set — the per-entry
+    // filter cost, for comparison against alternative matchers.
+    group.bench_function("match_corpus_prebuilt", |bench| {
+        bench.iter(|| {
+            let matches = paths
+                .iter()
+                .filter(|path| set.is_match(path.as_str()))
+                .count();
+            std::hint::black_box(matches)
+        });
+    });
+
+    // The fresh-walk cost: one `WalkBuilder` instantiation and parallel run
+    // per iteration — the shape a per-request workspace refresh performs.
+    let seen = AtomicUsize::new(0);
+    group.bench_function("fresh_parallel_walk", |bench| {
+        bench.iter(|| {
+            seen.store(0, Ordering::Relaxed);
+            WalkBuilder::new(&root).build_parallel().run(|| {
+                Box::new(|entry| {
+                    match entry {
+                        Ok(entry) => {
+                            // arch-lint: allow(no-sync-io) reason="FileType::is_file reads a flag off metadata the walker already collected; no filesystem access happens in this closure"
+                            if entry.file_type().is_some_and(|ty| ty.is_file()) {
+                                seen.fetch_add(1, Ordering::Relaxed);
+                            }
+                            WalkState::Continue
+                        }
+                        Err(_) => WalkState::Continue,
+                    }
+                })
+            });
+            std::hint::black_box(seen.load(Ordering::Relaxed))
+        });
+    });
+
+    group.finish();
+    remove_workspace(&root);
+}
+
 fn bench_oneshot(criterion: &mut Criterion) {
     let root = match make_workspace(FILES) {
         Ok(root) => root,
@@ -192,5 +361,5 @@ fn bench_oneshot(criterion: &mut Criterion) {
     remove_workspace(&root);
 }
 
-criterion_group!(benches, bench_oneshot);
+criterion_group!(benches, bench_oneshot, bench_glob_walk);
 criterion_main!(benches);
