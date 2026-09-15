@@ -6,7 +6,6 @@ license = "MIT"
 publish = false
 description = "A higher-level abstraction on top of async-lsp for building language servers with less boilerplate"
 repository = "https://github.com/Jazz-Man/async-language-server"
-readme = "README.md"
 rust-version = "1.90"
 
 [lib]
