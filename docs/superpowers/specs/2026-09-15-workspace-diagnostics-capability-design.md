@@ -18,10 +18,11 @@ Two defects in how the wrapper manages workspace diagnostics:
    voice in the protocol — is overridden, and `lsp-poc`'s explicit
    `workspace_diagnostics: false` was silently ignored.
 2. **Handler gating ignores the advertisement.**
-   `WorkspaceDiagnosticsState::new` derives `supported` from
-   `ServerOptions` alone (`diagnostics.rs:41-52`), never from what the server
-   actually advertised. Wire behavior can diverge from the advertisement in
-   both directions.
+   `WorkspaceDiagnosticsState::configure` (`diagnostics.rs:96-101`) derives
+   `supported` from `ServerOptions != Disabled` plus mere *presence* of a
+   `diagnostic_provider` — it never reads the provider's advertised
+   `workspace_diagnostics` value. A provider advertising `false` runs the
+   handler; the wire behavior can diverge from the advertisement.
 
 Generalized principle behind both: nothing verifies that an advertised
 capability is backed by machinery or an implementation, and the framework
