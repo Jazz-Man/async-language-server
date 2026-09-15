@@ -47,16 +47,8 @@ fingerprint = "2cd01ee93bcca1c4"
 reason = "position_to_encoding spec-matrix rows (conversions.rs inline tests): one test per encoding-pair or line-cap row; each row's inputs and expected columns are the content, the harness shape is shared by design"
 
 [[ignore]]
-fingerprint = "3084ed243e866d48"
-reason = "RangeExt::sub spec-matrix rows in lsp_tests.rs (basic, empty, multiline): the three range_ext flavor files run the same spec in parallel; rows differ in inputs and expected line/character values"
-
-[[ignore]]
-fingerprint = "6b1ed7ce8dd3018b"
-reason = "RangeExt::split_at spec-matrix rows in lsp_tests.rs (basic, multiline): shared call/assert template, one behavior row per test"
-
-[[ignore]]
-fingerprint = "6d8e8b50ed7167c0"
-reason = "RangeExt::sub_delimited spec-matrix rows in lsp_tests.rs (basic, multiline): shared call/assert template, one behavior row per test"
+fingerprint = "257658785e4bc44d"
+reason = "two-case split_at spec fns in lsp_tests.rs (split_at_divides_the_range_at_a_relative_position after Batch A2's merge, split_at_boundaries): the lsp flavor builds positions inline with no per-case bindings — unlike the tree-sitter flavor whose let text lines keep its twins apart — so any two two-case split_at fns normalize to one AST; avoidance analysis: dropping the merged multiline case loses a row-offset mutation pin, and tuple asserts or spurious range bindings are code contorted to please the tool; the real fix folds the boundary rows into the merged fn but deletes the ungrouped split_at_boundaries, which Batch A2's surgical scope forbids — that fold-in is the owner's dissolution path"
 
 [[ignore]]
 fingerprint = "95df29debdfb5f1d"
@@ -67,16 +59,8 @@ fingerprint = "ab90a750f1ab7d48"
 reason = "split_off_left/split_off_right mirror pair in bytes_tests.rs: mirror methods get mirror happy-path rows"
 
 [[ignore]]
-fingerprint = "becea62cca931e47"
-reason = "split_off_left/split_off_right mirror pair in lsp_tests.rs: mirror methods get mirror happy-path rows"
-
-[[ignore]]
 fingerprint = "cce39c7bbaeb9e8a"
 reason = "position-encoding preference pair in with_state/tests.rs (prefers UTF-8 when offered, prefers UTF-32 over UTF-16): two rows of the POSITION_ENCODING_PREFERRED_ORDER negotiation matrix, same harness by design"
-
-[[ignore]]
-fingerprint = "e90ca61b7ce32065"
-reason = "sub_delimited edge pair in lsp_tests.rs (delimiter at end, no delimiter): two rows of the same edge-case matrix with distinct expected sides"
 
 [[ignore]]
 fingerprint = "4e6dfe148ea98fcc"
