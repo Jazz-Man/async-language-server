@@ -289,7 +289,7 @@ impl Document {
 
         let mut items = Vec::new();
         while let Some(matched) = it.next() {
-            for capture in matched.captures {
+            for capture in matched.captures() {
                 let name = query_names[capture.index as usize].to_owned();
                 let text = self
                     .inner

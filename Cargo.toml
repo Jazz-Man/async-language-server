@@ -7,7 +7,7 @@ publish = false
 description = "A higher-level abstraction on top of async-lsp for building language servers with less boilerplate"
 repository = "https://github.com/Jazz-Man/async-language-server"
 readme = "README.md"
-rust-version = "1.88"
+rust-version = "1.90"
 
 [lib]
 name = "async_language_server"
@@ -41,7 +41,7 @@ tokio = "1.53.1"
 tokio-util = "0.7"
 tower = "0.5.3"
 tracing = "0.1.44"
-tree-sitter = "0.26.13"
+tree-sitter = "0.27.0"
 # Pinned exactly: 0.4 -> 0.5 silently changed what the "strict" preset means,
 # and a `cargo update` must not shift preset semantics.
 arch-lint = "=0.5.0"
