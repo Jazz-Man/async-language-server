@@ -150,14 +150,13 @@ Replace the capability overwrite pair with the matrix: `Disabled` forces the adv
     fn resolution_matrix_advertises_verbatim_and_gates_support() {
         let cases: [
             (WorkspaceDiagnostics, bool, bool, bool);
-            5
+            4
         ] = [
             // (mode, implementor's flag) => (advertised, supported)
             (WorkspaceDiagnostics::enabled(), true, true, true),
             (WorkspaceDiagnostics::enabled(), false, false, false),
             (WorkspaceDiagnostics::disabled(), true, false, false),
             (WorkspaceDiagnostics::disabled(), false, false, false),
-            (WorkspaceDiagnostics::enabled(), false, false, false),
         ];
         for (i, (mode, flag, advertised, supported)) in cases.into_iter().enumerate() {
             let state = matrix_state(mode);
@@ -627,9 +626,8 @@ mod tests {
         };
         let inventory = MethodInventory::from_capabilities(&caps);
 
-        // `rename_prepare` stays unadvertised: prepare_provider is on, but
-        // this test's rename declaration is OneOf::Right with prepare on —
-        // both advertise; the prepare predicate needs prepare_provider true.
+        // `rename_prepare` is advertised: rename_provider is OneOf::Right
+        // with prepare_provider on — exactly the prepare predicate's shape.
         assert!(inventory.advertised("rename_prepare"));
         // `document_diagnostics` is advertised by provider presence; its
         // `workspace_diagnostics` flag does not affect the method-level
