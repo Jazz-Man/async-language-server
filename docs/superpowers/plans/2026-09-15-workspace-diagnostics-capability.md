@@ -706,6 +706,12 @@ Expected: PASS, clean. (Compile errors around optional-vs-plain `file_operations
 
 ### Task 4: The dispatch guard hook
 
+> **Amendment (done-bar):** folded into Task 3's execution. `warn_once_default` /
+> `set_advertised_methods` have no production callers until this hook lands, so a
+> Task-3-only commit cannot hold the zero-warning battery without forbidden
+> suppressions. The hook, its macro tests, and the battery run together with
+> Task 3; this section's review is merged into Task 3's.
+
 Both dispatch engines call `server.#trait_method(...).await?`. Intercept the error before `?`: default errors on advertised methods warn once, then the error proceeds unchanged.
 
 **Files:**
