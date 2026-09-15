@@ -85,7 +85,7 @@ mid-text, or boundary asymmetry. (c) rows: nextest never runs the trait doctests
 
 | function@file | mutation | disp | reason | covering test / doctest |
 |---|---|---|---|---|
-| `ByteRange::split_at` @ bytes.rs:12 | `- with +` (len calc) | b | Trait contract: `PositionOutOfRange` "if `at` lies beyond the end of the range" (mod.rs:78); `end + start` deflates the bound for any non-zero start | W0 `split_at_rejects_at_beyond_range_length` (bytes_tests.rs): range `5..10`, at 6 → `Err`; doctest's `0..7` ranges mask this |
+| `ByteRange::split_at` @ bytes.rs:12 | `- with +` (len calc) | b | Trait contract: `PositionOutOfRange` "if `at` lies beyond the end of the range" (mod.rs:78); `end + start` deflates the bound for any non-zero start | W0 `sub_and_split_at_reject_invalid_positions` (bytes_tests.rs, split_at case): range `5..10`, at 6 → `Err`; doctest's `0..7` ranges mask this |
 | `ByteRange::sub` @ bytes.rs:31 | `- with +` (len calc) | b | Same contract via mod.rs:117 ("beyond the end of the range") | W0 `sub_bounds_are_relative_to_range_length` (bytes_tests.rs): range `5..10`, from/to 6 → `Err` |
 | `ByteRange::sub` @ bytes.rs:32 | `> with ==` (`from > len`) | b | Boundary: `from == len` is legal (end-relative) and `from = len + 1` must still error | same test: from = len (5) → `Ok` — the `==` mutant errors on this legal boundary; from = 6 (to = 6) → `Err` pins the other side |
 | `ByteRange::sub` @ bytes.rs:32 | `> with >=` (`from > len`) | b | Boundary: `>=` widens the bound to reject the legal end-relative `from == len` | same test: from = 5 → `Ok` (the `>=` mutant errors there) |
@@ -106,7 +106,7 @@ mid-text, or boundary asymmetry. (c) rows: nextest never runs the trait doctests
 | `ByteRange::sub_delimited_tri` @ bytes.rs:75 | `Ok((Some(Default), None, Some(Default)))` | c | Same | doctest `RangeExt::sub_delimited_tri` (mod.rs:160) |
 | `ByteRange::sub_delimited_tri` @ bytes.rs:75 | `Ok((Some(Default), Some(Default), None))` | c | Same | doctest `RangeExt::sub_delimited_tri` (mod.rs:160) |
 | `ByteRange::sub_delimited_tri` @ bytes.rs:75 | `Ok((Some(Default), Some(Default), Some(Default)))` | c | Same | doctest `RangeExt::sub_delimited_tri` (mod.rs:160) |
-| `ByteRange::sub_delimited_tri` @ bytes.rs:82 | `- with +` (check_text_length arg) | b | Same exact-text-length contract; doctest ranges start at 0 so it masks `end + start` | W0 `sub_delimited_tri_requires_exact_text_length` (bytes_tests.rs): non-zero-start range, mismatched text → `Err` |
+| `ByteRange::sub_delimited_tri` @ bytes.rs:82 | `- with +` (check_text_length arg) | b | Same exact-text-length contract; doctest ranges start at 0 so it masks `end + start` | W0 `mismatched_text_length_returns_text_range_mismatch` (bytes_tests.rs, tri case): non-zero-start range, mismatched text → `Err` |
 | `ByteRange::sub_delimited_tri` @ bytes.rs:82 | `- with /` (same site) | c | Doctest ranges start at 0: `end / 0` panics inside the doctest → fails it | doctest `RangeExt::sub_delimited_tri` (mod.rs:160) |
 | `ByteRange::sub_delimited_tri` @ bytes.rs:93 | `+ with -` (`delim0_offset + 1`) | c | Remainder text off-by-one → `TextRangeMismatch` inside the doctest's `.expect` | doctest `RangeExt::sub_delimited_tri` (mod.rs:160) |
 | `ByteRange::sub_delimited_tri` @ bytes.rs:93 | `+ with *` (same site) | c | Same | doctest `RangeExt::sub_delimited_tri` (mod.rs:160) |
@@ -115,7 +115,7 @@ mid-text, or boundary asymmetry. (c) rows: nextest never runs the trait doctests
 
 | function@file | mutation | disp | reason | covering test / doctest |
 |---|---|---|---|---|
-| `LspRange::sub` @ lsp.rs:76 | `+ with -` (`start.line + from.line`) | b | mod.rs:110–121 contract: relative positions resolved against the range's start; trait doctest is byte-flavored only, existing lsp_tests use `from.line == 0` | W0 `sub_converts_relative_positions_across_lines` (lsp_tests.rs): start line 5, `from` (2, 3) → absolute line 7 |
+| `LspRange::sub` @ lsp.rs:76 | `+ with -` (`start.line + from.line`) | b | mod.rs:110–121 contract: relative positions resolved against the range's start; trait doctest is byte-flavored only, existing lsp_tests use `from.line == 0` | W0 `sub_resolves_relative_positions` (lsp_tests.rs, across-lines case): start line 5, `from` (2, 3) → absolute line 7 |
 | `LspRange::sub` @ lsp.rs:94 | `&& with \|\|` (from bounds check) | d | **revised (b) → (d) by owner decision 2026-09-09: accept as equivalent mutant.** The from-check is unreachable in the original — after the `from > to` → `StartAfterEnd` gate, the absolute mapping is monotone (line-major `Ord`; the `line == 0` character split cannot invert order), so `from_absolute ≤ to_absolute ≤ end`, and `from_absolute ≥ start` holds unconditionally. The De Morgan mutant fires only when both bounds are violated — jointly impossible. Evidence: monotonicity proof (Task 2 report, FLAGGED ROW), brute force 115,200 inputs (0 differences), reviewer re-derivation from source, and the full 268-test suite passing under the applied baseline patch. The check stays as a defense-in-depth invariant; this mutant is a permanent, documented survivor in every sweep | — |
 
 ### tree_sitter.rs — 10 rows (10 b, 0 c) — all gated `#[cfg(feature = "tree-sitter")]`
@@ -123,15 +123,15 @@ mid-text, or boundary asymmetry. (c) rows: nextest never runs the trait doctests
 | function@file | mutation | disp | reason | covering test / doctest |
 |---|---|---|---|---|
 | `TsRange::split_at` @ tree_sitter.rs:12 | `- with +` (check_text_length arg) | b | Exact-text-length contract (mod.rs:183–186); existing tree_sitter_tests use `start_byte == 0` | W0 `split_at_validates_text_length_on_nonzero_start_ranges` (tree_sitter_tests.rs): `start_byte: 5` range, mismatched text → `Err` |
-| `TsRange::split_at` @ tree_sitter.rs:16 | `== with !=` (`at.row == 0`) | b | Relative-position contract: row-0 columns offset from the range's start column | W0 `split_at_offsets_columns_by_range_start_column` : start_point.column 3, `at` (0, 1) → column 4 |
-| `TsRange::sub` @ tree_sitter.rs:115 | `+ with -` (`start_point.row + from.row`) | b | Same relative-position contract, rows | W0 `sub_offsets_rows_by_range_start` : start row 2, `from` (1, 0) → row 3 |
-| `TsRange::sub` @ tree_sitter.rs:141 | `&& with \|\|` (from-hit in scan loop) | b | Byte-offset resolution must find the actual `from` position, not the first iteration | W0 `sub_resolves_from_mid_text` : `from` mid-text → start_byte correct |
+| `TsRange::split_at` @ tree_sitter.rs:16 | `== with !=` (`at.row == 0`) | b | Relative-position contract: row-0 columns offset from the range's start column | W0 `split_at_divides_the_range_at_a_relative_position` (tree_sitter_tests.rs, start-column case): start_point.column 3, `at` (0, 1) → column 4 |
+| `TsRange::sub` @ tree_sitter.rs:115 | `+ with -` (`start_point.row + from.row`) | b | Same relative-position contract, rows | W0 `sub_resolves_relative_positions` (tree_sitter_tests.rs, start-row case): start row 2, `from` (1, 0) → row 3 |
+| `TsRange::sub` @ tree_sitter.rs:141 | `&& with \|\|` (from-hit in scan loop) | b | Byte-offset resolution must find the actual `from` position, not the first iteration | W0 `sub_resolves_relative_positions` (tree_sitter_tests.rs, mid-text case): `from` mid-text → start_byte correct |
 | `TsRange::sub` @ tree_sitter.rs:163 | `&& with \|\|` (from end-of-text check) | b | "a position that is nowhere in the text is out of range" (fn comment/mod.rs:117) | W0 `sub_rejects_end_of_text_position_mismatches` : from beyond text → `Err` |
 | `TsRange::sub` @ tree_sitter.rs:163 | `== with !=` (row part) | b | Same end-of-text exactness | same test: exact-end position → `Ok`, one row off → `Err` |
 | `TsRange`::sub @ tree_sitter.rs:163 | `== with !=` (col part) | b | Same | same test, column dimension |
 | `TsRange::sub` @ tree_sitter.rs:170 | `== with !=` (to end-of-text check) | b | Same, for `to` | same test |
-| `TsRange::sub_delimited_tri` @ tree_sitter.rs:275 | `- with +` (check_text_length arg) | b | Exact-text-length contract, non-zero start | W0 `sub_delimited_tri_validates_text_length_on_nonzero_start_ranges` |
-| `TsRange::sub_delimited_tri` @ tree_sitter.rs:280 | `- with +` (`remainder.start_byte - self.start_byte`) | b | Remainder slicing must be relative to the range start | W0 `sub_delimited_tri_slices_remainder_from_nonzero_start` |
+| `TsRange::sub_delimited_tri` @ tree_sitter.rs:275 | `- with +` (check_text_length arg) | b | Exact-text-length contract, non-zero start | W0 `mismatched_text_length_returns_text_range_mismatch` (tree_sitter_tests.rs, non-zero-start tri case) |
+| `TsRange::sub_delimited_tri` @ tree_sitter.rs:280 | `- with +` (`remainder.start_byte - self.start_byte`) | b | Remainder slicing must be relative to the range start | W0 `sub_delimited_tri_slices_three_segments` (tree_sitter_tests.rs, non-zero-start case) |
 
 ## 3. tree-sitter navigation — 12 rows (12 b, 0 c, 0 d)
 
@@ -453,8 +453,9 @@ Two observations beyond the verdict:
   killed by the doctest only") is obsolete for them: bytes.rs :51 (`== with !=`),
   :56 (`>= with <`), :59 ×2, :75 ×8, :82 (`- with /`). Scenario logs name Task 2's
   `sub_delimited_requires_exact_text_length` /
-  `sub_delimited_tri_requires_exact_text_length` fixtures as killers (non-zero-start ranges
-  assert exact part ranges, pinning what the doctests pinned). The 7 remaining (c)
+  `sub_delimited_tri_requires_exact_text_length` fixtures as killers (the latter now a case in
+  `mismatched_text_length_returns_text_range_mismatch` after Batch A3's merge; non-zero-start
+  ranges assert exact part ranges, pinning what the doctests pinned). The 7 remaining (c)
   survivors are exactly: `Encoding::as_str` ×2 + bytes.rs :56 (`+ with -`, `+ with *`),
   :62 (`delete !`), :93 ×2 — the documented nextest/doctest blind spot, as dispositioned.
 - The fresh sweep's only 3 timeouts are the anomaly rows flagged above (:207, :571,

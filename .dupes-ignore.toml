@@ -43,20 +43,8 @@ fingerprint = "fe902b81118cdf76"
 reason = "test fixtures re-declare the same matcher list per suite (state/tests.rs, with_state/tests.rs, oneshot/workspace_diagnostics.rs)"
 
 [[ignore]]
-fingerprint = "2cd01ee93bcca1c4"
-reason = "position_to_encoding spec-matrix rows (conversions.rs inline tests): one test per encoding-pair or line-cap row; each row's inputs and expected columns are the content, the harness shape is shared by design"
-
-[[ignore]]
 fingerprint = "257658785e4bc44d"
 reason = "two-case split_at spec fns in lsp_tests.rs (split_at_divides_the_range_at_a_relative_position after Batch A2's merge, split_at_boundaries): the lsp flavor builds positions inline with no per-case bindings — unlike the tree-sitter flavor whose let text lines keep its twins apart — so any two two-case split_at fns normalize to one AST; avoidance analysis: dropping the merged multiline case loses a row-offset mutation pin, and tuple asserts or spurious range bindings are code contorted to please the tool; the real fix folds the boundary rows into the merged fn but deletes the ungrouped split_at_boundaries, which Batch A2's surgical scope forbids — that fold-in is the owner's dissolution path"
-
-[[ignore]]
-fingerprint = "95df29debdfb5f1d"
-reason = "RangeExt::sub spec-matrix rows in bytes_tests.rs (basic, empty): the three range_ext flavor files run the same spec in parallel; rows differ in inputs and expected byte offsets"
-
-[[ignore]]
-fingerprint = "ab90a750f1ab7d48"
-reason = "split_off_left/split_off_right mirror pair in bytes_tests.rs: mirror methods get mirror happy-path rows"
 
 [[ignore]]
 fingerprint = "cce39c7bbaeb9e8a"
@@ -143,13 +131,13 @@ fingerprint = "b784a964c3143666"
 reason = "server_capabilities impls in examples/batch_diagnostics.rs (LongLineServer) and tests/termination.rs (ConfigurableServer): the example must read standalone (6c4db5f43053b240 precedent) while the test needs its own trait-mandated impl (f83853ca365213c9 capture-server precedent); the shared diagnostic_provider shape is the trait's, not drift"
 
 [[ignore]]
-fingerprint = "270a3360975a3706"
-reason = "TextRangeMismatch convention pins in bytes_tests.rs (sub_delimited, sub_delimited_tri on a non-zero-start range): the same error-convention check with exact error fields through a second entry point; the non-zero start is the kill condition for the check_text_length mutation at bytes.rs:82, which a zero-start range masks (successor of 5ca4f3c71b23d3e0)"
-
-[[ignore]]
-fingerprint = "59fae27ce2e23bed"
-reason = "single-assert out-of-range error pins in bytes_tests.rs (reversed sub positions -> StartAfterEnd; split_at beyond the range length on a non-zero-start range -> PositionOutOfRange): one error-contract row per method, each kills a distinct mutant, and the method, range, position, and error variant are each row's content"
-
-[[ignore]]
 fingerprint = "3ffa2d6b3cf079fc"
 reason = "Configurable workspace-diagnostics server_options fixtures across tiers (wire RefreshServer in server/tests/workspace_diagnostics.rs, wrapper ConfigurableServer in with_state/tests.rs): the default_enabled values are load-bearing and opposite — the wrapper toggle test starts disabled so didChangeConfiguration is the enabler, the wire staleness test starts enabled so the same-value push pins the no-change path; a shared fixture couples suites the per-module layout keeps apart (fe902b81118cdf76/aee8589448a8b248 precedents) and cannot vary server_capabilities, which is an associated fn without self; dropping the no-op with_default_enabled(true) chain only moves the collision to termination.rs's identical no-chain fixture (b784a964c3143666 family), and Enabled/Disabled variants cannot drive these tests because every pin reads setting().is_some() (8cc63e9a2c94ab30 family of per-suite options pins)"
+
+[[ignore]]
+fingerprint = "d53443b60a97499b"
+reason = "two-assert error pins in bytes_tests.rs (out_of_range_positions_return_position_out_of_range, sub_and_split_at_reject_invalid_positions after Batch A3's merge): the byte flavor's compact integer-arg shape makes any two two-assert unwrap_err fns normalize >=90% (257658785e4bc44d's lsp-flavor finding, here in bytes); each assert kills a distinct mutant (59fae27ce2e23bed's dissolved members), so dropping or reshaping either loses a kill; avoidance analysis — folding into the out-of-range fn would delete an ungrouped fn's identity and misname the StartAfterEnd pin (257658785e4bc44d's owner-dissolution precedent)"
+
+[[ignore]]
+fingerprint = "fc821d768b7bc965"
+reason = "Batch A3's merged spec fns in bytes_tests.rs (split_off_returns_the_kept_side vs sub_resolves_relative_positions): two different methods' specs, each two cases over the same r(usize, usize)/TEXT vocabulary; the byte flavor has no shape-breaker (lsp builds inline nested positions, tree-sitter binds let text lines), so any two two-case fns normalize at the near threshold; the parallelism is the spec-matrix structure the file deliberately maintains (95df29debdfb5f1d/ab90a750f1ab7d48's dissolved reasons)"

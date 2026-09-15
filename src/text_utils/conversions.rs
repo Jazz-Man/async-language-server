@@ -84,72 +84,49 @@ mod tests {
     use super::{Encoding, Position, position_to_encoding};
 
     #[test]
-    fn caps_lines_before_converting_columns() {
+    fn converts_columns_between_encoding_pairs_and_caps_lines() {
+        // A line past the end clamps to the last line before the column
+        // converts; the smiley is 4 UTF-8 bytes but 2 UTF-16 units.
         let text = Rope::from_str("first\n🙂");
         let position = Position { line: 99, col: 4 };
-
         let converted = position_to_encoding(&text, position, Encoding::UTF8, Encoding::UTF16);
-
         assert_eq!(converted, Position { line: 1, col: 2 });
-    }
 
-    #[test]
-    fn converts_utf8_columns_to_utf32() {
+        // UTF8 → UTF32: the smiley is 4 UTF-8 bytes but 1 scalar value.
         let text = Rope::from_str("a🙂b");
         let position = Position { line: 0, col: 5 };
-
         let converted = position_to_encoding(&text, position, Encoding::UTF8, Encoding::UTF32);
-
         assert_eq!(converted, Position { line: 0, col: 2 });
-    }
 
-    #[test]
-    fn converts_utf32_columns_to_utf8() {
+        // UTF32 → UTF8, the reverse mapping.
         let text = Rope::from_str("a🙂b");
         let position = Position { line: 0, col: 2 };
-
         let converted = position_to_encoding(&text, position, Encoding::UTF32, Encoding::UTF8);
-
         assert_eq!(converted, Position { line: 0, col: 5 });
-    }
 
-    #[test]
-    fn converts_utf16_columns_to_utf32() {
+        // UTF16 → UTF32: the smiley is 2 UTF-16 units but 1 scalar value.
         let text = Rope::from_str("a🙂b");
         let position = Position { line: 0, col: 3 };
-
         let converted = position_to_encoding(&text, position, Encoding::UTF16, Encoding::UTF32);
-
         assert_eq!(converted, Position { line: 0, col: 2 });
-    }
 
-    #[test]
-    fn converts_utf32_columns_to_utf16() {
+        // UTF32 → UTF16, the reverse mapping.
         let text = Rope::from_str("a🙂b");
         let position = Position { line: 0, col: 2 };
-
         let converted = position_to_encoding(&text, position, Encoding::UTF32, Encoding::UTF16);
-
         assert_eq!(converted, Position { line: 0, col: 3 });
-    }
 
-    #[test]
-    fn caps_lines_before_converting_utf32_columns() {
+        // The same line clamp through the UTF32 target: byte column 4 on the
+        // clamped smiley-only line reads as scalar value 1.
         let text = Rope::from_str("first\n🙂");
         let position = Position { line: 99, col: 4 };
-
         let converted = position_to_encoding(&text, position, Encoding::UTF8, Encoding::UTF32);
-
         assert_eq!(converted, Position { line: 1, col: 1 });
-    }
 
-    #[test]
-    fn converts_utf16_columns_to_utf8() {
+        // UTF16 → UTF8, the reverse of the opening mapping.
         let text = Rope::from_str("a🙂b");
         let position = Position { line: 0, col: 3 };
-
         let converted = position_to_encoding(&text, position, Encoding::UTF16, Encoding::UTF8);
-
         assert_eq!(converted, Position { line: 0, col: 5 });
     }
 }

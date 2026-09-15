@@ -21,13 +21,12 @@ fn basic_split_at() {
 }
 
 #[test]
-fn basic_split_off_left() {
+fn split_off_returns_the_kept_side() {
+    // Mirror rows: split_off_left keeps the left of the position,
+    // split_off_right the right.
     let left = r(0, 10).split_off_left(TEXT, 3).expect("valid range");
     assert_eq!(left, r(0, 3));
-}
 
-#[test]
-fn basic_split_off_right() {
     let right = r(0, 10).split_off_right(TEXT, 7).expect("valid range");
     assert_eq!(right, r(7, 10));
 }
@@ -39,9 +38,15 @@ fn basic_shrink() {
 }
 
 #[test]
-fn basic_sub() {
+fn sub_resolves_relative_positions() {
+    // Positions relative to the range start resolve to their absolute spots.
     let sub_range = r(0, 10).sub(TEXT, 2, 8).expect("valid range");
     assert_eq!(sub_range, r(2, 8));
+
+    // An empty sub-range collapses to a point offset by the range's own
+    // start.
+    let sub_range = r(5, 15).sub(TEXT, 3, 3).expect("valid range");
+    assert_eq!(sub_range, r(8, 8));
 }
 
 // Edge case tests
@@ -55,12 +60,6 @@ fn split_at_boundaries() {
     let (left, right) = r(5, 15).split_at(TEXT, 10).expect("valid range");
     assert_eq!(left, r(5, 15));
     assert_eq!(right, r(15, 15));
-}
-
-#[test]
-fn sub_empty_range() {
-    let sub_range = r(5, 15).sub(TEXT, 3, 3).expect("valid range");
-    assert_eq!(sub_range, r(8, 8));
 }
 
 // Delimiter cases live in the `sub_delimited` / `sub_delimited_tri`
@@ -94,10 +93,18 @@ fn out_of_range_positions_return_position_out_of_range() {
 }
 
 #[test]
-fn reversed_sub_positions_return_start_after_end() {
+fn sub_and_split_at_reject_invalid_positions() {
+    // Reversed sub bounds are rejected: start after end.
     assert_eq!(
         r(0, 10).sub(TEXT, 7, 3).unwrap_err(),
         RangeError::StartAfterEnd,
+    );
+
+    // split_at positions count from the range start: at 6 lies beyond the
+    // `5..10` range's length.
+    assert_eq!(
+        r(5, 10).split_at(TEXT, 6).unwrap_err(),
+        RangeError::PositionOutOfRange,
     );
 }
 
@@ -111,6 +118,7 @@ fn multi_byte_delimiters_return_delimiter_not_single_byte() {
 
 #[test]
 fn mismatched_text_length_returns_text_range_mismatch() {
+    // sub_delimited validates the text length against the range.
     assert_eq!(
         r(0, 7).sub_delimited("short", '/').unwrap_err(),
         RangeError::TextRangeMismatch {
@@ -118,18 +126,20 @@ fn mismatched_text_length_returns_text_range_mismatch() {
             range_len: 7
         },
     );
+
+    // A non-zero start range validates too: the length check also fires
+    // there.
+    assert_eq!(
+        r(5, 12).sub_delimited_tri("one/tw", '/', '@').unwrap_err(),
+        RangeError::TextRangeMismatch {
+            text_len: 6,
+            range_len: 7
+        },
+    );
 }
 
 // Relative-bound tests on ranges that do not start at zero: positions are
 // counted from the range start, not from the text start.
-
-#[test]
-fn split_at_rejects_at_beyond_range_length() {
-    assert_eq!(
-        r(5, 10).split_at(TEXT, 6).unwrap_err(),
-        RangeError::PositionOutOfRange,
-    );
-}
 
 #[test]
 fn sub_bounds_are_relative_to_range_length() {
@@ -152,17 +162,6 @@ fn sub_delimited_requires_exact_text_length() {
     );
     assert_eq!(
         r(5, 12).sub_delimited("one/tw", '/').unwrap_err(),
-        RangeError::TextRangeMismatch {
-            text_len: 6,
-            range_len: 7
-        },
-    );
-}
-
-#[test]
-fn sub_delimited_tri_requires_exact_text_length() {
-    assert_eq!(
-        r(5, 12).sub_delimited_tri("one/tw", '/', '@').unwrap_err(),
         RangeError::TextRangeMismatch {
             text_len: 6,
             range_len: 7
