@@ -16,7 +16,7 @@
 - No new dependencies; `lsp-types` 0.95.1 shapes only.
 - Lint gates are deny: `missing_docs` (rust), clippy `all`/`cargo`/`pedantic`; `expect_used`/`unwrap_used` denied in `src/` (test modules exempt via `clippy.toml`).
 - All written artifacts in English; every public item carries `///` docs; fallible public fns carry `# Errors`.
-- The battery is the done-bar per task: `rtk cargo fmt --check`, `rtk cargo clippy --workspace --all-targets -- -D warnings`, `rtk cargo nextest run --workspace --all-features`; task 5 additionally runs `make battery` (both feature legs + doctests) and `make dupes`.
+- The battery is the done-bar per task: `rtk make battery` (fmt, clippy `-D warnings`, nightly doc `-D warnings`, both nextest legs + doctests, **dylint with `RUSTFLAGS="-D warnings"`** — external-lint warnings are errors) plus `rtk make dupes`. Zero warnings is the bar, not zero errors.
 - Breaking change (task 2): the commit message must say servers relying on the old default force-enable must now advertise `workspace_diagnostics: true` themselves.
 - `type_hierarchy_provider` does NOT exist in lsp-types 0.95.1 — the three type-hierarchy trait methods get a `false` predicate with a comment (never advertised ⇒ never warns).
 
@@ -766,6 +766,85 @@ Expected: clean.
 ```
 
 (The call must stay **after** step 4: `will_save_wait_until`'s predicate reads `text_document_sync`, which step 4 inserts.)
+
+- [ ] **Step 1b: Gate the machinery on `supported`** (spec §Semantics rule; review finding Important 2 — scheduled by plan amendment)
+
+`can_request_configuration`, `can_register_configuration`, and `can_refresh` (`src/workspace/diagnostics.rs`, right after `setting()`) gate only on client-capability flags and setting presence — a `Configurable` server advertising `false` would still poll and register. Add the `supported` conjunct to all three:
+
+```rust
+    fn can_request_configuration(&self) -> bool {
+        self.supported()
+            && self.inner.client_configuration.load(Ordering::Relaxed)
+            && self.setting().is_some()
+    }
+
+    fn can_register_configuration(&self) -> bool {
+        self.supported()
+            && self
+                .inner
+                .client_dynamic_configuration
+                .load(Ordering::Relaxed)
+            && self.setting().is_some()
+    }
+
+    fn can_refresh(&self) -> bool {
+        self.supported() && self.inner.client_refresh.load(Ordering::Relaxed)
+    }
+```
+
+Pin it with a W0 test in the same file's `mod tests` (the `matrix_state` / `result_with_provider` helpers from Task 2 are in scope; so are the `WorkspaceClientCapabilities`, `DidChangeConfigurationClientCapabilities`, `DiagnosticWorkspaceClientCapabilities` imports):
+
+```rust
+    fn machinery_client() -> ClientCapabilities {
+        ClientCapabilities {
+            workspace: Some(WorkspaceClientCapabilities {
+                configuration: Some(true),
+                did_change_configuration: Some(DidChangeConfigurationClientCapabilities {
+                    dynamic_registration: Some(true),
+                }),
+                diagnostic: Some(DiagnosticWorkspaceClientCapabilities {
+                    refresh_support: Some(true),
+                }),
+                ..WorkspaceClientCapabilities::default()
+            }),
+            ..ClientCapabilities::default()
+        }
+    }
+
+    // The spec's machinery rule: registration, configuration polling, and
+    // refresh only activate when the final advertisement said supported —
+    // client capabilities alone must not wake them.
+    #[test]
+    fn machinery_gates_on_supported() {
+        let configurable = || {
+            WorkspaceDiagnostics::Configurable(
+                WorkspaceDiagnostics::setting("test.machinery").with_default_enabled(true),
+            )
+        };
+
+        let unsupported = matrix_state(configurable());
+        let mut result = result_with_provider(false);
+        configure_capabilities(&unsupported, &mut result, &machinery_client());
+        let state = unsupported.workspace_diagnostics();
+        assert!(!state.supported());
+        assert!(!state.can_request_configuration());
+        assert!(!state.can_register_configuration());
+        assert!(!state.can_refresh());
+
+        let supported = matrix_state(configurable());
+        let mut result = result_with_provider(true);
+        configure_capabilities(&supported, &mut result, &machinery_client());
+        let state = supported.workspace_diagnostics();
+        assert!(state.supported());
+        assert!(state.can_request_configuration());
+        assert!(state.can_register_configuration());
+        assert!(state.can_refresh());
+    }
+```
+
+(`can_*` are private to this module; the test reaches them from `mod tests` directly. `WorkspaceDiagnostics::setting` is the existing constructor.)
+
+Same-change cleanup: the `RefreshServer` comment in `src/server/tests/workspace_diagnostics.rs` says refresh is gated on "the client's refresh support alone" — that stops being true once `can_refresh` gains the `supported` conjunct. Rewrite the comment in this step.
 
 - [ ] **Step 2: Docs** — update `src/server/options.rs`:
   - `WorkspaceDiagnostics::Disabled` doc: "Do not handle workspace diagnostics. This is the kill-switch: it forces the advertised `workspace_diagnostics` capability off regardless of the implementor's declaration."
