@@ -49,9 +49,9 @@ test-no-default-features:
 	@$(CARGO_BIN) nextest run --workspace --no-default-features
 	@$(CARGO_BIN) test --doc --workspace --no-default-features
 
-## dylint: external lint suites via their pinned nightlies (gate)
+## dylint: external lint suites via their pinned nightlies, warnings are errors (gate)
 dylint:
-	@$(CARGO_BIN) dylint --all -- --all-targets
+	@RUSTFLAGS="-D warnings" $(CARGO_BIN) dylint --all -- --all-targets
 
 ## battery: the full pre-done gate (CI parity)
 battery: fmt clippy doc test test-no-default-features dylint
