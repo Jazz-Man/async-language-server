@@ -96,6 +96,22 @@ pub(crate) fn state_with_documents() -> (ServerState, Url, Url) {
     (state, source, target)
 }
 
+/// Builds the `server_capabilities` block of a diagnostic provider: the
+/// two advertised flags verbatim, nothing else.
+pub(crate) fn diagnostic_provider_capabilities(
+    workspace_diagnostics: bool,
+    inter_file_dependencies: bool,
+) -> ServerCapabilities {
+    ServerCapabilities {
+        diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions {
+            workspace_diagnostics,
+            inter_file_dependencies,
+            ..DiagnosticOptions::default()
+        })),
+        ..ServerCapabilities::default()
+    }
+}
+
 /// Marks workspace diagnostics as advertised through the same capability
 /// merge `initialize` performs: post-initialize machinery (the workspace
 /// refresh, close-keep on disk) is gated on `supported`, which starts off
@@ -104,13 +120,7 @@ pub(crate) fn state_with_documents() -> (ServerState, Url, Url) {
 /// this fixture.
 pub(crate) fn advertise_workspace_diagnostics(state: &ServerState) {
     let mut result = InitializeResult {
-        capabilities: ServerCapabilities {
-            diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions {
-                workspace_diagnostics: true,
-                ..DiagnosticOptions::default()
-            })),
-            ..ServerCapabilities::default()
-        },
+        capabilities: diagnostic_provider_capabilities(true, false),
         ..InitializeResult::default()
     };
     configure_capabilities(state, &mut result, &ClientCapabilities::default());

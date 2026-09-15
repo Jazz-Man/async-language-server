@@ -3,25 +3,24 @@ use crate::server::{
     WorkspaceDiagnostics,
 };
 use crate::testing::{
-    advertise_workspace_diagnostics, diagnostic, line_position, same_line, temp_workspace, url,
-    workspace_folder,
+    advertise_workspace_diagnostics, diagnostic, diagnostic_provider_capabilities, line_position,
+    same_line, temp_workspace, url, workspace_folder,
 };
 use crate::text_utils::Encoding;
 use async_lsp::lsp_types::{
     ClientCapabilities, CodeLens, CompletionItem, CompletionTextEdit, CreateFilesParams,
-    DeleteFilesParams, DiagnosticOptions, DiagnosticServerCapabilities,
-    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-    DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
-    DocumentDiagnosticReportKind, DocumentDiagnosticReportResult, DocumentLink, FileChangeType,
-    FileCreate, FileDelete, FileEvent, FileRename, FullDocumentDiagnosticReport,
-    GeneralClientCapabilities, Hover, HoverContents, HoverParams, InitializeParams, InlayHint,
-    InlayHintLabel, InlayHintLabelPart, Location, MarkupContent, MarkupKind, NumberOrString, OneOf,
-    PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
-    RelatedFullDocumentDiagnosticReport, RenameFilesParams, ServerCapabilities, SymbolKind,
-    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, TextDocumentSaveReason, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextDocumentSyncSaveOptions, TextEdit, Url,
+    DeleteFilesParams, DiagnosticServerCapabilities, DidChangeConfigurationParams,
+    DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportKind,
+    DocumentDiagnosticReportResult, DocumentLink, FileChangeType, FileCreate, FileDelete,
+    FileEvent, FileRename, FullDocumentDiagnosticReport, GeneralClientCapabilities, Hover,
+    HoverContents, HoverParams, InitializeParams, InlayHint, InlayHintLabel, InlayHintLabelPart,
+    Location, MarkupContent, MarkupKind, NumberOrString, OneOf, PartialResultParams, Position,
+    PositionEncodingKind, PreviousResultId, Range, RelatedFullDocumentDiagnosticReport,
+    RenameFilesParams, ServerCapabilities, SymbolKind, TextDocumentContentChangeEvent,
+    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, TextDocumentSaveReason,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncSaveOptions, TextEdit, Url,
     VersionedTextDocumentIdentifier, WillSaveTextDocumentParams, WorkDoneProgressCancelParams,
     WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
     WorkspaceDocumentDiagnosticReport, WorkspaceEdit, WorkspaceFoldersChangeEvent,
@@ -588,19 +587,11 @@ fn drive_notifications(
     });
 }
 
+// The wrapper no longer force-enables workspace diagnostics: a server that
+// wants them advertises the capability itself. The fixture models such a
+// server; `DisabledServer` above still exercises the kill-switch.
 fn test_capabilities() -> Option<ServerCapabilities> {
-    Some(ServerCapabilities {
-        diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions {
-            inter_file_dependencies: true,
-            // The wrapper no longer force-enables this flag: a server that
-            // wants workspace diagnostics advertises it itself. The fixture
-            // models such a server; `DisabledServer` below still exercises
-            // the kill-switch.
-            workspace_diagnostics: true,
-            ..Default::default()
-        })),
-        ..Default::default()
-    })
+    Some(diagnostic_provider_capabilities(true, true))
 }
 
 fn test_document_matchers() -> Vec<DocumentMatcher> {

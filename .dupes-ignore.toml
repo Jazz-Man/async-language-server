@@ -12,7 +12,7 @@ reason = "async-lsp LanguageServer notification forwards (did_open/did_close/did
 
 [[ignore]]
 fingerprint = "e2c7af90d4455197"
-reason = "WorkspaceDiagnosticsState atomic load-and-return accessors (supported, can_refresh on AtomicBool; current_generation on AtomicU64); the shared shape is the design, not drift"
+reason = "WorkspaceDiagnosticsState atomic load-and-return accessors (supported, current_generation); the shared shape is the design, not drift"
 
 [[ignore]]
 fingerprint = "06f46feff88c5331"
@@ -37,10 +37,6 @@ reason = "futures AsyncWrite mandates both poll_flush and poll_close; TokioWrite
 [[ignore]]
 fingerprint = "8fa261f1a1daff69"
 reason = "WorkspaceDiagnosticConfig builder pair with_hidden_files/with_ignore_files: mirror-by-design delegation to the walker's corresponding options"
-
-[[ignore]]
-fingerprint = "94155f420ec8db10"
-reason = "client-capability checks can_request/can_register_configuration: mirror pair of atomic load && setting().is_some()"
 
 [[ignore]]
 fingerprint = "99943b778a5e10cf"

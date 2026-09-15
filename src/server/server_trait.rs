@@ -19,6 +19,10 @@ use lsp_macros::{lsp_method, lsp_resolve_method};
 /// The only exception to this rule are the `*_resolve` methods, which
 /// default to doing nothing, and simply resolving the item as-is.
 ///
+/// The wrapper warns once per method when a method advertised in
+/// `server_capabilities` reaches its default implementation; implement
+/// what you advertise, or drop the capability.
+///
 /// Handlers report failures by returning `Err(ServerError)`; the wrapper
 /// converts them to LSP error responses.
 pub trait Server {

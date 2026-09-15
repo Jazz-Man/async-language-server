@@ -60,7 +60,7 @@ impl WorkspaceDiagnosticsState {
     }
 
     pub(crate) fn enabled(&self) -> bool {
-        self.supported() && self.inner.enabled.load(Ordering::Relaxed)
+        self.supported_and(&self.inner.enabled)
     }
 
     pub(crate) fn supported(&self) -> bool {
@@ -75,19 +75,28 @@ impl WorkspaceDiagnosticsState {
         }
     }
 
+    /// The shared machinery conjunct: nothing wakes unless the final
+    /// advertisement said supported.
+    fn supported_and(&self, flag: &AtomicBool) -> bool {
+        self.supported() && flag.load(Ordering::Relaxed)
+    }
+
+    /// The configuration machinery's gate: one of the two client capability
+    /// flags under the shared conjunct, plus the `Configurable`-only setting.
+    fn configuration_gate(&self, flag: &AtomicBool) -> bool {
+        self.supported_and(flag) && self.setting().is_some()
+    }
+
     fn can_request_configuration(&self) -> bool {
-        self.inner.client_configuration.load(Ordering::Relaxed) && self.setting().is_some()
+        self.configuration_gate(&self.inner.client_configuration)
     }
 
     fn can_register_configuration(&self) -> bool {
-        self.inner
-            .client_dynamic_configuration
-            .load(Ordering::Relaxed)
-            && self.setting().is_some()
+        self.configuration_gate(&self.inner.client_dynamic_configuration)
     }
 
     fn can_refresh(&self) -> bool {
-        self.inner.client_refresh.load(Ordering::Relaxed)
+        self.supported_and(&self.inner.client_refresh)
     }
 
     /// Records the post-merge advertisement's verdict (`supported`, decided
@@ -599,7 +608,7 @@ mod tests {
     use crate::server::{
         DocumentMatcher, Server, ServerOptions, ServerState, WorkspaceDiagnostics,
     };
-    use crate::testing::{temp_workspace, workspace_folder};
+    use crate::testing::{diagnostic_provider_capabilities, temp_workspace, workspace_folder};
     use async_lsp::ClientSocket;
     use async_lsp::lsp_types::{
         DiagnosticOptions, DiagnosticRegistrationOptions, DiagnosticWorkspaceClientCapabilities,
@@ -841,15 +850,7 @@ mod tests {
 
     impl Server for ProviderServer {
         fn server_capabilities(_client: ClientCapabilities) -> Option<ServerCapabilities> {
-            Some(ServerCapabilities {
-                diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
-                    DiagnosticOptions {
-                        workspace_diagnostics: true,
-                        ..Default::default()
-                    },
-                )),
-                ..ServerCapabilities::default()
-            })
+            Some(diagnostic_provider_capabilities(true, false))
         }
     }
 
@@ -859,44 +860,35 @@ mod tests {
         WorkspaceDiagnosticsState::new(&options)
     }
 
-    /// Stores the three client capability flags `configure` reads, the way
-    /// an initializing client advertises them. Nothing is advertised, so
-    /// `supported` stays off — these gates do not depend on it.
-    fn configure_client_gates(
-        state: &WorkspaceDiagnosticsState,
-        configuration: bool,
-        dynamic: bool,
-        refresh: bool,
-    ) {
-        state.configure(
-            &ClientCapabilities {
-                workspace: Some(WorkspaceClientCapabilities {
-                    configuration: Some(configuration),
-                    did_change_configuration: Some(DidChangeConfigurationClientCapabilities {
-                        dynamic_registration: Some(dynamic),
-                    }),
-                    diagnostic: Some(DiagnosticWorkspaceClientCapabilities {
-                        refresh_support: Some(refresh),
-                    }),
-                    ..Default::default()
+    /// Builds the client capabilities `configure` reads its three flags
+    /// from, the way an initializing client advertises them.
+    fn client_caps(configuration: bool, dynamic: bool, refresh: bool) -> ClientCapabilities {
+        ClientCapabilities {
+            workspace: Some(WorkspaceClientCapabilities {
+                configuration: Some(configuration),
+                did_change_configuration: Some(DidChangeConfigurationClientCapabilities {
+                    dynamic_registration: Some(dynamic),
                 }),
-                ..Default::default()
-            },
-            false,
-        );
+                diagnostic: Some(DiagnosticWorkspaceClientCapabilities {
+                    refresh_support: Some(refresh),
+                }),
+                ..WorkspaceClientCapabilities::default()
+            }),
+            ..ClientCapabilities::default()
+        }
     }
 
     #[test]
     fn request_configuration_requires_client_capability_and_setting() {
         let state = configurable_state();
 
-        configure_client_gates(&state, false, false, false);
+        state.configure(&client_caps(false, false, false), true);
         assert!(
             !state.can_request_configuration(),
             "no interrogation without the client's configuration support",
         );
 
-        configure_client_gates(&state, true, false, false);
+        state.configure(&client_caps(true, false, false), true);
         assert!(
             state.can_request_configuration(),
             "the capability plus a Configurable setting enables the request",
@@ -907,7 +899,7 @@ mod tests {
     fn register_configuration_requires_dynamic_registration_support() {
         let state = configurable_state();
 
-        configure_client_gates(&state, false, true, false);
+        state.configure(&client_caps(false, true, false), true);
         assert!(
             state.can_register_configuration(),
             "dynamic registration plus a Configurable setting enables the registration",
@@ -919,7 +911,7 @@ mod tests {
         let state = configurable_state();
 
         for (refresh_support, expected) in [(false, false), (true, true)] {
-            configure_client_gates(&state, false, false, refresh_support);
+            state.configure(&client_caps(false, false, refresh_support), true);
             assert_eq!(
                 state.can_refresh(),
                 expected,
@@ -1119,6 +1111,36 @@ mod tests {
             assert!(result.capabilities.diagnostic_provider.is_none());
             assert!(!state.workspace_diagnostics().supported());
         }
+    }
+
+    // The spec's machinery rule: registration, configuration polling, and
+    // refresh only activate when the final advertisement said supported —
+    // client capabilities alone must not wake them.
+    #[test]
+    fn machinery_gates_on_supported() {
+        let configurable = || {
+            WorkspaceDiagnostics::Configurable(
+                WorkspaceDiagnostics::setting("test.machinery").with_default_enabled(true),
+            )
+        };
+
+        let unsupported = matrix_state(configurable());
+        let mut result = result_with_provider(false);
+        configure_capabilities(&unsupported, &mut result, &client_caps(true, true, true));
+        let state = unsupported.workspace_diagnostics();
+        assert!(!state.supported());
+        assert!(!state.can_request_configuration());
+        assert!(!state.can_register_configuration());
+        assert!(!state.can_refresh());
+
+        let supported = matrix_state(configurable());
+        let mut result = result_with_provider(true);
+        configure_capabilities(&supported, &mut result, &client_caps(true, true, true));
+        let state = supported.workspace_diagnostics();
+        assert!(state.supported());
+        assert!(state.can_request_configuration());
+        assert!(state.can_register_configuration());
+        assert!(state.can_refresh());
     }
 
     #[test]

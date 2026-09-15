@@ -12,6 +12,10 @@ pub struct ServerOptions {
 impl ServerOptions {
     /// Sets how workspace diagnostics should be exposed by the server.
     ///
+    /// The implementor's capabilities block is authoritative except for the
+    /// `Disabled` kill-switch, which forces the advertised
+    /// `workspace_diagnostics` capability off.
+    ///
     /// # Examples
     ///
     /// ```
@@ -62,23 +66,30 @@ fn default_parallelism() -> usize {
 /// Controls how workspace diagnostics are made available.
 #[derive(Debug, Default, Clone)]
 pub enum WorkspaceDiagnostics {
-    /// Do not advertise or handle workspace diagnostics.
+    /// Do not handle workspace diagnostics. This is the kill-switch: it
+    /// forces the advertised `workspace_diagnostics` capability off
+    /// regardless of the implementor's declaration.
     Disabled,
-    /// Advertise and handle workspace diagnostics.
+    /// Handle workspace diagnostics; the implementor's advertised
+    /// `workspace_diagnostics` value is left verbatim.
     #[default]
     Enabled,
-    /// Advertise workspace diagnostics and toggle them using a setting.
+    /// Leave the implementor's advertised `workspace_diagnostics` value
+    /// untouched and toggle handling using a setting.
     Configurable(WorkspaceDiagnosticsSetting),
 }
 
 impl WorkspaceDiagnostics {
-    /// Do not advertise or handle workspace diagnostics.
+    /// Do not handle workspace diagnostics. This is the kill-switch
+    /// constructor: the advertised `workspace_diagnostics` capability is
+    /// forced off regardless of the implementor's declaration.
     #[must_use]
     pub const fn disabled() -> Self {
         Self::Disabled
     }
 
-    /// Advertise and handle workspace diagnostics.
+    /// Handle workspace diagnostics; the implementor's advertised
+    /// `workspace_diagnostics` value is left verbatim.
     #[must_use]
     pub const fn enabled() -> Self {
         Self::Enabled

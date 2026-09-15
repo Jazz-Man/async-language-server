@@ -12,6 +12,7 @@ use tokio::time::timeout;
 
 use crate::server::testing::{RawClient, WIRE_TIMEOUT, bounded, spawn_wire_server};
 use crate::server::{Server, ServerOptions, WorkspaceDiagnostics};
+use crate::testing::diagnostic_provider_capabilities;
 
 /// How long an absence check waits before concluding nothing arrives —
 /// the same bound the unit-tier gated tests use.
@@ -23,6 +24,13 @@ struct RegistrationServer;
 impl Server for RegistrationServer {
     fn server_options(&self) -> ServerOptions {
         ServerOptions::default().with_workspace_diagnostics(WorkspaceDiagnostics::setting("wire"))
+    }
+
+    // `initialized` registers the configuration watcher only when the final
+    // advertisement said supported, so this server must advertise the
+    // provider for the registration to fire.
+    fn server_capabilities(_client: ClientCapabilities) -> Option<ServerCapabilities> {
+        Some(diagnostic_provider_capabilities(true, false))
     }
 }
 
@@ -37,8 +45,8 @@ impl Server for RefreshServer {
     }
 
     // The advertised provider is what makes diagnostics `supported` on the
-    // state, gating `refresh_diagnostics` behind the client's refresh
-    // support alone. The flag is the implementor's own declaration: the
+    // state, and `can_refresh` requires both that verdict and the client's
+    // refresh support. The flag is the implementor's own declaration: the
     // wrapper leaves it verbatim (only `Disabled` overrides it, as a
     // kill-switch).
     fn server_capabilities(_client: ClientCapabilities) -> Option<ServerCapabilities> {
