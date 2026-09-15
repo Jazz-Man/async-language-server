@@ -55,7 +55,7 @@ async fn wired_methods_dispatch() {
     // deliberately catches both No-such variants. Params stay minimally
     // valid so every request clears params validation inside its
     // registered handler and reaches the engine.
-    for (id, (method, params)) in wired_requests().enumerate() {
+    for (id, (method, _, params)) in wired_requests().enumerate() {
         let response = client
             .request(i64::try_from(id).expect("small id") + 100, method, params)
             .await;
@@ -77,61 +77,85 @@ async fn wired_methods_dispatch() {
     let _ = bounded(server).await;
 }
 
-/// Wire name and raw JSON params for every wired request, in `lsp_dispatch!`
-/// table order. One row per method, at the wire format itself: the matrix is
-/// data, not code, and a row that stops parsing fails the test loudly at the
-/// `expect` instead of degrading to a params error.
-fn wired_requests() -> impl Iterator<Item = (&'static str, Value)> {
+/// Wire name, trait method, and raw JSON params for every wired request, in
+/// `lsp_dispatch!` table order. One row per method, at the wire format
+/// itself: the matrix is data, not code, and a row that stops parsing fails
+/// the test loudly at the `expect` instead of degrading to a params error.
+fn wired_requests() -> impl Iterator<Item = (&'static str, &'static str, Value)> {
     [
-        ("textDocument/hover", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
-        ("textDocument/declaration", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
-        ("textDocument/definition", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
-        ("textDocument/references", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 }, "context": { "includeDeclaration": false } }"#),
-        ("textDocument/documentLink", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } }"#),
-        ("textDocument/rename", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 }, "newName": "n" }"#),
-        ("textDocument/prepareRename", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
-        ("textDocument/formatting", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "options": { "tabSize": 4, "insertSpaces": true } }"#),
-        ("textDocument/rangeFormatting", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "options": { "tabSize": 4, "insertSpaces": true } }"#),
-        ("textDocument/implementation", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
-        ("textDocument/typeDefinition", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
-        ("textDocument/documentHighlight", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
-        ("textDocument/onTypeFormatting", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 }, "ch": "{", "options": { "tabSize": 4, "insertSpaces": true } }"#),
-        ("textDocument/foldingRange", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" } }"#),
-        ("textDocument/linkedEditingRange", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
-        ("textDocument/codeLens", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" } }"#),
-        ("textDocument/willSaveWaitUntil", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "reason": 1 }"#),
-        ("textDocument/documentColor", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" } }"#),
-        ("textDocument/colorPresentation", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "color": { "red": 0.0, "green": 0.0, "blue": 0.0, "alpha": 0.0 }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } }"#),
-        ("textDocument/prepareCallHierarchy", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
-        ("textDocument/prepareTypeHierarchy", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
-        ("textDocument/moniker", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
-        ("workspace/willCreateFiles", r#"{ "files": [ { "uri": "file:///tmp/wire.txt" } ] }"#),
-        ("workspace/willRenameFiles", r#"{ "files": [ { "oldUri": "file:///tmp/wire.txt", "newUri": "file:///tmp/wire-2.txt" } ] }"#),
-        ("workspace/willDeleteFiles", r#"{ "files": [ { "uri": "file:///tmp/wire.txt" } ] }"#),
-        ("textDocument/inlayHint", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } }"#),
-        ("textDocument/documentSymbol", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" } }"#),
-        ("workspace/executeCommand", r#"{ "command": "echo" }"#),
-        ("textDocument/semanticTokens/full", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" } }"#),
-        ("textDocument/semanticTokens/range", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } }"#),
-        ("textDocument/semanticTokens/full/delta", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "previousResultId": "0" }"#),
-        ("textDocument/completion", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
-        ("textDocument/codeAction", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "context": { "diagnostics": [] } }"#),
-        ("textDocument/diagnostic", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" } }"#),
-        ("textDocument/selectionRange", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "positions": [ { "line": 0, "character": 0 } ] }"#),
-        ("textDocument/inlineValue", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "context": { "frameId": 0, "stoppedLocation": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } } }"#),
-        ("callHierarchy/incomingCalls", r#"{ "item": { "name": "f", "kind": 12, "uri": "file:///tmp/wire.txt", "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "selectionRange": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } } }"#),
-        ("callHierarchy/outgoingCalls", r#"{ "item": { "name": "f", "kind": 12, "uri": "file:///tmp/wire.txt", "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "selectionRange": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } } }"#),
-        ("typeHierarchy/supertypes", r#"{ "item": { "name": "f", "kind": 12, "uri": "file:///tmp/wire.txt", "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "selectionRange": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } } }"#),
-        ("typeHierarchy/subtypes", r#"{ "item": { "name": "f", "kind": 12, "uri": "file:///tmp/wire.txt", "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "selectionRange": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } } }"#),
-        ("workspace/symbol", r#"{ "query": "" }"#),
-        ("textDocument/signatureHelp", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
-        ("completionItem/resolve", r#"{ "label": "l" }"#),
-        ("codeAction/resolve", r#"{ "title": "t" }"#),
-        ("documentLink/resolve", r#"{ "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } }"#),
-        ("codeLens/resolve", r#"{ "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } }"#),
-        ("inlayHint/resolve", r#"{ "position": { "line": 0, "character": 0 }, "label": "l" }"#),
-        ("workspaceSymbol/resolve", r#"{ "name": "f", "kind": 12, "location": { "uri": "file:///tmp/wire.txt" } }"#),
+        ("textDocument/hover", "hover", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
+        ("textDocument/declaration", "declaration", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
+        ("textDocument/definition", "definition", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
+        ("textDocument/references", "references", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 }, "context": { "includeDeclaration": false } }"#),
+        ("textDocument/documentLink", "link", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } }"#),
+        ("textDocument/rename", "rename", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 }, "newName": "n" }"#),
+        ("textDocument/prepareRename", "rename_prepare", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
+        ("textDocument/formatting", "document_format", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "options": { "tabSize": 4, "insertSpaces": true } }"#),
+        ("textDocument/rangeFormatting", "document_range_format", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "options": { "tabSize": 4, "insertSpaces": true } }"#),
+        ("textDocument/implementation", "implementation", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
+        ("textDocument/typeDefinition", "type_definition", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
+        ("textDocument/documentHighlight", "document_highlight", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
+        ("textDocument/onTypeFormatting", "on_type_formatting", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 }, "ch": "{", "options": { "tabSize": 4, "insertSpaces": true } }"#),
+        ("textDocument/foldingRange", "folding_range", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" } }"#),
+        ("textDocument/linkedEditingRange", "linked_editing_range", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
+        ("textDocument/codeLens", "code_lens", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" } }"#),
+        ("textDocument/willSaveWaitUntil", "will_save_wait_until", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "reason": 1 }"#),
+        ("textDocument/documentColor", "document_color", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" } }"#),
+        ("textDocument/colorPresentation", "color_presentation", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "color": { "red": 0.0, "green": 0.0, "blue": 0.0, "alpha": 0.0 }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } }"#),
+        ("textDocument/prepareCallHierarchy", "prepare_call_hierarchy", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
+        ("textDocument/prepareTypeHierarchy", "prepare_type_hierarchy", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
+        ("textDocument/moniker", "moniker", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
+        ("workspace/willCreateFiles", "will_create_files", r#"{ "files": [ { "uri": "file:///tmp/wire.txt" } ] }"#),
+        ("workspace/willRenameFiles", "will_rename_files", r#"{ "files": [ { "oldUri": "file:///tmp/wire.txt", "newUri": "file:///tmp/wire-2.txt" } ] }"#),
+        ("workspace/willDeleteFiles", "will_delete_files", r#"{ "files": [ { "uri": "file:///tmp/wire.txt" } ] }"#),
+        ("textDocument/inlayHint", "inlay_hint", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } }"#),
+        ("textDocument/documentSymbol", "document_symbol", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" } }"#),
+        ("workspace/executeCommand", "execute_command", r#"{ "command": "echo" }"#),
+        ("textDocument/semanticTokens/full", "semantic_tokens_full", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" } }"#),
+        ("textDocument/semanticTokens/range", "semantic_tokens_range", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } }"#),
+        ("textDocument/semanticTokens/full/delta", "semantic_tokens_full_delta", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "previousResultId": "0" }"#),
+        ("textDocument/completion", "completion", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
+        ("textDocument/codeAction", "code_action", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "context": { "diagnostics": [] } }"#),
+        ("textDocument/diagnostic", "document_diagnostics", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" } }"#),
+        ("textDocument/selectionRange", "selection_range", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "positions": [ { "line": 0, "character": 0 } ] }"#),
+        ("textDocument/inlineValue", "inline_value", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "context": { "frameId": 0, "stoppedLocation": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } } }"#),
+        ("callHierarchy/incomingCalls", "incoming_calls", r#"{ "item": { "name": "f", "kind": 12, "uri": "file:///tmp/wire.txt", "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "selectionRange": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } } }"#),
+        ("callHierarchy/outgoingCalls", "outgoing_calls", r#"{ "item": { "name": "f", "kind": 12, "uri": "file:///tmp/wire.txt", "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "selectionRange": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } } }"#),
+        ("typeHierarchy/supertypes", "supertypes", r#"{ "item": { "name": "f", "kind": 12, "uri": "file:///tmp/wire.txt", "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "selectionRange": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } } }"#),
+        ("typeHierarchy/subtypes", "subtypes", r#"{ "item": { "name": "f", "kind": 12, "uri": "file:///tmp/wire.txt", "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } }, "selectionRange": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } } }"#),
+        ("workspace/symbol", "symbol", r#"{ "query": "" }"#),
+        ("textDocument/signatureHelp", "signature_help", r#"{ "textDocument": { "uri": "file:///tmp/wire.txt" }, "position": { "line": 0, "character": 0 } }"#),
+        ("completionItem/resolve", "completion_resolve", r#"{ "label": "l" }"#),
+        ("codeAction/resolve", "code_action_resolve", r#"{ "title": "t" }"#),
+        ("documentLink/resolve", "link_resolve", r#"{ "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } }"#),
+        ("codeLens/resolve", "code_lens_resolve", r#"{ "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } } }"#),
+        ("inlayHint/resolve", "inlay_hint_resolve", r#"{ "position": { "line": 0, "character": 0 }, "label": "l" }"#),
+        ("workspaceSymbol/resolve", "workspace_symbol_resolve", r#"{ "name": "f", "kind": 12, "location": { "uri": "file:///tmp/wire.txt" } }"#),
     ]
     .into_iter()
-    .map(|(method, params)| (method, serde_json::from_str(params).expect("fixture parses")))
+    .map(|(method, trait_method, params)| {
+        (method, trait_method, serde_json::from_str(params).expect("fixture parses"))
+    })
+}
+
+#[test]
+fn inventory_covers_exactly_the_non_resolve_dispatch_rows() {
+    use crate::server::inventory::METHOD_NAMES;
+
+    let resolve = [
+        "completion_resolve",
+        "code_action_resolve",
+        "link_resolve",
+        "code_lens_resolve",
+        "inlay_hint_resolve",
+        "workspace_symbol_resolve",
+    ];
+    for (_, trait_method, _) in wired_requests() {
+        let present = METHOD_NAMES.contains(&trait_method);
+        assert_eq!(
+            present,
+            !resolve.contains(&trait_method),
+            "{trait_method}: exactly the non-resolve rows are inventoried",
+        );
+    }
 }

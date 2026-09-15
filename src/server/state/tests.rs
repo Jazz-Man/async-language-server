@@ -9,9 +9,9 @@ use async_lsp::ClientSocket;
 use async_lsp::lsp_types::{
     DidChangeTextDocumentParams, DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, FileChangeType, FileDelete, FileEvent,
-    FileRename, Position, Range, SemanticTokens, SemanticTokensResult,
-    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Url,
-    VersionedTextDocumentIdentifier, WorkspaceFoldersChangeEvent,
+    FileRename, HoverProviderCapability, Position, Range, SemanticTokens, SemanticTokensResult,
+    ServerCapabilities, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    Url, VersionedTextDocumentIdentifier, WorkspaceFoldersChangeEvent,
 };
 use std::fs;
 
@@ -873,6 +873,36 @@ fn position_encoding_setter_updates_negotiated_state() {
     assert_eq!(state.get_position_encoding(), Encoding::UTF16);
     state.set_position_encoding(Encoding::UTF8);
     assert_eq!(state.get_position_encoding(), Encoding::UTF8);
+}
+
+/// `set_advertised_methods` replaces the pre-`initialize` inventory: until
+/// it runs a default error is silent, afterwards the advertised method
+/// warns through the state exactly once.
+#[test]
+fn advertised_methods_warn_once_through_the_state() {
+    use crate::error::ServerError;
+
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    let default_error = || ServerError::MethodNotImplemented { method: "hover" };
+
+    assert!(
+        !state.warn_once_default("hover", &default_error()),
+        "before initialize records anything, a default error is silent",
+    );
+
+    let caps = ServerCapabilities {
+        hover_provider: Some(HoverProviderCapability::Simple(true)),
+        ..ServerCapabilities::default()
+    };
+    state.set_advertised_methods(&caps);
+    assert!(state.warn_once_default("hover", &default_error()));
+    assert!(
+        !state.warn_once_default("hover", &default_error()),
+        "the second default hit stays silent",
+    );
 }
 
 /// A successful ranged edit on a grammar-carrying document must re-parse

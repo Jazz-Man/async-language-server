@@ -103,11 +103,7 @@ fn is_resolve_row(input: ParseStream<'_>) -> bool {
 }
 
 /// The engine for one row: the row kind's core in the shared dispatch
-/// wrapper. The URL-anchored core (42 normal rows) snapshots the document
-/// version, converts params and response against the conversion document,
-/// and rejects stale results with `CONTENT_MODIFIED`; the sole-document
-/// core (6 resolve rows) converts against the single tracked document,
-/// falling back to the standalone hooks when none is sole.
+/// wrapper.
 fn engine(row: &DispatchRow) -> TokenStream {
     let DispatchRow {
         trait_method,
@@ -116,85 +112,113 @@ fn engine(row: &DispatchRow) -> TokenStream {
         resolve,
     } = row;
     let core = if *resolve {
-        quote! {
-            // Resolve requests carry no text-document URL: convert against the
-            // sole tracked document, if the server tracks exactly one; with no
-            // sole document, the standalone hooks run state-driven conversions
-            // instead of skipping them.
-            let sole = state.sole_document();
-            match sole.as_ref() {
-                Some(document) => {
-                    convert_resolve_item::<#request, _>(
-                        &state, Some(document), &mut params, Direction::Incoming,
-                    );
-                }
-                None => {
-                    <#request as crate::lsp_requests::Request>::modify_params_standalone(
-                        &state, &mut params,
-                    );
-                }
-            }
-            let mut result = server.#trait_method(state.clone(), params).await?;
-            match sole.as_ref() {
-                Some(document) => {
-                    convert_resolve_item::<#request, _>(
-                        &state, Some(document), &mut result, Direction::Outgoing,
-                    );
-                }
-                None => {
-                    <#request as crate::lsp_requests::Request>::modify_response_standalone(
-                        &state, &mut result,
-                    );
-                }
-            }
-            Ok(result)
-        }
+        sole_document_core(trait_method, request)
     } else {
-        quote! {
-            // 1. Try to extract the URL from the params for document tracking
-            let url: Option<Url> =
-                <#request as crate::lsp_requests::Request>::extract_url(&params);
-            // 2. Version probe (clone-free) and one conversion document
-            //    for the whole request.
-            let ver: Option<i32> =
-                url.as_ref().and_then(|url| state.document_version(url));
-            let params_doc = conversion_document(&state, url.as_ref());
-            if let Some(doc) = params_doc.as_ref() {
-                <#request as crate::lsp_requests::Request>::modify_params(&state, doc, &mut params,);
-            }
-
-            // 3. Call the user-defined language server function.
-            let mut result = server.#trait_method(state.clone(), params).await?;
-
-            // 4. Staleness probe against the same clone-free version.
-            if let Some(url) = url.as_ref()
-                && state.document_version(url).is_some_and(|v| Some(v) != ver)
-            {
-                return Err(ResponseError::new(
-                    ErrorCode::CONTENT_MODIFIED,
-                    "document was modified during processing",
-                ));
-            }
-
-            // 5. The staleness probe passed, so the conversion document is
-            //    still valid for the response — reuse it instead of
-            //    re-resolving (one snapshot and at most one disk read per
-            //    request).
-            match params_doc.as_ref() {
-                Some(doc) => {
-                    <#request as crate::lsp_requests::Request>::modify_response(&state, doc, &mut result,);
-                }
-                None => {
-                    <#request as crate::lsp_requests::Request>::modify_response_standalone(
-                        &state, &mut result,
-                    );
-                }
-            }
-
-            Ok(result)
-        }
+        url_anchored_core(trait_method, request)
     };
     wrapped(alsp, request, &core)
+}
+
+/// The sole-document core (6 `resolve(...)` rows): converts against the
+/// single tracked document, falling back to the standalone hooks when none
+/// is sole.
+fn sole_document_core(trait_method: &Ident, request: &Path) -> TokenStream {
+    quote! {
+        // Resolve requests carry no text-document URL: convert against the
+        // sole tracked document, if the server tracks exactly one; with no
+        // sole document, the standalone hooks run state-driven conversions
+        // instead of skipping them.
+        let sole = state.sole_document();
+        match sole.as_ref() {
+            Some(document) => {
+                convert_resolve_item::<#request, _>(
+                    &state, Some(document), &mut params, Direction::Incoming,
+                );
+            }
+            None => {
+                <#request as crate::lsp_requests::Request>::modify_params_standalone(
+                    &state, &mut params,
+                );
+            }
+        }
+        let mut result = match server.#trait_method(state.clone(), params).await {
+            Ok(result) => result,
+            Err(error) => {
+                state.warn_once_default(stringify!(#trait_method), &error);
+                return Err(error.into());
+            }
+        };
+        match sole.as_ref() {
+            Some(document) => {
+                convert_resolve_item::<#request, _>(
+                    &state, Some(document), &mut result, Direction::Outgoing,
+                );
+            }
+            None => {
+                <#request as crate::lsp_requests::Request>::modify_response_standalone(
+                    &state, &mut result,
+                );
+            }
+        }
+        Ok(result)
+    }
+}
+
+/// The URL-anchored core (42 normal rows): snapshots the document version,
+/// converts params and response against the conversion document, and
+/// rejects stale results with `CONTENT_MODIFIED`.
+fn url_anchored_core(trait_method: &Ident, request: &Path) -> TokenStream {
+    quote! {
+        // 1. Try to extract the URL from the params for document tracking
+        let url: Option<Url> =
+            <#request as crate::lsp_requests::Request>::extract_url(&params);
+        // 2. Version probe (clone-free) and one conversion document
+        //    for the whole request.
+        let ver: Option<i32> =
+            url.as_ref().and_then(|url| state.document_version(url));
+        let params_doc = conversion_document(&state, url.as_ref());
+        if let Some(doc) = params_doc.as_ref() {
+            <#request as crate::lsp_requests::Request>::modify_params(&state, doc, &mut params,);
+        }
+
+        // 3. Call the user-defined language server function. A default
+        //    error on an advertised method draws its single warning
+        //    before the error proceeds unchanged to the wire.
+        let mut result = match server.#trait_method(state.clone(), params).await {
+            Ok(result) => result,
+            Err(error) => {
+                state.warn_once_default(stringify!(#trait_method), &error);
+                return Err(error.into());
+            }
+        };
+
+        // 4. Staleness probe against the same clone-free version.
+        if let Some(url) = url.as_ref()
+            && state.document_version(url).is_some_and(|v| Some(v) != ver)
+        {
+            return Err(ResponseError::new(
+                ErrorCode::CONTENT_MODIFIED,
+                "document was modified during processing",
+            ));
+        }
+
+        // 5. The staleness probe passed, so the conversion document is
+        //    still valid for the response — reuse it instead of
+        //    re-resolving (one snapshot and at most one disk read per
+        //    request).
+        match params_doc.as_ref() {
+            Some(doc) => {
+                <#request as crate::lsp_requests::Request>::modify_response(&state, doc, &mut result,);
+            }
+            None => {
+                <#request as crate::lsp_requests::Request>::modify_response_standalone(
+                    &state, &mut result,
+                );
+            }
+        }
+
+        Ok(result)
+    }
 }
 
 /// The shared dispatch-method wrapper around a core: signature, server and
@@ -254,6 +278,7 @@ mod tests {
             "document_version",
             "CONTENT_MODIFIED",
             "modify_response_standalone",
+            "warn_once_default",
             ". hover (state . clone () , params)",
         ] {
             assert!(text.contains(needle), "missing {needle:?} from {text}");
@@ -274,6 +299,7 @@ mod tests {
         assert!(text.contains("convert_resolve_item"));
         assert!(text.contains("Direction :: Incoming"));
         assert!(text.contains("sole_document"));
+        assert!(text.contains("warn_once_default"));
         assert!(!text.contains("CONTENT_MODIFIED"));
     }
 

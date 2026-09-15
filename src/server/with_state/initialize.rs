@@ -70,6 +70,11 @@ impl<T: Server + Send + Sync + 'static> LanguageServerWithState<T> {
             },
         ));
 
+        // 4a. Record which methods the final capabilities advertise: the
+        //    dispatch guard warns only for advertised defaults, so it must
+        //    see the result exactly as the client receives it.
+        self.state.set_advertised_methods(&result.capabilities);
+
         // 5. Make sure that the state now also uses the negotiated encoding
         self.state
             .set_position_encoding(negotiated_position_encoding);

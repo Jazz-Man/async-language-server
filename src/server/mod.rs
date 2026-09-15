@@ -9,6 +9,7 @@
 //! encoding negotiated with the client — conversions between UTF-8,
 //! UTF-16, and UTF-32 are handled internally.
 
+mod inventory;
 mod options;
 mod serve;
 mod server_trait;
@@ -21,6 +22,7 @@ pub(crate) mod testing;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use self::inventory::MethodInventory;
 pub use self::options::{
     ConfigurationKey, ServerOptions, WorkspaceDiagnostics, WorkspaceDiagnosticsSetting,
 };

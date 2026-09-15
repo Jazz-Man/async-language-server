@@ -1,9 +1,10 @@
 use crate::documents::{Document, DocumentMatchers};
-use crate::server::{Server, ServerOptions};
+use crate::error::ServerError;
+use crate::server::{MethodInventory, Server, ServerOptions};
 use crate::text_utils::Encoding;
 use crate::workspace::WorkspaceDiagnosticsState;
 use async_lsp::ClientSocket;
-use async_lsp::lsp_types::{SemanticToken, Url};
+use async_lsp::lsp_types::{SemanticToken, ServerCapabilities, Url};
 use dashmap::DashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -24,6 +25,7 @@ pub struct ServerState {
     diagnostics_parallelism: usize,
     matchers: DocumentMatchers,
     encoding: Arc<Encoding>,
+    advertised_methods: MethodInventory,
     semantic_tokens_cache: Arc<DashMap<Url, CachedSemanticTokens>>,
 }
 
@@ -119,6 +121,7 @@ impl ServerState {
         let diagnostics_parallelism = options.diagnostics_parallelism();
         let matchers = DocumentMatchers::new(T::server_document_matchers());
         let encoding = Arc::new(Encoding::default());
+        let advertised_methods = MethodInventory::new();
         let semantic_tokens_cache = Arc::new(DashMap::new());
         Self {
             client,
@@ -128,6 +131,7 @@ impl ServerState {
             diagnostics_parallelism,
             matchers,
             encoding,
+            advertised_methods,
             semantic_tokens_cache,
         }
     }
@@ -176,6 +180,19 @@ impl ServerState {
 
     pub(crate) fn set_position_encoding(&mut self, kind: impl Into<Encoding>) {
         self.encoding = Arc::new(kind.into());
+    }
+
+    /// Records which [`Server`] methods the capabilities sent to the client
+    /// advertise. Called once per `initialize`, after the final
+    /// `InitializeResult` is composed.
+    pub(crate) fn set_advertised_methods(&mut self, caps: &ServerCapabilities) {
+        self.advertised_methods = MethodInventory::from_capabilities(caps);
+    }
+
+    /// Warns once per method when an advertised method's trait default ran;
+    /// returns whether this call warned. See [`MethodInventory`].
+    pub(crate) fn warn_once_default(&self, method: &'static str, error: &ServerError) -> bool {
+        self.advertised_methods.warn_once_default(method, error)
     }
 }
 
