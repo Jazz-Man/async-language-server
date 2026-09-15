@@ -417,13 +417,21 @@ where
                 return Ok(WorkspaceReportSink::default());
             };
             let version = doc.version();
-            let mut result = server
+            // A default error on an advertised method draws its single
+            // warning, the same guard the dispatch engines run.
+            let mut result = match server
                 .document_diagnostics(
                     state.clone(),
                     document_diagnostic_params(url.clone(), identifier, previous),
                 )
                 .await
-                .map_err(ResponseError::from)?;
+            {
+                Ok(result) => result,
+                Err(error) => {
+                    state.warn_once_default("document_diagnostics", &error);
+                    return Err(error.into());
+                }
+            };
 
             if state
                 .document_version(&url)
@@ -1025,6 +1033,20 @@ mod tests {
                 options.diagnostic_options.workspace_diagnostics
             }
         }
+    }
+
+    // A fresh state has never spoken to a client: `supported` starts false
+    // even under Enabled options — only `configure_capabilities` records the
+    // post-merge advertisement. Catches a regression re-deriving `supported`
+    // from `ServerOptions` in `WorkspaceDiagnosticsState::new`, which every
+    // post-configure assertion would otherwise let pass.
+    #[test]
+    fn supported_starts_false_before_configure_capabilities() {
+        let state = matrix_state(WorkspaceDiagnostics::enabled());
+        assert!(
+            !state.workspace_diagnostics().supported(),
+            "a fresh state is unsupported until configure_capabilities has spoken",
+        );
     }
 
     // The spec's resolution matrix, one row per case: (ServerOptions mode,

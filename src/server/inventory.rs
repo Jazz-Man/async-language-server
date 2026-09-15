@@ -330,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn method_names_match_the_dispatch_table_order() {
+    fn method_names_pin_the_dispatch_table_surface() {
         assert_eq!(METHOD_NAMES.len(), 42);
         assert_eq!(METHOD_NAMES[0], "hover");
         assert_eq!(METHOD_NAMES.last().copied(), Some("signature_help"));
