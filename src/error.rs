@@ -94,6 +94,17 @@ pub enum ServerError {
         /// The JSON-RPC error message.
         message: String,
     },
+    /// A dispatched LSP method whose `Server` trait default ran: the wrapper
+    /// dispatches the method, but the implementor did not override it.
+    ///
+    /// Kept distinct from [`ServerError::Rpc`] so the dispatch layer can tell
+    /// a trait default apart from an implementor's deliberate
+    /// `METHOD_NOT_FOUND`; both map to the same wire code.
+    #[error("LSP method '{method}' has not been implemented")]
+    MethodNotImplemented {
+        /// The `Server` trait method's name.
+        method: &'static str,
+    },
     /// Error raised by the underlying async-lsp machinery.
     #[error("{0}")]
     Lsp(#[from] async_lsp::Error),
@@ -120,6 +131,10 @@ impl From<ServerError> for ResponseError {
     fn from(value: ServerError) -> Self {
         match value {
             ServerError::Rpc { code, message } => ResponseError::new(code, message),
+            ServerError::MethodNotImplemented { method } => ResponseError::new(
+                ServerErrorCode::METHOD_NOT_FOUND,
+                format!("LSP method '{method}' has not been implemented"),
+            ),
             other => ResponseError::new(ServerErrorCode::INTERNAL_ERROR, other),
         }
     }
@@ -156,6 +171,22 @@ mod tests {
 
         assert_eq!(response.code, ErrorCode::METHOD_NOT_FOUND);
         assert_eq!(response.message, "nope");
+    }
+
+    #[test]
+    fn method_not_implemented_maps_to_method_not_found() {
+        let error = ServerError::MethodNotImplemented { method: "hover" };
+        assert_eq!(
+            error.to_string(),
+            "LSP method 'hover' has not been implemented"
+        );
+
+        let response = ResponseError::from(error);
+        assert_eq!(response.code, ErrorCode::METHOD_NOT_FOUND);
+        assert_eq!(
+            response.message,
+            "LSP method 'hover' has not been implemented",
+        );
     }
 
     #[test]

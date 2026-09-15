@@ -1,7 +1,6 @@
 use crate::documents::DocumentMatcher;
 use crate::error::{ServerError, ServerResult};
 use crate::server::{ServerOptions, ServerState};
-use async_lsp::ErrorCode;
 use async_lsp::lsp_types::{
     ClientCapabilities, CreateFilesParams, DeleteFilesParams, DidChangeConfigurationParams,
     DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams,
@@ -701,8 +700,26 @@ pub trait Server {
 }
 
 fn method_not_implemented<T>(name: &'static str) -> std::future::Ready<Result<T, ServerError>> {
-    std::future::ready(Err(ServerError::rpc(
-        ErrorCode::METHOD_NOT_FOUND,
-        format!("LSP method '{name}' has not been implemented"),
-    )))
+    std::future::ready(Err(ServerError::MethodNotImplemented { method: name }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::method_not_implemented;
+    use crate::error::ServerError;
+
+    // The dispatch guard tells trait defaults apart from deliberate
+    // METHOD_NOT_FOUND replies by exactly this variant; a regression to
+    // `ServerError::rpc` here would silence the guard without any wire
+    // change to catch it.
+    #[test]
+    fn trait_defaults_carry_the_method_not_implemented_variant() {
+        let Err(error) = method_not_implemented::<()>("hover").into_inner() else {
+            panic!("trait defaults must be errors");
+        };
+        assert!(matches!(
+            error,
+            ServerError::MethodNotImplemented { method: "hover" },
+        ));
+    }
 }
