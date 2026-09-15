@@ -49,10 +49,7 @@ impl WorkspaceDiagnosticsState {
         Self {
             inner: Arc::new(WorkspaceDiagnosticsStateInner {
                 options: options.workspace_diagnostics.clone(),
-                supported: AtomicBool::new(!matches!(
-                    &options.workspace_diagnostics,
-                    WorkspaceDiagnostics::Disabled,
-                )),
+                supported: AtomicBool::new(false),
                 enabled: AtomicBool::new(enabled),
                 client_configuration: AtomicBool::new(false),
                 client_dynamic_configuration: AtomicBool::new(false),
@@ -93,12 +90,11 @@ impl WorkspaceDiagnosticsState {
         self.inner.client_refresh.load(Ordering::Relaxed)
     }
 
-    fn configure(&self, result: &InitializeResult, client_capabilities: &ClientCapabilities) {
-        self.inner.supported.store(
-            !matches!(&self.inner.options, WorkspaceDiagnostics::Disabled)
-                && result.capabilities.diagnostic_provider.is_some(),
-            Ordering::Relaxed,
-        );
+    /// Records the post-merge advertisement's verdict (`supported`, decided
+    /// by the caller from the final `InitializeResult`) and the three client
+    /// capability flags the configuration machinery needs.
+    fn configure(&self, client_capabilities: &ClientCapabilities, supported: bool) {
+        self.inner.supported.store(supported, Ordering::Relaxed);
 
         let workspace = client_capabilities.workspace.as_ref();
         self.inner.client_configuration.store(
@@ -140,44 +136,55 @@ pub(crate) fn configure_capabilities(
     client_capabilities: &ClientCapabilities,
 ) {
     let workspace_diagnostics = state.workspace_diagnostics();
-    workspace_diagnostics.configure(result, client_capabilities);
 
-    match &workspace_diagnostics.inner.options {
-        WorkspaceDiagnostics::Disabled => disable_workspace_diagnostics(result),
-        WorkspaceDiagnostics::Enabled | WorkspaceDiagnostics::Configurable(_) => {
-            enable_workspace_diagnostics(result);
-            enable_workspace_folder_tracking(result);
-        }
+    // The one deliberate override: the kill-switch forces the advertisement
+    // off no matter what the implementor declared. Everything else is the
+    // implementor's value, verbatim.
+    if matches!(
+        &workspace_diagnostics.inner.options,
+        WorkspaceDiagnostics::Disabled,
+    ) {
+        set_workspace_diagnostics_advertised(result, false);
+    }
+
+    let supported = advertised_workspace_diagnostics(result);
+    workspace_diagnostics.configure(client_capabilities, supported);
+
+    if supported {
+        enable_workspace_folder_tracking(result);
     }
 }
 
-fn enable_workspace_diagnostics(result: &mut InitializeResult) {
-    if let Some(provider) = result.capabilities.diagnostic_provider.as_mut() {
-        match provider {
-            DiagnosticServerCapabilities::Options(options) => {
-                options.workspace_diagnostics = true;
-            }
+/// Reads the provider's advertised `workspace_diagnostics` flag; no provider
+/// advertises nothing.
+fn advertised_workspace_diagnostics(result: &InitializeResult) -> bool {
+    result
+        .capabilities
+        .diagnostic_provider
+        .as_ref()
+        .is_some_and(|provider| match provider {
+            DiagnosticServerCapabilities::Options(options) => options.workspace_diagnostics,
             DiagnosticServerCapabilities::RegistrationOptions(options) => {
-                options.diagnostic_options.workspace_diagnostics = true;
+                options.diagnostic_options.workspace_diagnostics
             }
-        }
-    }
+        })
 }
 
-fn disable_workspace_diagnostics(result: &mut InitializeResult) {
+fn set_workspace_diagnostics_advertised(result: &mut InitializeResult, advertised: bool) {
     if let Some(provider) = result.capabilities.diagnostic_provider.as_mut() {
         match provider {
             DiagnosticServerCapabilities::Options(options) => {
-                options.workspace_diagnostics = false;
+                options.workspace_diagnostics = advertised;
             }
             DiagnosticServerCapabilities::RegistrationOptions(options) => {
-                options.diagnostic_options.workspace_diagnostics = false;
+                options.diagnostic_options.workspace_diagnostics = advertised;
             }
         }
     }
 }
 
 fn enable_workspace_folder_tracking(result: &mut InitializeResult) {
+    // unreachable through configure_capabilities today — supported implies a provider; kept as this function's own invariant
     if result.capabilities.diagnostic_provider.is_none() {
         return;
     }
@@ -595,7 +602,7 @@ mod tests {
     use crate::testing::{temp_workspace, workspace_folder};
     use async_lsp::ClientSocket;
     use async_lsp::lsp_types::{
-        DiagnosticOptions, DiagnosticWorkspaceClientCapabilities,
+        DiagnosticOptions, DiagnosticRegistrationOptions, DiagnosticWorkspaceClientCapabilities,
         DidChangeConfigurationClientCapabilities, DocumentDiagnosticParams,
         DocumentDiagnosticReport, DocumentDiagnosticReportResult, PartialResultParams,
         RelatedFullDocumentDiagnosticReport, ServerCapabilities, UnchangedDocumentDiagnosticReport,
@@ -723,6 +730,11 @@ mod tests {
             &options,
         );
         state.set_workspace_folders([workspace_folder(&root)]);
+        // The width engine runs post-initialize: mark the capability as
+        // advertised, the way `initialize` would, so the workspace refresh
+        // underneath the items request is enabled.
+        let mut result = result_with_provider(true);
+        configure_capabilities(&state, &mut result, &ClientCapabilities::default());
         let (entered_tx, entered_rx) = mpsc::unbounded_channel();
         (
             state,
@@ -848,7 +860,8 @@ mod tests {
     }
 
     /// Stores the three client capability flags `configure` reads, the way
-    /// an initializing client advertises them.
+    /// an initializing client advertises them. Nothing is advertised, so
+    /// `supported` stays off — these gates do not depend on it.
     fn configure_client_gates(
         state: &WorkspaceDiagnosticsState,
         configuration: bool,
@@ -856,7 +869,6 @@ mod tests {
         refresh: bool,
     ) {
         state.configure(
-            &InitializeResult::default(),
             &ClientCapabilities {
                 workspace: Some(WorkspaceClientCapabilities {
                     configuration: Some(configuration),
@@ -870,6 +882,7 @@ mod tests {
                 }),
                 ..Default::default()
             },
+            false,
         );
     }
 
@@ -966,6 +979,146 @@ mod tests {
             !options.workspace_diagnostics,
             "Disabled options must clear the advertised workspace diagnostics flag",
         );
+    }
+
+    fn matrix_state(options: WorkspaceDiagnostics) -> ServerState {
+        #[derive(Default)]
+        struct MatrixServer;
+        impl Server for MatrixServer {}
+
+        let options = ServerOptions::default().with_workspace_diagnostics(options);
+        ServerState::with_options::<MatrixServer>(ClientSocket::new_closed(), &options)
+    }
+
+    fn result_with_provider(workspace_diagnostics: bool) -> InitializeResult {
+        InitializeResult {
+            capabilities: ServerCapabilities {
+                diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
+                    DiagnosticOptions {
+                        workspace_diagnostics,
+                        ..DiagnosticOptions::default()
+                    },
+                )),
+                ..ServerCapabilities::default()
+            },
+            ..InitializeResult::default()
+        }
+    }
+
+    fn result_with_registration_provider(workspace_diagnostics: bool) -> InitializeResult {
+        InitializeResult {
+            capabilities: ServerCapabilities {
+                diagnostic_provider: Some(DiagnosticServerCapabilities::RegistrationOptions(
+                    DiagnosticRegistrationOptions {
+                        diagnostic_options: DiagnosticOptions {
+                            workspace_diagnostics,
+                            ..DiagnosticOptions::default()
+                        },
+                        ..DiagnosticRegistrationOptions::default()
+                    },
+                )),
+                ..ServerCapabilities::default()
+            },
+            ..InitializeResult::default()
+        }
+    }
+
+    /// Reads the provider's advertised flag from either provider shape — the
+    /// test-side mirror of `advertised_workspace_diagnostics`, so both arms
+    /// assert the same way.
+    fn advertised_flag(provider: &DiagnosticServerCapabilities) -> bool {
+        match provider {
+            DiagnosticServerCapabilities::Options(options) => options.workspace_diagnostics,
+            DiagnosticServerCapabilities::RegistrationOptions(options) => {
+                options.diagnostic_options.workspace_diagnostics
+            }
+        }
+    }
+
+    // The spec's resolution matrix, one row per case: (ServerOptions mode,
+    // advertised flag in the implementor's provider) => expected final
+    // advertisement and handler support.
+    #[test]
+    fn resolution_matrix_advertises_verbatim_and_gates_support() {
+        let configurable =
+            || WorkspaceDiagnostics::Configurable(WorkspaceDiagnostics::setting("test.matrix"));
+        let cases: [(WorkspaceDiagnostics, bool, bool, bool); 6] = [
+            // (mode, implementor's flag) => (advertised, supported)
+            (WorkspaceDiagnostics::enabled(), true, true, true),
+            (WorkspaceDiagnostics::enabled(), false, false, false),
+            (WorkspaceDiagnostics::disabled(), true, false, false),
+            (WorkspaceDiagnostics::disabled(), false, false, false),
+            (configurable(), true, true, true),
+            (configurable(), false, false, false),
+        ];
+        for (i, (mode, flag, advertised, supported)) in cases.into_iter().enumerate() {
+            let state = matrix_state(mode);
+            let client = ClientCapabilities::default();
+            let mut result = result_with_provider(flag);
+            configure_capabilities(&state, &mut result, &client);
+
+            let provider = result
+                .capabilities
+                .diagnostic_provider
+                .as_ref()
+                .expect("provider survives the merge");
+            assert_eq!(
+                advertised_flag(provider),
+                advertised,
+                "case {i}: advertised",
+            );
+            assert_eq!(
+                state.workspace_diagnostics().supported(),
+                supported,
+                "case {i}: supported",
+            );
+        }
+    }
+
+    // The RegistrationOptions arm follows the same matrix; the Disabled row
+    // is the kill-switch cell where an arm-specific regression would hide.
+    #[test]
+    fn registration_options_arm_follows_the_same_matrix() {
+        let client = ClientCapabilities::default();
+
+        let enabled = matrix_state(WorkspaceDiagnostics::enabled());
+        let mut result = result_with_registration_provider(true);
+        configure_capabilities(&enabled, &mut result, &client);
+        let Some(DiagnosticServerCapabilities::RegistrationOptions(options)) =
+            result.capabilities.diagnostic_provider.as_ref()
+        else {
+            panic!("provider survives the merge");
+        };
+        assert!(options.diagnostic_options.workspace_diagnostics);
+        assert!(enabled.workspace_diagnostics().supported());
+
+        let disabled = matrix_state(WorkspaceDiagnostics::disabled());
+        let mut result = result_with_registration_provider(true);
+        configure_capabilities(&disabled, &mut result, &client);
+        let Some(DiagnosticServerCapabilities::RegistrationOptions(options)) =
+            result.capabilities.diagnostic_provider.as_ref()
+        else {
+            panic!("provider survives the merge");
+        };
+        assert!(!options.diagnostic_options.workspace_diagnostics);
+        assert!(!disabled.workspace_diagnostics().supported());
+    }
+
+    // A provider-less implementor stays provider-less: the framework creates
+    // nothing, and the handler stays unsupported.
+    #[test]
+    fn provider_none_advertises_nothing_and_stays_unsupported() {
+        for mode in [
+            WorkspaceDiagnostics::enabled(),
+            WorkspaceDiagnostics::disabled(),
+        ] {
+            let state = matrix_state(mode);
+            let mut result = InitializeResult::default();
+            configure_capabilities(&state, &mut result, &ClientCapabilities::default());
+
+            assert!(result.capabilities.diagnostic_provider.is_none());
+            assert!(!state.workspace_diagnostics().supported());
+        }
     }
 
     #[test]

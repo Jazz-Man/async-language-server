@@ -178,7 +178,7 @@ mod tests {
         let error = ServerError::MethodNotImplemented { method: "hover" };
         assert_eq!(
             error.to_string(),
-            "LSP method 'hover' has not been implemented"
+            "LSP method 'hover' has not been implemented",
         );
 
         let response = ResponseError::from(error);

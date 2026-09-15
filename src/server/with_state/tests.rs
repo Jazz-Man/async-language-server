@@ -2,7 +2,10 @@ use crate::server::{
     DocumentMatcher, LanguageServerWithState, Server, ServerOptions, ServerResult, ServerState,
     WorkspaceDiagnostics,
 };
-use crate::testing::{diagnostic, line_position, same_line, temp_workspace, url, workspace_folder};
+use crate::testing::{
+    advertise_workspace_diagnostics, diagnostic, line_position, same_line, temp_workspace, url,
+    workspace_folder,
+};
 use crate::text_utils::Encoding;
 use async_lsp::lsp_types::{
     ClientCapabilities, CodeLens, CompletionItem, CompletionTextEdit, CreateFilesParams,
@@ -589,7 +592,11 @@ fn test_capabilities() -> Option<ServerCapabilities> {
     Some(ServerCapabilities {
         diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions {
             inter_file_dependencies: true,
-            workspace_diagnostics: false,
+            // The wrapper no longer force-enables this flag: a server that
+            // wants workspace diagnostics advertises it itself. The fixture
+            // models such a server; `DisabledServer` below still exercises
+            // the kill-switch.
+            workspace_diagnostics: true,
             ..Default::default()
         })),
         ..Default::default()
@@ -1506,6 +1513,7 @@ async fn notification_hooks_run_after_the_internal_handlers() {
     server
         .state
         .set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&server.state);
     server
         .state
         .refresh_workspace_documents()

@@ -164,7 +164,7 @@ fn corpus() -> Vec<String> {
         .collect()
 }
 
-/// Creates the synthetic walk tree: `DIRS` directories with
+/// Creates the synthetic walk tree: [`DIRS`] directories with
 /// [`FILES_PER_DIR`] files each, under a millisecond-unique temp directory.
 ///
 /// # Errors
@@ -177,7 +177,7 @@ fn make_tree() -> std::io::Result<PathBuf> {
         .map_or(0, |elapsed| elapsed.as_nanos());
     let dir = std::env::temp_dir().join(format!(
         "als-bench-glob-walk-{}-{nanos}",
-        std::process::id()
+        std::process::id(),
     ));
     for dir_index in 0..DIRS {
         let sub = dir.join(format!("module{dir_index}"));
@@ -203,7 +203,7 @@ fn compiled_set(patterns: &[String]) -> Option<GlobSet> {
             }
             Err(error) => {
                 note(&format!(
-                    "skipping: pattern {source:?} failed to compile: {error}"
+                    "skipping: pattern {source:?} failed to compile: {error}",
                 ));
                 return None;
             }
@@ -259,10 +259,7 @@ fn bench_glob_walk(criterion: &mut Criterion) {
     // filter cost, for comparison against alternative matchers.
     group.bench_function("match_corpus_prebuilt", |bench| {
         bench.iter(|| {
-            let matches = paths
-                .iter()
-                .filter(|path| set.is_match(path.as_str()))
-                .count();
+            let matches = paths.iter().filter(|path| set.is_match(path)).count();
             std::hint::black_box(matches)
         });
     });

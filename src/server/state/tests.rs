@@ -1,7 +1,9 @@
 use super::{DocumentOrigin, ServerState};
 use crate::lsp_requests::{Request, SemanticTokensFullRequest};
 use crate::server::{DocumentMatcher, Server, ServerOptions, WorkspaceDiagnostics};
-use crate::testing::{open_document, temp_workspace, token, url, workspace_folder};
+use crate::testing::{
+    advertise_workspace_diagnostics, open_document, temp_workspace, token, url, workspace_folder,
+};
 use crate::text_utils::Encoding;
 use async_lsp::ClientSocket;
 use async_lsp::lsp_types::{
@@ -108,6 +110,7 @@ async fn workspace_documents_have_no_lsp_version() {
         &ServerOptions::default(),
     );
     state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
     let urls = state
         .refresh_workspace_documents()
         .await
@@ -133,6 +136,7 @@ async fn workspace_refresh_preserves_open_documents() {
         &ServerOptions::default(),
     );
     state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
     open_document(&mut state, uri.clone(), "open");
 
     let urls = state
@@ -164,6 +168,7 @@ async fn workspace_refresh_rereads_changed_files_and_keeps_untouched_ones() {
         &ServerOptions::default(),
     );
     state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
     let urls = state
         .refresh_workspace_documents()
         .await
@@ -221,6 +226,7 @@ fn closing_workspace_documents_keeps_disk_snapshot() {
         &ServerOptions::default(),
     );
     state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
     open_document(&mut state, uri.clone(), "open");
 
     let _ = state.handle_document_close(DidCloseTextDocumentParams {
@@ -246,6 +252,7 @@ fn closing_workspace_documents_removes_them_when_workspace_diagnostics_are_disab
         &ServerOptions::default().with_workspace_diagnostics(WorkspaceDiagnostics::disabled()),
     );
     state.set_workspace_folders([workspace_folder(&root)]);
+    // no seeding: the disabled mode's kill-switch keeps support off
     open_document(&mut state, uri.clone(), "open");
 
     let _ = state.handle_document_close(DidCloseTextDocumentParams {
@@ -312,6 +319,7 @@ fn did_close_keeps_disk_snapshot_but_evicts_cached_semantic_tokens() {
         &ServerOptions::default(),
     );
     state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
     open_document(&mut state, uri.clone(), "open");
     seed_semantic_tokens(&state, &uri);
     assert!(state.cached_semantic_tokens(&uri).is_some());
@@ -529,6 +537,7 @@ async fn watched_files_change_rereads_mutated_workspace_document() {
         &ServerOptions::default(),
     );
     state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
     let urls = state
         .refresh_workspace_documents()
         .await
@@ -560,6 +569,7 @@ async fn watched_files_delete_drops_the_workspace_document() {
         &ServerOptions::default(),
     );
     state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
     let urls = state
         .refresh_workspace_documents()
         .await
@@ -586,6 +596,7 @@ async fn file_rename_and_delete_drop_the_workspace_documents() {
         &ServerOptions::default(),
     );
     state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
     let urls = state
         .refresh_workspace_documents()
         .await
@@ -618,6 +629,7 @@ async fn watched_delete_and_file_operations_evict_cached_semantic_tokens() {
         &ServerOptions::default(),
     );
     state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
     let urls = state
         .refresh_workspace_documents()
         .await
@@ -748,6 +760,7 @@ async fn workspace_refresh_evicts_tokens_of_dropped_documents() {
         &ServerOptions::default(),
     );
     state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
     let urls = state
         .refresh_workspace_documents()
         .await
@@ -794,6 +807,7 @@ async fn disabling_workspace_diagnostics_evicts_cached_semantic_tokens() {
         &ServerOptions::default(),
     );
     state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
     let urls = state
         .refresh_workspace_documents()
         .await
@@ -1033,6 +1047,7 @@ async fn refresh_without_roots_reports_tracked_documents() {
         ClientSocket::new_closed(),
         &ServerOptions::default(),
     );
+    advertise_workspace_diagnostics(&rootless);
     open_document(&mut rootless, uri.clone(), "open");
     let urls = rootless
         .refresh_workspace_documents()
@@ -1068,6 +1083,7 @@ async fn removing_folder_roots_keeps_open_drops_workspace_documents() {
         &ServerOptions::default(),
     );
     state.set_workspace_folders([workspace_folder(&root_a), workspace_folder(&root_b)]);
+    advertise_workspace_diagnostics(&state);
     open_document(&mut state, a_uri.clone(), "open");
     let urls = state
         .refresh_workspace_documents()
@@ -1120,6 +1136,7 @@ async fn refresh_retains_open_documents_absent_from_the_fresh_set() {
         &ServerOptions::default(),
     );
     state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
     open_document(&mut state, uri.clone(), "open");
 
     fs::remove_file(&file_path).expect("test file can be removed");

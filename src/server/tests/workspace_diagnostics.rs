@@ -38,14 +38,15 @@ impl Server for RefreshServer {
 
     // The advertised provider is what makes diagnostics `supported` on the
     // state, gating `refresh_diagnostics` behind the client's refresh
-    // support alone. `workspace_diagnostics: false` here is flipped to
-    // true by the wrapper for the Configurable variant.
+    // support alone. The flag is the implementor's own declaration: the
+    // wrapper leaves it verbatim (only `Disabled` overrides it, as a
+    // kill-switch).
     fn server_capabilities(_client: ClientCapabilities) -> Option<ServerCapabilities> {
         Some(ServerCapabilities {
             diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions {
                 identifier: Some("wire-refresh".into()),
                 inter_file_dependencies: false,
-                workspace_diagnostics: false,
+                workspace_diagnostics: true,
                 ..Default::default()
             })),
             ..ServerCapabilities::default()

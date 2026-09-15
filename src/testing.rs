@@ -25,10 +25,12 @@
 
 use crate::server::{Server, ServerOptions, ServerState};
 use crate::text_utils::Encoding;
+use crate::workspace::configure_capabilities;
 use async_lsp::ClientSocket;
 use async_lsp::lsp_types::{
-    Diagnostic, DidOpenTextDocumentParams, Position, Range, SemanticToken, TextDocumentItem, Url,
-    WorkspaceFolder,
+    ClientCapabilities, Diagnostic, DiagnosticOptions, DiagnosticServerCapabilities,
+    DidOpenTextDocumentParams, InitializeResult, Position, Range, SemanticToken,
+    ServerCapabilities, TextDocumentItem, Url, WorkspaceFolder,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -92,6 +94,26 @@ pub(crate) fn state_with_documents() -> (ServerState, Url, Url) {
     open_document(&mut state, target.clone(), "🙂abc");
 
     (state, source, target)
+}
+
+/// Marks workspace diagnostics as advertised through the same capability
+/// merge `initialize` performs: post-initialize machinery (the workspace
+/// refresh, close-keep on disk) is gated on `supported`, which starts off
+/// before any advertisement exists. Tests that drive that machinery
+/// directly, without a live `initialize` call, seed the advertisement with
+/// this fixture.
+pub(crate) fn advertise_workspace_diagnostics(state: &ServerState) {
+    let mut result = InitializeResult {
+        capabilities: ServerCapabilities {
+            diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions {
+                workspace_diagnostics: true,
+                ..DiagnosticOptions::default()
+            })),
+            ..ServerCapabilities::default()
+        },
+        ..InitializeResult::default()
+    };
+    configure_capabilities(state, &mut result, &ClientCapabilities::default());
 }
 
 /// Creates a millisecond-unique temp workspace under `std::env::temp_dir()`.
