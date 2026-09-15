@@ -27,14 +27,6 @@ fingerprint = "6c4db5f43053b240"
 reason = "examples' server_capabilities builders (JsonServer, LongLineServer) are deliberately parallel so each example reads standalone"
 
 [[ignore]]
-fingerprint = "85dca4caef4bd446"
-reason = "enable/disable_workspace_diagnostics mirror the same lsp_types capability-variant match with only the boolean flipped"
-
-[[ignore]]
-fingerprint = "882ff9b7680235f9"
-reason = "futures AsyncWrite mandates both poll_flush and poll_close; TokioWriter forwards each to the inner tokio writer (poll_flush / poll_shutdown) in src/server/serve.rs"
-
-[[ignore]]
 fingerprint = "8fa261f1a1daff69"
 reason = "WorkspaceDiagnosticConfig builder pair with_hidden_files/with_ignore_files: mirror-by-design delegation to the walker's corresponding options"
 
@@ -55,32 +47,8 @@ fingerprint = "2cd01ee93bcca1c4"
 reason = "position_to_encoding spec-matrix rows (conversions.rs inline tests): one test per encoding-pair or line-cap row; each row's inputs and expected columns are the content, the harness shape is shared by design"
 
 [[ignore]]
-fingerprint = "db11ca6b346bce01"
-reason = "RangeExt::sub spec-matrix rows in tree_sitter_tests.rs (basic, empty, multiline, multi-line span): the three range_ext flavor files run the same spec in parallel; rows differ in inputs and expected byte/point values"
-
-[[ignore]]
-fingerprint = "7352c3c6c970a1fa"
-reason = "RangeExt::sub spec-matrix rows in tree_sitter_tests.rs (multiline, multi-line span) — exact pair since the 2026-09-08 lint-triage renames leveled the fixture-letter differences; same spec-matrix family as the entry above: one behavior row per test, inputs and expected byte/point values are the content, the call/assert template is shared by design"
-
-[[ignore]]
 fingerprint = "3084ed243e866d48"
 reason = "RangeExt::sub spec-matrix rows in lsp_tests.rs (basic, empty, multiline): the three range_ext flavor files run the same spec in parallel; rows differ in inputs and expected line/character values"
-
-[[ignore]]
-fingerprint = "8a7ed10faf859369"
-reason = "RangeExt::split_at spec-matrix rows in tree_sitter_tests.rs (basic, multiline, newline boundary): shared call/assert template, one behavior row per test"
-
-[[ignore]]
-fingerprint = "b606e36d2a08902d"
-reason = "RangeExt::sub_delimited spec-matrix rows in tree_sitter_tests.rs (basic, multiline, complex multiline): shared call/assert template, one behavior row per test"
-
-[[ignore]]
-fingerprint = "34be46f435114321"
-reason = "split_off_left/split_off_right mirror pair in tree_sitter_tests.rs: mirror methods get mirror happy-path rows"
-
-[[ignore]]
-fingerprint = "435416306436856f"
-reason = "sub_delimited edge pair in tree_sitter_tests.rs (delimiter at end, no delimiter): two rows of the same edge-case matrix with distinct expected sides"
 
 [[ignore]]
 fingerprint = "6b1ed7ce8dd3018b"
@@ -89,14 +57,6 @@ reason = "RangeExt::split_at spec-matrix rows in lsp_tests.rs (basic, multiline)
 [[ignore]]
 fingerprint = "6d8e8b50ed7167c0"
 reason = "RangeExt::sub_delimited spec-matrix rows in lsp_tests.rs (basic, multiline): shared call/assert template, one behavior row per test"
-
-[[ignore]]
-fingerprint = "73fbd547adb85775"
-reason = "RangeExt::sub_delimited_tri spec-matrix rows in lsp_tests.rs (basic, multiline): shared call/assert template, one behavior row per test"
-
-[[ignore]]
-fingerprint = "9b25c7eb50c26f02"
-reason = "RangeExt::sub_delimited_tri spec-matrix rows in tree_sitter_tests.rs (basic, multiline): shared call/assert template, one behavior row per test"
 
 [[ignore]]
 fingerprint = "95df29debdfb5f1d"
@@ -117,10 +77,6 @@ reason = "position-encoding preference pair in with_state/tests.rs (prefers UTF-
 [[ignore]]
 fingerprint = "e90ca61b7ce32065"
 reason = "sub_delimited edge pair in lsp_tests.rs (delimiter at end, no delimiter): two rows of the same edge-case matrix with distinct expected sides"
-
-[[ignore]]
-fingerprint = "5ca4f3c71b23d3e0"
-reason = "TextRangeMismatch convention pins in tree_sitter_tests.rs (sub_delimited, split_at): the same error-convention check through a second entry point; split_at lacked its own direct pin"
 
 [[ignore]]
 fingerprint = "4e6dfe148ea98fcc"
@@ -201,14 +157,6 @@ reason = "gated_params in diagnostics.rs' own test module vs workspace_diagnosti
 [[ignore]]
 fingerprint = "b784a964c3143666"
 reason = "server_capabilities impls in examples/batch_diagnostics.rs (LongLineServer) and tests/termination.rs (ConfigurableServer): the example must read standalone (6c4db5f43053b240 precedent) while the test needs its own trait-mandated impl (f83853ca365213c9 capture-server precedent); the shared diagnostic_provider shape is the trait's, not drift"
-
-[[ignore]]
-fingerprint = "402d6036935ae5bd"
-reason = "RangeExt::sub_delimited_tri spec-matrix rows in tree_sitter_tests.rs (basic, multiline, non-zero-start remainder slicing): shared call/assert template, one behavior row per test; the third row is the mutant-kill pin for the remainder slicing at a non-zero start_byte, and its per-slice byte/point expectations are the content (family of 9b25c7eb50c26f02)"
-
-[[ignore]]
-fingerprint = "ce08440ea8201512"
-reason = "TextRangeMismatch convention pins in tree_sitter_tests.rs (sub_delimited, split_at, sub_delimited_tri on a non-zero-start range): the same error-convention check through a third entry point, whose non-zero start_byte is the kill condition for the check_text_length mutation at tree_sitter.rs:275 — at a zero start the range length is masked (successor of 5ca4f3c71b23d3e0)"
 
 [[ignore]]
 fingerprint = "270a3360975a3706"

@@ -30,27 +30,43 @@ const fn p(line: usize, column: usize) -> TsPosition {
 // Basic happy path tests
 
 #[test]
-fn basic_split_at() {
+fn split_at_divides_the_range_at_a_relative_position() {
+    // The position becomes the shared boundary byte and point.
     let text = "hello";
     let (left, right) = r(0, p(0, 0), 5, p(0, 5))
         .split_at(text, p(0, 2))
         .expect("valid range");
     assert_eq!(left, r(0, p(0, 0), 2, p(0, 2)));
     assert_eq!(right, r(2, p(0, 2), 5, p(0, 5)));
+
+    // Multiline: the boundary lands mid-row on a later row.
+    let text = "one\ntwo";
+    let (left, right) = r(0, p(0, 0), 7, p(1, 3))
+        .split_at(text, p(1, 1))
+        .expect("valid range");
+    assert_eq!(left, r(0, p(0, 0), 5, p(1, 1)));
+    assert_eq!(right, r(5, p(1, 1), 7, p(1, 3)));
+
+    // Points are offset by the range start: the position is relative to the
+    // range, not taken as absolute text coordinates.
+    let text = "ab\ncd";
+    let (left, right) = r(5, p(1, 3), 10, p(2, 2))
+        .split_at(text, p(0, 1))
+        .expect("valid range");
+    assert_eq!(left, r(5, p(1, 3), 6, p(1, 4)));
+    assert_eq!(right, r(6, p(1, 4), 10, p(2, 2)));
 }
 
 #[test]
-fn basic_split_off_left() {
+fn split_off_returns_the_kept_side() {
+    // Mirror rows: split_off_left keeps the left of the position,
+    // split_off_right the right.
     let text = "hello";
     let left = r(0, p(0, 0), 5, p(0, 5))
         .split_off_left(text, p(0, 3))
         .expect("valid range");
     assert_eq!(left, r(0, p(0, 0), 3, p(0, 3)));
-}
 
-#[test]
-fn basic_split_off_right() {
-    let text = "hello";
     let right = r(0, p(0, 0), 5, p(0, 5))
         .split_off_right(text, p(0, 2))
         .expect("valid range");
@@ -64,26 +80,66 @@ fn basic_shrink() {
 }
 
 #[test]
-fn basic_sub() {
+fn sub_resolves_relative_positions() {
+    // Positions inside the range map to their byte offsets.
     let text = "hello";
     let sub_range = r(0, p(0, 0), 5, p(0, 5))
         .sub(text, p(0, 1), p(0, 4))
         .expect("valid range");
     assert_eq!(sub_range, r(1, p(0, 1), 4, p(0, 4)));
+
+    // An empty sub-range collapses to the start point, still offset by the
+    // range's own start.
+    let text = "hello";
+    let sub_range = r(10, p(1, 5), 15, p(1, 10))
+        .sub(text, p(0, 2), p(0, 2))
+        .expect("valid range");
+    assert_eq!(sub_range, r(12, p(1, 7), 12, p(1, 7)));
+
+    // Multiline: the end lands on a later row.
+    let text = "one\ntwo\nthree";
+    let sub_range = r(0, p(0, 0), text.len(), p(2, 5))
+        .sub(text, p(0, 2), p(1, 1))
+        .expect("valid range");
+    assert_eq!(sub_range, r(2, p(0, 2), 5, p(1, 1)));
+
+    // Tree-sitter specific multiline: the sub-range spans rows end to end.
+    let text = "line1\nline2\nline3";
+    let sub_range = r(0, p(0, 0), text.len(), p(2, 5))
+        .sub(text, p(0, 3), p(2, 2))
+        .expect("valid range");
+    assert_eq!(sub_range, r(3, p(0, 3), 14, p(2, 2)));
+
+    // Points are offset by the range start row, not absolute text coordinates.
+    let text = "ab\ncd";
+    let sub_range = r(0, p(2, 0), 5, p(3, 2))
+        .sub(text, p(1, 0), p(1, 2))
+        .expect("valid range");
+    assert_eq!(sub_range, r(3, p(3, 0), 5, p(3, 2)));
 }
 
 #[test]
-fn basic_sub_delimited() {
+fn sub_delimited_splits_around_the_delimiter() {
+    // Both sides are Some around a single-byte delimiter.
     let text = "one/two";
     let (left, right) = r(0, p(0, 0), 7, p(0, 7))
         .sub_delimited(text, D1)
         .expect("valid range");
     assert_eq!(left, Some(r(0, p(0, 0), 3, p(0, 3))));
     assert_eq!(right, Some(r(4, p(0, 4), 7, p(0, 7))));
+
+    // Multiline: the delimiter is the newline.
+    let text = "abc\ndef";
+    let (left, right) = r(0, p(0, 0), 7, p(1, 3))
+        .sub_delimited(text, LF)
+        .expect("valid range");
+    assert_eq!(left, Some(r(0, p(0, 0), 3, p(0, 3))));
+    assert_eq!(right, Some(r(4, p(1, 0), 7, p(1, 3))));
 }
 
 #[test]
-fn basic_sub_delimited_tri() {
+fn sub_delimited_tri_slices_three_segments() {
+    // Both delimiters present: three slices.
     let text = "one/two@three";
     let (first, second, third) = r(0, p(0, 0), text.len(), p(0, text.len()))
         .sub_delimited_tri(text, D1, D2)
@@ -91,6 +147,25 @@ fn basic_sub_delimited_tri() {
     assert_eq!(first, Some(r(0, p(0, 0), 3, p(0, 3))));
     assert_eq!(second, Some(r(4, p(0, 4), 7, p(0, 7))));
     assert_eq!(third, Some(r(8, p(0, 8), 13, p(0, 13))));
+
+    // Multiline: the first delimiter is the newline.
+    let text = "one\ntwo\n@@@";
+    let (first, second, third) = r(0, p(0, 0), text.len(), p(2, 3))
+        .sub_delimited_tri(text, LF, D2)
+        .expect("valid range");
+    assert_eq!(first, Some(r(0, p(0, 0), 3, p(0, 3))));
+    assert_eq!(second, Some(r(4, p(1, 0), 8, p(2, 0))));
+    assert_eq!(third, Some(r(9, p(2, 1), 11, p(2, 3))));
+
+    // A non-zero start range: the remainder is sliced relative to the range's
+    // own start byte.
+    let text = "a/b@c";
+    let (first, second, third) = r(5, p(1, 3), 10, p(1, 8))
+        .sub_delimited_tri(text, D1, D2)
+        .expect("valid range");
+    assert_eq!(first, Some(r(5, p(1, 3), 6, p(1, 4))));
+    assert_eq!(second, Some(r(7, p(1, 5), 8, p(1, 6))));
+    assert_eq!(third, Some(r(9, p(1, 7), 10, p(1, 8))));
 }
 
 // Edge case tests
@@ -113,34 +188,6 @@ fn split_at_boundaries() {
 }
 
 #[test]
-fn split_at_multiline() {
-    let text = "one\ntwo";
-    let (left, right) = r(0, p(0, 0), 7, p(1, 3))
-        .split_at(text, p(1, 1))
-        .expect("valid range");
-    assert_eq!(left, r(0, p(0, 0), 5, p(1, 1)));
-    assert_eq!(right, r(5, p(1, 1), 7, p(1, 3)));
-}
-
-#[test]
-fn sub_empty_range() {
-    let text = "hello";
-    let sub_range = r(10, p(1, 5), 15, p(1, 10))
-        .sub(text, p(0, 2), p(0, 2))
-        .expect("valid range");
-    assert_eq!(sub_range, r(12, p(1, 7), 12, p(1, 7)));
-}
-
-#[test]
-fn sub_multiline() {
-    let text = "one\ntwo\nthree";
-    let sub_range = r(0, p(0, 0), text.len(), p(2, 5))
-        .sub(text, p(0, 2), p(1, 1))
-        .expect("valid range");
-    assert_eq!(sub_range, r(2, p(0, 2), 5, p(1, 1)));
-}
-
-#[test]
 fn sub_delimited_delimiter_at_start() {
     let text = "/abc";
     let (left, right) = r(0, p(0, 0), 4, p(0, 4))
@@ -151,17 +198,16 @@ fn sub_delimited_delimiter_at_start() {
 }
 
 #[test]
-fn sub_delimited_delimiter_at_end() {
+fn sub_delimited_without_a_right_side() {
+    // Delimiter at the end: no right side.
     let text = "abc/";
     let (left, right) = r(0, p(0, 0), 4, p(0, 4))
         .sub_delimited(text, D1)
         .expect("valid range");
     assert_eq!(left, Some(r(0, p(0, 0), 3, p(0, 3))));
     assert_eq!(right, None);
-}
 
-#[test]
-fn sub_delimited_no_delimiter() {
+    // No delimiter at all: the whole range is the left side.
     let text = "abc";
     let (left, right) = r(0, p(0, 0), 3, p(0, 3))
         .sub_delimited(text, D1)
@@ -178,16 +224,6 @@ fn sub_delimited_empty_text() {
         .expect("valid range");
     assert_eq!(left, None);
     assert_eq!(right, None);
-}
-
-#[test]
-fn sub_delimited_multiline() {
-    let text = "abc\ndef";
-    let (left, right) = r(0, p(0, 0), 7, p(1, 3))
-        .sub_delimited(text, LF)
-        .expect("valid range");
-    assert_eq!(left, Some(r(0, p(0, 0), 3, p(0, 3))));
-    assert_eq!(right, Some(r(4, p(1, 0), 7, p(1, 3))));
 }
 
 #[test]
@@ -212,17 +248,6 @@ fn sub_delimited_tri_no_delimiters() {
     assert_eq!(third, None);
 }
 
-#[test]
-fn sub_delimited_tri_multiline() {
-    let text = "one\ntwo\n@@@";
-    let (first, second, third) = r(0, p(0, 0), text.len(), p(2, 3))
-        .sub_delimited_tri(text, LF, D2)
-        .expect("valid range");
-    assert_eq!(first, Some(r(0, p(0, 0), 3, p(0, 3))));
-    assert_eq!(second, Some(r(4, p(1, 0), 8, p(2, 0))));
-    assert_eq!(third, Some(r(9, p(2, 1), 11, p(2, 3))));
-}
-
 // Tree-sitter specific multiline tests
 
 #[test]
@@ -233,15 +258,6 @@ fn split_at_newline_boundary() {
         .expect("valid range");
     assert_eq!(left, r(0, p(0, 0), 6, p(1, 0)));
     assert_eq!(right, r(6, p(1, 0), 11, p(1, 5)));
-}
-
-#[test]
-fn sub_across_multiple_lines() {
-    let text = "line1\nline2\nline3";
-    let sub_range = r(0, p(0, 0), text.len(), p(2, 5))
-        .sub(text, p(0, 3), p(2, 2))
-        .expect("valid range");
-    assert_eq!(sub_range, r(3, p(0, 3), 14, p(2, 2)));
 }
 
 #[test]
@@ -294,6 +310,7 @@ fn multi_byte_delimiters_return_delimiter_not_single_byte() {
 
 #[test]
 fn mismatched_text_length_returns_text_range_mismatch() {
+    // sub_delimited validates the text length against the range.
     let text = "short";
     assert_eq!(
         r(0, p(0, 0), 7, p(0, 7))
@@ -301,6 +318,30 @@ fn mismatched_text_length_returns_text_range_mismatch() {
             .unwrap_err(),
         RangeError::TextRangeMismatch {
             text_len: 5,
+            range_len: 7
+        },
+    );
+
+    // split_at enforces the same convention.
+    let text = "short";
+    assert_eq!(
+        r(0, p(0, 0), 7, p(0, 7))
+            .split_at(text, p(0, 2))
+            .unwrap_err(),
+        RangeError::TextRangeMismatch {
+            text_len: 5,
+            range_len: 7
+        },
+    );
+
+    // A non-zero start range validates too: the length check also fires there.
+    let text = "one/tw";
+    assert_eq!(
+        r(5, p(0, 3), 12, p(0, 10))
+            .sub_delimited_tri(text, D1, D2)
+            .unwrap_err(),
+        RangeError::TextRangeMismatch {
+            text_len: 6,
             range_len: 7
         },
     );
@@ -350,20 +391,6 @@ fn sub_positions_beyond_the_text_return_position_out_of_range() {
     );
 }
 
-#[test]
-fn split_at_mismatched_text_length_returns_text_range_mismatch() {
-    let text = "short";
-    assert_eq!(
-        r(0, p(0, 0), 7, p(0, 7))
-            .split_at(text, p(0, 2))
-            .unwrap_err(),
-        RangeError::TextRangeMismatch {
-            text_len: 5,
-            range_len: 7
-        },
-    );
-}
-
 // Relative-position tests on ranges that do not start at zero: points are
 // offset by the range start, not taken as absolute text coordinates.
 
@@ -386,25 +413,6 @@ fn split_at_validates_text_length_on_nonzero_start_ranges() {
             range_len: 7
         },
     );
-}
-
-#[test]
-fn split_at_offsets_columns_by_range_start_column() {
-    let text = "ab\ncd";
-    let (left, right) = r(5, p(1, 3), 10, p(2, 2))
-        .split_at(text, p(0, 1))
-        .expect("valid range");
-    assert_eq!(left, r(5, p(1, 3), 6, p(1, 4)));
-    assert_eq!(right, r(6, p(1, 4), 10, p(2, 2)));
-}
-
-#[test]
-fn sub_offsets_rows_by_range_start() {
-    let text = "ab\ncd";
-    let sub_range = r(0, p(2, 0), 5, p(3, 2))
-        .sub(text, p(1, 0), p(1, 2))
-        .expect("valid range");
-    assert_eq!(sub_range, r(3, p(3, 0), 5, p(3, 2)));
 }
 
 #[test]
@@ -452,29 +460,4 @@ fn sub_rejects_end_of_text_position_mismatches() {
             .unwrap_err(),
         RangeError::PositionOutOfRange,
     );
-}
-
-#[test]
-fn sub_delimited_tri_validates_text_length_on_nonzero_start_ranges() {
-    let text = "one/tw";
-    assert_eq!(
-        r(5, p(0, 3), 12, p(0, 10))
-            .sub_delimited_tri(text, D1, D2)
-            .unwrap_err(),
-        RangeError::TextRangeMismatch {
-            text_len: 6,
-            range_len: 7
-        },
-    );
-}
-
-#[test]
-fn sub_delimited_tri_slices_remainder_from_nonzero_start() {
-    let text = "a/b@c";
-    let (first, second, third) = r(5, p(1, 3), 10, p(1, 8))
-        .sub_delimited_tri(text, D1, D2)
-        .expect("valid range");
-    assert_eq!(first, Some(r(5, p(1, 3), 6, p(1, 4))));
-    assert_eq!(second, Some(r(7, p(1, 5), 8, p(1, 6))));
-    assert_eq!(third, Some(r(9, p(1, 7), 10, p(1, 8))));
 }
