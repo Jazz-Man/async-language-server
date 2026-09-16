@@ -97,9 +97,55 @@ inside the analysis (owner call: tests are code). There is no
 `exclude_tests` knob and none is to be added. Deliberate parallelism —
 spec-matrix rows, mirror pairs — carries one
 reasoned entry per group in `.dupes-ignore.toml`; a NEW unignored group
-must fail the check, and thresholds are never loosened to hide one. The
+must fail the check, and thresholds are never loosened to hide one. List
+maintenance has exactly one automatic step: at cycle ends, run
+`cargo dupes cleanup`, which removes entries whose groups no longer
+exist — dry-run first (`--dry-run` lists the stale entries; the plain
+invocation drops them). Dissolving a group that still exists is
+refactoring; keeping every reason truthful is human/agent review. The
+tool does neither. The
 command runs on demand or periodically, outside the per-task battery
 (see `tech.md`). The criterion bench (`make bench`) also runs on demand, outside the battery.
+
+## Mutation-driven test design
+
+cargo-mutants (`make mutants`, on demand — never in the battery; `tech.md`
+owns the invocation constraints) is a teacher, not a gate to satisfy: a
+survivor means the suite has no oracle the mutants runner can see for a
+behavior difference (doctest kills are invisible to the runner), never
+that the code is wrong. Read each survivor through its mutator class —
+the class names the test-design dimension the missing test forgot:
+
+| mutator class | design dimension it demands |
+|---|---|
+| range boundary shift | boundary values one step past each edge, not just interior samples |
+| comparison flip | one sample beyond the equivalence class, on both sides |
+| removed call | every side effect of the call carries at least one observable assertion |
+| literal replacement | degenerate and neutral-element cases (`0`, `1`, `""`) |
+| removed `?` / replaced return | assert the error surfaces — the failing case itself, never `is_ok()` on the happy path |
+
+Every survivor lands in one of four baskets — Philosophy's type-first
+question applies before all four — and only the first basket writes a
+test:
+
+| basket | action |
+|---|---|
+| business gap | write the test, shaped by the mutator-class row above |
+| equivalent mutant | ratify a disposition-table row (owner approval, never a silent skip) |
+| dead logic | propose deleting the code instead of testing it |
+| test-pleasing | reject — a test whose only statement is "this mutant dies" is not a test |
+
+The survivor database is the disposition table
+(`docs/superpowers/plans/2026-09-09-mutants-disposition-table.md`),
+maintained by reconciliation: a survivor absent from the table is new
+work; a row whose code no longer exists is dropped. Never write a test
+whose only purpose is the kill — if the only behavior it can state is
+the mutant's death, the mutant was equivalent or the logic dead, and
+the basket above says so.
+
+Scoped runs beat full ones: `make mutants FILE=src/foo.rs` over the file
+just touched, a re-run over the diff's files after a refactor, the full
+sweep only at cycle acceptance points.
 
 ## Adding a test for a new `Server` method
 
