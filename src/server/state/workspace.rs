@@ -1,5 +1,5 @@
 use super::{DocumentOrigin, FileStamp, ServerState};
-use crate::error::ServerResult;
+use crate::error::{ServerError, ServerResult};
 use crate::server::DocumentMatcher;
 use crate::workspace::{WorkspaceWalkConfig, WorkspaceWalker, for_each_bounded, path_to_url};
 use async_lsp::Result;
@@ -83,15 +83,29 @@ impl ServerState {
             return Ok(self.document_urls());
         }
 
-        let walker = WorkspaceWalker::new(&roots, WorkspaceWalkConfig::default())?;
+        let state = self.clone();
+        let walked = tokio::task::spawn_blocking({
+            let roots = roots.clone();
+            move || -> ServerResult<Vec<(PathBuf, Url, Arc<DocumentMatcher>)>> {
+                let walker = WorkspaceWalker::new(&roots, WorkspaceWalkConfig::default())?;
+                let mut walked = Vec::new();
+                for path in walker.files()? {
+                    let Some(matcher) = state.matchers.find_path(&path) else {
+                        continue;
+                    };
+                    let uri = path_to_url(&path)?;
+                    walked.push((path, uri, matcher));
+                }
+                Ok(walked)
+            }
+        })
+        .await
+        .map_err(|join_error| ServerError::Other(Box::new(join_error)))??;
+
         let mut urls = Vec::new();
         let mut loads = Vec::new();
 
-        for path in walker.files()? {
-            let Some(matcher) = self.matchers.find_path(&path) else {
-                continue;
-            };
-            let uri = path_to_url(&path)?;
+        for (path, uri, matcher) in walked {
             urls.push(uri.clone());
             if self
                 .documents

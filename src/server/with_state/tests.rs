@@ -951,8 +951,10 @@ async fn workspace_diagnostics_report_unopened_documents_without_versions() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn workspace_diagnostics_use_open_document_versions() {
+// The refresh walk runs on the blocking pool, so the wrapper's workspace
+// diagnostics need a tokio runtime; a bare executor cannot drive them.
+#[tokio::test]
+async fn workspace_diagnostics_use_open_document_versions() {
     let root = temp_workspace("workspace", "open-workspace-diagnostics");
     let file = root.join("a.test");
     fs::write(&file, "disk").expect("test file can be written");
@@ -960,15 +962,18 @@ fn workspace_diagnostics_use_open_document_versions() {
     let uri = Url::from_file_path(&file).expect("path can be converted to a URL");
 
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
-    futures::executor::block_on(server.initialize(initialize_params(&root)))
+    server
+        .initialize(initialize_params(&root))
+        .await
         .expect("server can initialize");
     let _ = server.did_open(DidOpenTextDocumentParams {
         text_document: TextDocumentItem::new(uri, "test".into(), 3, "open".into()),
     });
 
-    let report =
-        futures::executor::block_on(server.workspace_diagnostic(workspace_diagnostic_params()))
-            .expect("workspace diagnostics can be fetched");
+    let report = server
+        .workspace_diagnostic(workspace_diagnostic_params())
+        .await
+        .expect("workspace diagnostics can be fetched");
 
     let WorkspaceDiagnosticReportResult::Report(report) = report else {
         panic!("expected full workspace diagnostic report");
