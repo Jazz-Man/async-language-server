@@ -47,10 +47,6 @@ fingerprint = "390d3562637a1839"
 reason = "outgoing vec converters (conversion.rs helpers for locations, text-edits, call/type-hierarchy items; incoming/outgoing calls' per-file convert_response hooks): each a one-line delegation to convert_optional_vec with only the item converter differing; the lsp_request outgoing hook must name one fn per response shape, so the per-call wrappers exist only to bind their per-call item converter (family of e0894e2bcf1c1930)"
 
 [[ignore]]
-fingerprint = "6a82743bb2dfeb89"
-reason = "file-ops trio response pins (will_create/will_rename/will_delete_files): one hand-written modify_response test per Request impl, in its own per-method file per the three-place pattern; the ASTs are identical by design and differ only in identifiers"
-
-[[ignore]]
 fingerprint = "f83853ca365213c9"
 reason = "capture-server bodies in with_state/tests.rs (link_resolve, hover): trait-mandated per-method Server impls sharing the capture-mutex fixture shape; each dispatch test needs its own echo/capture handler for its method"
 
@@ -61,10 +57,6 @@ reason = "outgoing per-item range loops (document_links, code_lenses): the regis
 [[ignore]]
 fingerprint = "7fc169e91fd317f7"
 reason = "per-file `item` fixture builders in the four hierarchy test modules (incoming/outgoing calls, supertypes/subtypes): the lsp-types CallHierarchyItem/TypeHierarchyItem pair is structurally identical, so a crate::testing builder home would itself be a twin pair; the three-place pattern mandates per-method test modules with local fixtures"
-
-[[ignore]]
-fingerprint = "20cc495a1690c780"
-reason = "supertypes/subtypes hand-written conversion pins: mirror requests over the same item-carrier shape, one test per Request impl in its own per-method file per the three-place pattern (file-ops trio precedent)"
 
 [[ignore]]
 fingerprint = "3ca1c2536ff13cb7"

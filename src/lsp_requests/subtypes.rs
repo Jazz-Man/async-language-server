@@ -28,9 +28,10 @@ mod tests {
         PartialResultParams, SymbolKind, TypeHierarchyItem, TypeHierarchySubtypesParams,
         WorkDoneProgressParams,
     };
+    use lsp_macros::conversion_tests;
 
-    use crate::lsp_requests::{Request, SubtypesRequest};
-    use crate::testing::{same_line, state_with_documents};
+    use crate::lsp_requests::SubtypesRequest;
+    use crate::testing::{line_position, same_line};
 
     fn item(
         uri: async_lsp::lsp_types::Url,
@@ -49,31 +50,34 @@ mod tests {
         }
     }
 
-    #[test]
-    fn subtypes_convert_against_the_items_own_document() {
-        let (state, plain, emoji) = state_with_documents();
-        let document = state.document(&emoji).expect("emoji document is tracked");
-        let mut params = TypeHierarchySubtypesParams {
-            item: item(emoji.clone(), 2, 3),
-            work_done_progress_params: WorkDoneProgressParams::default(),
-            partial_result_params: PartialResultParams::default(),
-        };
-
-        <SubtypesRequest as Request>::modify_params(&state, &document, &mut params);
-
-        assert_eq!(params.item.range, same_line(0, 4, 4));
-        assert_eq!(params.item.selection_range, same_line(0, 5, 5));
-
-        let mut response = Some(vec![item(emoji, 4, 5)]);
-        // The request's own snapshot is the plain document: resolving the
-        // response items' ranges must follow each item's URL, not this
-        // fallback, to land on the client columns.
-        let fallback = state.document(&plain).expect("plain document is tracked");
-
-        <SubtypesRequest as Request>::modify_response(&state, &fallback, &mut response);
-
-        let items = response.expect("items present");
-        assert_eq!(items[0].range, same_line(0, 2, 2));
-        assert_eq!(items[0].selection_range, same_line(0, 3, 3));
+    conversion_tests! {
+        subtypes_item_range_converts_both_directions: SubtypesRequest {
+            params: |uri| TypeHierarchySubtypesParams {
+                item: item(uri, 2, 3),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+            },
+            incoming: |p| p.item.range.start,
+            expects: line_position(0, 4),
+            // The response anchor is the emoji document while the item sits
+            // in another tracked file: the item's ranges must follow the
+            // item's URL, not this fallback — byte 4 on the plain file is
+            // client column 4, not the emoji document's 2.
+            response: |plain, _emoji| Some(vec![item(plain, 4, 5)]),
+            outgoing: |r| r.as_ref().expect("items present")[0].range.start,
+            returns: line_position(0, 4),
+        }
+        subtypes_item_selection_range_converts_both_directions: SubtypesRequest {
+            params: |uri| TypeHierarchySubtypesParams {
+                item: item(uri, 2, 3),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+            },
+            incoming: |p| p.item.selection_range.start,
+            expects: line_position(0, 5),
+            response: |plain, _emoji| Some(vec![item(plain, 4, 5)]),
+            outgoing: |r| r.as_ref().expect("items present")[0].selection_range.start,
+            returns: line_position(0, 5),
+        }
     }
 }
