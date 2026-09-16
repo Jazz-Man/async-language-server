@@ -136,7 +136,9 @@ channel and sorting after collection, so output stays deterministic;
   diagnostics through the same `Server` method, and merges related-document
   reports. Exposure is set via `ServerOptions::with_workspace_diagnostics`:
   `Disabled` / `Enabled` / `Configurable(setting)`, where the setting is read
-  from client configuration, each mechanism gated on client capabilities.
+  from client configuration, each mechanism gated on client capabilities. A
+  per-file load failure inside a poll is traced and skipped — the poll
+  covers the remaining files; the oneshot batch keeps its hard fail.
 - `src/workspace/parallel.rs` — `for_each_bounded`, the batch engine under
   workspace diagnostics, refresh loads, and oneshot: at most `width`
   per-document futures in flight (`futures::buffer_unordered`), results and

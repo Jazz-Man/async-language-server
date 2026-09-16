@@ -1145,6 +1145,59 @@ async fn removing_folder_roots_keeps_open_drops_workspace_documents() {
     fs::remove_dir_all(root_b).expect("temp workspace can be removed");
 }
 
+/// A per-file load failure inside a poll degrades to a traced skip: the
+/// poll succeeds and covers the remaining files, and the poison never
+/// enters the documents map. Unix-only: the failure is injected with
+/// permissions.
+#[tokio::test]
+#[cfg(unix)]
+async fn refresh_skips_unreadable_files_and_keeps_the_rest() {
+    use std::os::unix::fs::PermissionsExt;
+
+    // The mode is restored so the cleanup below can remove the workspace.
+    const RESTORED_MODE: u32 = 0o644;
+
+    let root = temp_workspace("state", "skip-unreadable");
+    fs::write(root.join("good.test"), "good").expect("file can be written");
+    fs::write(root.join("locked.test"), "locked").expect("file can be written");
+    fs::set_permissions(root.join("locked.test"), fs::Permissions::from_mode(0o000))
+        .expect("permissions can be restricted");
+
+    let state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("refresh succeeds despite the unreadable file");
+
+    assert!(
+        urls.iter().any(|url| url.as_str().ends_with("good.test")),
+        "the readable file is covered by the poll: {urls:?}",
+    );
+    assert!(
+        !urls.iter().any(|url| url.as_str().ends_with("locked.test")),
+        "the unreadable file is excluded from the poll: {urls:?}",
+    );
+    assert!(
+        !state
+            .document_urls()
+            .iter()
+            .any(|tracked| tracked.as_str().ends_with("locked.test")),
+        "the poison never enters the documents map",
+    );
+
+    fs::set_permissions(
+        root.join("locked.test"),
+        fs::Permissions::from_mode(RESTORED_MODE),
+    )
+    .expect("permissions can be restored");
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
 /// The refresh's retention predicate must keep open documents on the
 /// `Open` disjunct alone: an open document inside the roots whose file
 /// vanished from disk is absent from the freshly walked set and still may

@@ -105,26 +105,38 @@ impl ServerState {
         let mut urls = Vec::new();
         let mut loads = Vec::new();
 
+        // Open documents are always reportable; loaded files join the urls on
+        // success and are skipped — traced, never fatal — on failure.
         for (path, uri, matcher) in walked {
-            urls.push(uri.clone());
             if self
                 .documents
                 .get(&uri)
                 .is_some_and(|entry| entry.origin == DocumentOrigin::Open)
             {
+                urls.push(uri);
                 continue;
             }
-
             loads.push((path, uri, matcher));
         }
 
         let state = self.clone();
         let width = state.diagnostics_parallelism();
-        for_each_bounded(loads, width, move |(path, uri, matcher)| {
-            let state = state.clone();
-            async move { load_workspace_document(state, path, uri, matcher).await }
-        })
-        .await?;
+        let loaded: ServerResult<Vec<Option<Url>>> =
+            for_each_bounded(loads, width, move |(path, uri, matcher)| {
+                let state = state.clone();
+                async move {
+                    match load_workspace_document(state, path, uri.clone(), matcher).await {
+                        Ok(()) => Ok(Some(uri)),
+                        Err(error) => {
+                            tracing::warn!("skipping unreadable workspace file '{uri}': {error}");
+                            Ok(None)
+                        }
+                    }
+                }
+            })
+            .await;
+
+        urls.extend(loaded?.into_iter().flatten());
 
         let urls: HashSet<_> = urls.into_iter().collect();
         self.retain_documents(|url, entry| {
