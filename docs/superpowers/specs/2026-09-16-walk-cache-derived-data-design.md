@@ -66,6 +66,12 @@ Two independent costs on every `workspace/diagnostic` poll:
   Option<Vec<WalkedFile>>` (None when dirty or empty), `store(Vec<WalkedFile>)`
   (clears dirty), `invalidate()` (sets dirty), `clear()` (dirty = true, entries
   = None — the folders-changed form).
+  **Lock discipline (both new mutexes):** a guard is never held across an
+  `.await` — every call site locks, clones the decision or the data, drops the
+  guard, and only then awaits (the spawn_blocking store included). Poisoning:
+  recovered through `PoisonError::into_inner()` — both caches are self-healing
+  (a worst-case stale list is stamp-guarded; a half-written derived map is
+  recomputed), so there is no invariant worth a panic over.
 - **Watcher registration** (new function in `src/workspace/diagnostics.rs`,
   cloned from the `register_configuration` precedent at `diagnostics.rs:260-286`):
   in `initialized`, gated on the client capability
@@ -118,15 +124,14 @@ detects this once at `initialized` and simply never enables the cache; the
 ### API
 
 ```rust
-impl Document {
-    /// Returns the derived value for this document's current content,
-    /// computing it through `compute` on first access and memoizing it for
-    /// every later access until the document changes.
-    pub fn derived<T>(&self, compute: impl FnOnce(&Document) -> T) -> Arc<T>
-    where
-        T: Send + Sync + 'static,
-    { ... }
-}
+/// Returns the derived value for this document's current content,
+/// computing it through `compute` on first access and memoizing it for
+/// every later access until the document changes.
+#[must_use = "the derived value is the point of the call; dropping it only burns the compute"]
+pub fn derived<T>(&self, compute: impl FnOnce(&Document) -> T) -> Arc<T>
+where
+    T: Send + Sync + 'static,
+{ ... }
 ```
 
 Infallible by design: a fallible derive is expressed by the consumer's own `T`
@@ -188,6 +193,12 @@ the existing engines.
   (TypeId independence), generation-swap invalidation, the `didSave` trap
   (fresh text + old version must recompute), untracked-snapshot recompute,
   concurrent first access on distinct keys.
+- **Auto-trait pin (api-auto-trait-contract):** a compile-only
+  `const _: () = assert_send_sync::<Document>()` lands with the slot —
+  `derived` makes `Document`'s Send+Sync status part of the public contract
+  (consumers hold documents across awaits and derive from them on any
+  thread), and a private-field change that silently drops an auto trait must
+  fail at the assertion, not at every downstream spawn.
 - Done-bar per task: `make battery` exit 0, zero warnings; `make dupes` 0/0;
   `make mutants FILE=` scoped proofs on the two touched production files
   (`workspace.rs`, `document.rs`) before the cycle closes.
