@@ -4,7 +4,7 @@ reason = "resolve hook twins (completion, code-action, inlay-hint): the lsp_requ
 
 [[ignore]]
 fingerprint = "1eb0db22997f837e"
-reason = "spec-matrix test fixtures (TestServer/DisabledServer/ConfigurableServer document_diagnostics) in the #[cfg(test)] sibling module with_state/tests.rs"
+reason = "spec-matrix test fixtures (TestServer/DisabledServer/ConfigurableServer document_diagnostics) in the #[cfg(test)] sibling module with_state/tests.rs: the bodies already delegate to the shared test_document_diagnostics helper — the residual twin is the trait-mandated declaration each Server impl must carry"
 
 [[ignore]]
 fingerprint = "1db0efb96bb722aa"
@@ -20,7 +20,7 @@ reason = "DocumentMatcher builder pair with_url_globs/with_lang_strings: mirror-
 
 [[ignore]]
 fingerprint = "5e64d1f8cb621fc2"
-reason = "examples' full_report helper appears in both minimal.rs and tree_sitter.rs; examples stay self-contained and didactically parallel by design"
+reason = "examples' full_report helper appears in both minimal.rs and batch_diagnostics.rs; examples stay self-contained and didactically parallel by design"
 
 [[ignore]]
 fingerprint = "6c4db5f43053b240"
