@@ -314,8 +314,18 @@ fn advertised_continued(name: &str, caps: &ServerCapabilities) -> bool {
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
-        DiagnosticOptions, DiagnosticServerCapabilities, HoverProviderCapability, OneOf,
-        RenameOptions, ServerCapabilities, WorkDoneProgressOptions,
+        CallHierarchyServerCapability, CodeActionProviderCapability, CodeLensOptions,
+        ColorProviderCapability, CompletionOptions, DeclarationCapability, DiagnosticOptions,
+        DiagnosticServerCapabilities, DocumentLinkOptions, DocumentOnTypeFormattingOptions,
+        ExecuteCommandOptions, FileOperationRegistrationOptions, FoldingRangeProviderCapability,
+        HoverProviderCapability, ImplementationProviderCapability,
+        LinkedEditingRangeServerCapabilities, OneOf, RenameOptions,
+        SelectionRangeProviderCapability, SemanticTokenType, SemanticTokensFullOptions,
+        SemanticTokensLegend, SemanticTokensOptions, SemanticTokensRegistrationOptions,
+        SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelpOptions,
+        StaticRegistrationOptions, TextDocumentRegistrationOptions, TextDocumentSyncCapability,
+        TextDocumentSyncOptions, TypeDefinitionProviderCapability, WorkDoneProgressOptions,
+        WorkspaceFileOperationsServerCapabilities, WorkspaceServerCapabilities,
     };
 
     use super::{METHOD_NAMES, MethodInventory};
@@ -344,7 +354,10 @@ mod tests {
     #[test]
     fn unadvertised_methods_never_warn() {
         let inventory = MethodInventory::from_capabilities(&ServerCapabilities::default());
-        assert!(!inventory.advertised("hover"));
+        // Default capabilities advertise nothing, in either predicate span.
+        for name in METHOD_NAMES {
+            assert!(!inventory.advertised(name), "'{name}' must stay silent");
+        }
         assert!(!inventory.warn_once_default("hover", &error("hover")));
     }
 
@@ -383,15 +396,356 @@ mod tests {
 
     #[test]
     fn explicit_bool_false_never_advertises() {
+        // Every bool-representable provider set to its explicit no: an
+        // explicit `false` is a deliberate absence, in any family.
         let caps = ServerCapabilities {
             hover_provider: Some(HoverProviderCapability::Simple(false)),
+            declaration_provider: Some(DeclarationCapability::Simple(false)),
+            definition_provider: Some(OneOf::Left(false)),
+            references_provider: Some(OneOf::Left(false)),
             rename_provider: Some(OneOf::Left(false)),
+            document_formatting_provider: Some(OneOf::Left(false)),
+            document_range_formatting_provider: Some(OneOf::Left(false)),
+            implementation_provider: Some(ImplementationProviderCapability::Simple(false)),
+            type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(false)),
+            document_highlight_provider: Some(OneOf::Left(false)),
+            folding_range_provider: Some(FoldingRangeProviderCapability::Simple(false)),
+            linked_editing_range_provider: Some(LinkedEditingRangeServerCapabilities::Simple(
+                false,
+            )),
+            call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(false)),
+            moniker_provider: Some(OneOf::Left(false)),
+            inlay_hint_provider: Some(OneOf::Left(false)),
+            document_symbol_provider: Some(OneOf::Left(false)),
+            code_action_provider: Some(CodeActionProviderCapability::Simple(false)),
+            selection_range_provider: Some(SelectionRangeProviderCapability::Simple(false)),
+            inline_value_provider: Some(OneOf::Left(false)),
+            workspace_symbol_provider: Some(OneOf::Left(false)),
+            color_provider: Some(ColorProviderCapability::Simple(false)),
+            text_document_sync: Some(TextDocumentSyncCapability::Options(
+                TextDocumentSyncOptions {
+                    will_save_wait_until: Some(false),
+                    ..TextDocumentSyncOptions::default()
+                },
+            )),
+            ..ServerCapabilities::default()
+        };
+        let inventory = MethodInventory::from_capabilities(&caps);
+
+        for name in [
+            "hover",
+            "declaration",
+            "definition",
+            "references",
+            "rename",
+            "rename_prepare",
+            "document_format",
+            "document_range_format",
+            "implementation",
+            "type_definition",
+            "document_highlight",
+            "folding_range",
+            "linked_editing_range",
+            "prepare_call_hierarchy",
+            "incoming_calls",
+            "outgoing_calls",
+            "moniker",
+            "inlay_hint",
+            "document_symbol",
+            "code_action",
+            "selection_range",
+            "inline_value",
+            "symbol",
+            "document_color",
+            "color_presentation",
+            "will_save_wait_until",
+        ] {
+            assert!(!inventory.advertised(name), "'{name}' must stay silent");
+        }
+        assert!(!inventory.warn_once_default("hover", &error("hover")));
+    }
+
+    fn tokens_options(
+        full: Option<SemanticTokensFullOptions>,
+        range: Option<bool>,
+    ) -> SemanticTokensOptions {
+        SemanticTokensOptions {
+            work_done_progress_options: WorkDoneProgressOptions::default(),
+            legend: SemanticTokensLegend {
+                token_types: vec![SemanticTokenType::FUNCTION],
+                token_modifiers: vec![],
+            },
+            range,
+            full,
+        }
+    }
+
+    fn tokens_registration(
+        full: Option<SemanticTokensFullOptions>,
+        range: Option<bool>,
+    ) -> SemanticTokensRegistrationOptions {
+        SemanticTokensRegistrationOptions {
+            text_document_registration_options: TextDocumentRegistrationOptions::default(),
+            semantic_tokens_options: tokens_options(full, range),
+            static_registration_options: StaticRegistrationOptions::default(),
+        }
+    }
+
+    fn tokens_inventory(provider: SemanticTokensServerCapabilities) -> MethodInventory {
+        let caps = ServerCapabilities {
+            semantic_tokens_provider: Some(provider),
+            ..ServerCapabilities::default()
+        };
+        MethodInventory::from_capabilities(&caps)
+    }
+
+    fn file_operations(
+        will_create: Option<FileOperationRegistrationOptions>,
+        will_rename: Option<FileOperationRegistrationOptions>,
+        will_delete: Option<FileOperationRegistrationOptions>,
+    ) -> ServerCapabilities {
+        ServerCapabilities {
+            workspace: Some(WorkspaceServerCapabilities {
+                workspace_folders: None,
+                file_operations: Some(WorkspaceFileOperationsServerCapabilities {
+                    did_create: None,
+                    will_create,
+                    did_rename: None,
+                    will_rename,
+                    did_delete: None,
+                    will_delete,
+                }),
+            }),
+            ..ServerCapabilities::default()
+        }
+    }
+
+    /// The all-advertised text-document span: navigation, sync, formatting,
+    /// and color providers at their advertised shapes.
+    fn all_advertised_text_document_caps() -> ServerCapabilities {
+        ServerCapabilities {
+            hover_provider: Some(HoverProviderCapability::Simple(true)),
+            declaration_provider: Some(DeclarationCapability::Simple(true)),
+            definition_provider: Some(OneOf::Left(true)),
+            references_provider: Some(OneOf::Left(true)),
+            document_link_provider: Some(DocumentLinkOptions {
+                resolve_provider: None,
+                work_done_progress_options: WorkDoneProgressOptions::default(),
+            }),
+            rename_provider: Some(OneOf::Right(RenameOptions {
+                prepare_provider: Some(true),
+                work_done_progress_options: WorkDoneProgressOptions::default(),
+            })),
+            document_formatting_provider: Some(OneOf::Left(true)),
+            document_range_formatting_provider: Some(OneOf::Left(true)),
+            implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
+            type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(true)),
+            document_highlight_provider: Some(OneOf::Left(true)),
+            document_on_type_formatting_provider: Some(DocumentOnTypeFormattingOptions {
+                first_trigger_character: "{".into(),
+                more_trigger_character: None,
+            }),
+            folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
+            linked_editing_range_provider: Some(LinkedEditingRangeServerCapabilities::Simple(true)),
+            code_lens_provider: Some(CodeLensOptions {
+                resolve_provider: None,
+            }),
+            text_document_sync: Some(TextDocumentSyncCapability::Options(
+                TextDocumentSyncOptions {
+                    will_save_wait_until: Some(true),
+                    ..TextDocumentSyncOptions::default()
+                },
+            )),
+            color_provider: Some(ColorProviderCapability::Simple(true)),
+            ..ServerCapabilities::default()
+        }
+    }
+
+    /// The all-advertised second span: workspace operations, hierarchy,
+    /// tokens, and the remaining providers, over the text-document base.
+    fn all_advertised_workspace_caps() -> ServerCapabilities {
+        ServerCapabilities {
+            call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
+            moniker_provider: Some(OneOf::Left(true)),
+            workspace: Some(WorkspaceServerCapabilities {
+                workspace_folders: None,
+                file_operations: Some(WorkspaceFileOperationsServerCapabilities {
+                    did_create: None,
+                    will_create: Some(FileOperationRegistrationOptions::default()),
+                    did_rename: None,
+                    will_rename: Some(FileOperationRegistrationOptions::default()),
+                    did_delete: None,
+                    will_delete: Some(FileOperationRegistrationOptions::default()),
+                }),
+            }),
+            inlay_hint_provider: Some(OneOf::Left(true)),
+            document_symbol_provider: Some(OneOf::Left(true)),
+            execute_command_provider: Some(ExecuteCommandOptions::default()),
+            semantic_tokens_provider: Some(
+                SemanticTokensServerCapabilities::SemanticTokensOptions(tokens_options(
+                    // The richest shape: it serves full, range, and delta.
+                    Some(SemanticTokensFullOptions::Delta { delta: Some(true) }),
+                    Some(true),
+                )),
+            ),
+            completion_provider: Some(CompletionOptions::default()),
+            code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+            diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
+                DiagnosticOptions::default(),
+            )),
+            selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
+            inline_value_provider: Some(OneOf::Left(true)),
+            workspace_symbol_provider: Some(OneOf::Left(true)),
+            signature_help_provider: Some(SignatureHelpOptions::default()),
+            ..all_advertised_text_document_caps()
+        }
+    }
+
+    #[test]
+    fn all_advertised_shapes_advertise_their_methods() {
+        // Every representable provider set to its advertised shape: each of
+        // the table's methods answers true from its own capability.
+        let inventory = MethodInventory::from_capabilities(&all_advertised_workspace_caps());
+
+        for name in METHOD_NAMES {
+            if matches!(*name, "prepare_type_hierarchy" | "supertypes" | "subtypes") {
+                continue;
+            }
+            assert!(
+                inventory.advertised(name),
+                "'{name}' must be advertised by its configured shape",
+            );
+        }
+        // lsp-types 0.95.1 carries no type-hierarchy capability: the trio
+        // stays silent whatever else is configured.
+        for name in ["prepare_type_hierarchy", "supertypes", "subtypes"] {
+            assert!(
+                !inventory.advertised(name),
+                "'{name}' is never advertisable",
+            );
+        }
+    }
+
+    fn options_inventory(
+        full: Option<SemanticTokensFullOptions>,
+        range: Option<bool>,
+    ) -> MethodInventory {
+        tokens_inventory(SemanticTokensServerCapabilities::SemanticTokensOptions(
+            tokens_options(full, range),
+        ))
+    }
+
+    /// Asserts the three tokens methods' advertisement in shape order:
+    /// full, range, full-delta.
+    fn assert_tokens(inventory: &MethodInventory, full: bool, range: bool, full_delta: bool) {
+        assert_eq!(inventory.advertised("semantic_tokens_full"), full);
+        assert_eq!(inventory.advertised("semantic_tokens_range"), range);
+        assert_eq!(
+            inventory.advertised("semantic_tokens_full_delta"),
+            full_delta,
+        );
+    }
+
+    #[test]
+    fn semantic_tokens_advertise_full_range_and_delta_by_shape() {
+        // The Options variant: Bool(true) fills the full leg only.
+        assert_tokens(
+            &options_inventory(Some(SemanticTokensFullOptions::Bool(true)), Some(true)),
+            true,
+            true,
+            false,
+        );
+
+        // Delta { delta: Some(true) } serves both the full and the delta
+        // leg.
+        assert_tokens(
+            &options_inventory(
+                Some(SemanticTokensFullOptions::Delta { delta: Some(true) }),
+                Some(true),
+            ),
+            true,
+            true,
+            true,
+        );
+
+        // A delta flag off still advertises full, and an absent range flag
+        // stays silent.
+        assert_tokens(
+            &options_inventory(
+                Some(SemanticTokensFullOptions::Delta { delta: Some(false) }),
+                None,
+            ),
+            true,
+            false,
+            false,
+        );
+
+        // Explicit negatives: Bool(false) and range: Some(false) are
+        // deliberate nos.
+        assert_tokens(
+            &options_inventory(Some(SemanticTokensFullOptions::Bool(false)), Some(false)),
+            false,
+            false,
+            false,
+        );
+
+        // The RegistrationOptions variant flows through the same options
+        // block, so the same shapes answer there.
+        assert_tokens(
+            &tokens_inventory(
+                SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(
+                    tokens_registration(Some(SemanticTokensFullOptions::Bool(true)), Some(true)),
+                ),
+            ),
+            true,
+            true,
+            false,
+        );
+    }
+
+    #[test]
+    fn file_operations_advertise_only_their_own_operation() {
+        // The workspace block alone, without its file-operations section,
+        // advertises nothing.
+        let bare = MethodInventory::from_capabilities(&file_operations(None, None, None));
+        for name in [
+            "will_create_files",
+            "will_rename_files",
+            "will_delete_files",
+        ] {
+            assert!(!bare.advertised(name), "'{name}' must stay silent");
+        }
+
+        // Each method answers from its own field: registering will_create
+        // alone must not pull in rename or delete.
+        let only_create = MethodInventory::from_capabilities(&file_operations(
+            Some(FileOperationRegistrationOptions::default()),
+            None,
+            None,
+        ));
+        assert!(only_create.advertised("will_create_files"));
+        assert!(!only_create.advertised("will_rename_files"));
+        assert!(!only_create.advertised("will_delete_files"));
+    }
+
+    #[test]
+    fn a_predicate_reads_its_own_capability_not_a_neighbors() {
+        // Slot 0 (hover) is an explicit no while document_format sits far
+        // later in the table: an index bug pinning every lookup to slot 0
+        // would turn the positive rows into hover's answer.
+        let caps = ServerCapabilities {
+            hover_provider: Some(HoverProviderCapability::Simple(false)),
+            document_formatting_provider: Some(OneOf::Left(true)),
             ..ServerCapabilities::default()
         };
         let inventory = MethodInventory::from_capabilities(&caps);
 
         assert!(!inventory.advertised("hover"));
-        assert!(!inventory.advertised("rename"));
+        assert!(inventory.advertised("document_format"));
+        // The warning answers through the same index: the advertised method
+        // draws its warning exactly once, the unadvertised neighbor never.
+        assert!(inventory.warn_once_default("document_format", &error("document_format"),));
+        assert!(!inventory.warn_once_default("document_format", &error("document_format"),));
         assert!(!inventory.warn_once_default("hover", &error("hover")));
     }
 }

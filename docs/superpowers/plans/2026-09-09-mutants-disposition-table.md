@@ -321,6 +321,11 @@ installed generation cannot diverge from the working text"; `query()`'s document
 | `tree_sitter_edit` @ documents.rs:574 | `+ with -` (`col_bytes + len_utf8`) | b | Column accumulation in bytes (UTF-8 invariant) | same test (insert with 🙂) |
 | `tree_sitter_edit` @ documents.rs:574 | `+ with *` — **artifact** | d | Same new_end_position normalization as the :571 revision (owner decision 2026-09-10, equivalent mutant; byte-identical probe) | — |
 
+Note (2026-09-16 full sweep): the two `+ with *` rows at :572/:574 flake between
+`missed` and `timeout` columns under full-sweep load (B6 observed the same load
+sensitivity) — the mutants themselves are unchanged; reconcile future sweeps
+against this pair without alarm.
+
 ## 12. state workspace — 6 rows (6 b, 0 c, 0 d)
 
 File: `src/server/state/workspace.rs` (2 baseline + 4 verified artifacts, marked).
