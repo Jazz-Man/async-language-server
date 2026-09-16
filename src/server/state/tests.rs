@@ -19,11 +19,7 @@ struct TestServer;
 
 impl Server for TestServer {
     fn server_document_matchers() -> Vec<DocumentMatcher> {
-        vec![
-            DocumentMatcher::new("Test")
-                .with_url_globs(["**/*.test", "*.test"])
-                .with_lang_strings(["test"]),
-        ]
+        crate::testing::test_document_matchers()
     }
 }
 

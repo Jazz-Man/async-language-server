@@ -616,14 +616,17 @@ mod tests {
     use crate::server::{
         DocumentMatcher, Server, ServerOptions, ServerState, WorkspaceDiagnostics,
     };
-    use crate::testing::{diagnostic_provider_capabilities, temp_workspace, workspace_folder};
+    use crate::testing::{
+        diagnostic_provider_capabilities, temp_workspace, workspace_diagnostic_params,
+        workspace_folder,
+    };
     use async_lsp::ClientSocket;
     use async_lsp::lsp_types::{
         DiagnosticOptions, DiagnosticRegistrationOptions, DiagnosticWorkspaceClientCapabilities,
         DidChangeConfigurationClientCapabilities, DocumentDiagnosticParams,
-        DocumentDiagnosticReport, DocumentDiagnosticReportResult, PartialResultParams,
+        DocumentDiagnosticReport, DocumentDiagnosticReportResult,
         RelatedFullDocumentDiagnosticReport, ServerCapabilities, UnchangedDocumentDiagnosticReport,
-        WorkDoneProgressParams, WorkspaceClientCapabilities, WorkspaceDiagnosticParams,
+        WorkspaceClientCapabilities,
     };
     use std::fs;
     use std::num::NonZeroUsize;
@@ -693,11 +696,7 @@ mod tests {
 
     impl Server for GatedDiagnosticsServer {
         fn server_document_matchers() -> Vec<DocumentMatcher> {
-            vec![
-                DocumentMatcher::new("Gated")
-                    .with_url_globs(["**/*.diag", "*.diag"])
-                    .with_lang_strings(["diag"]),
-            ]
+            crate::testing::extension_matchers("Gated", "diag")
         }
 
         async fn document_diagnostics(
@@ -762,15 +761,6 @@ mod tests {
         )
     }
 
-    fn gated_params() -> WorkspaceDiagnosticParams {
-        WorkspaceDiagnosticParams {
-            identifier: None,
-            previous_result_ids: Vec::new(),
-            work_done_progress_params: WorkDoneProgressParams::default(),
-            partial_result_params: PartialResultParams::default(),
-        }
-    }
-
     #[tokio::test]
     async fn width_three_documents_enter_before_any_releases() {
         let (state, entered_tx, mut entered_rx, gate, root) =
@@ -779,7 +769,11 @@ mod tests {
             entered: entered_tx,
             gate: Arc::clone(&gate),
         });
-        let items = tokio::spawn(workspace_diagnostic_items(server, state, gated_params()));
+        let items = tokio::spawn(workspace_diagnostic_items(
+            server,
+            state,
+            workspace_diagnostic_params(),
+        ));
 
         // All three handlers must enter while the gate is closed — the
         // gate holds zero permits, so nothing has released yet: width 3
@@ -818,7 +812,11 @@ mod tests {
             entered: entered_tx,
             gate: Arc::clone(&gate),
         });
-        let items = tokio::spawn(workspace_diagnostic_items(server, state, gated_params()));
+        let items = tokio::spawn(workspace_diagnostic_items(
+            server,
+            state,
+            workspace_diagnostic_params(),
+        ));
 
         let first = tokio::time::timeout(ENTRY_TIMEOUT, entered_rx.recv())
             .await

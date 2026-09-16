@@ -23,21 +23,19 @@
 //! client assert). Rows pin the single-incoming-position shape; richer
 //! tests stay hand-written next to their `Request` impls.
 
-use crate::server::{Server, ServerOptions, ServerState};
+use crate::server::{DocumentMatcher, Server, ServerOptions, ServerState};
 use crate::text_utils::Encoding;
 use crate::workspace::configure_capabilities;
 use async_lsp::ClientSocket;
 use async_lsp::lsp_types::{
     ClientCapabilities, Diagnostic, DiagnosticOptions, DiagnosticServerCapabilities,
-    DidOpenTextDocumentParams, InitializeResult, Position, Range, SemanticToken,
-    ServerCapabilities, TextDocumentItem, Url, WorkspaceFolder,
+    DidOpenTextDocumentParams, InitializeResult, PartialResultParams, Position, Range,
+    SemanticToken, ServerCapabilities, TextDocumentItem, Url, WorkDoneProgressParams,
+    WorkspaceDiagnosticParams, WorkspaceFolder,
 };
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-#[cfg(feature = "tree-sitter")]
-use crate::server::DocumentMatcher;
 
 /// Builds an LSP [`Position`] with the given line and character.
 pub(crate) const fn line_position(line: u32, character: u32) -> Position {
@@ -149,6 +147,18 @@ pub(crate) fn workspace_folder(path: &PathBuf) -> WorkspaceFolder {
     }
 }
 
+/// Builds empty `workspace/diagnostic` params: no identifier, no previous
+/// result ids. Callers layer `identifier`/`previous_result_ids` on top via
+/// struct-update syntax when the test pins those fields.
+pub(crate) fn workspace_diagnostic_params() -> WorkspaceDiagnosticParams {
+    WorkspaceDiagnosticParams {
+        identifier: None,
+        previous_result_ids: Vec::new(),
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    }
+}
+
 /// Builds a zero-range diagnostic carrying only a message.
 pub(crate) fn diagnostic(message: impl Into<String>) -> Diagnostic {
     Diagnostic {
@@ -165,6 +175,24 @@ pub(crate) fn diagnostic(message: impl Into<String>) -> Diagnostic {
         message: message.into(),
         ..Default::default()
     }
+}
+
+/// Builds the single matcher matching an extension's documents: the
+/// `**/*.{extension}` and `*.{extension}` URL globs plus the
+/// `extension` language id.
+pub(crate) fn extension_matchers(name: &str, extension: &str) -> Vec<DocumentMatcher> {
+    vec![
+        DocumentMatcher::new(name)
+            .with_url_globs([format!("**/*.{extension}"), format!("*.{extension}")])
+            .with_lang_strings([extension]),
+    ]
+}
+
+/// Matchers for plain-text test documents: matched by the `test` language id
+/// or the `*.test` URL globs — the fixture suite shared by the state,
+/// wrapper, and oneshot tests.
+pub(crate) fn test_document_matchers() -> Vec<DocumentMatcher> {
+    extension_matchers("Test", "test")
 }
 
 /// Matchers for JSON test documents: matched by the `json` language id or

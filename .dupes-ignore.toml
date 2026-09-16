@@ -39,20 +39,8 @@ fingerprint = "f9b5a480a3cae9d6"
 reason = "test-support position/range builders in src/testing.rs and the tree_sitter_utils test module (both #[cfg(test)]): two-line constructors of a fixed position or range"
 
 [[ignore]]
-fingerprint = "fe902b81118cdf76"
-reason = "test fixtures re-declare the same matcher list per suite (state/tests.rs, with_state/tests.rs, oneshot/workspace_diagnostics.rs)"
-
-[[ignore]]
 fingerprint = "257658785e4bc44d"
 reason = "two-case split_at spec fns in lsp_tests.rs (split_at_divides_the_range_at_a_relative_position after Batch A2's merge, split_at_boundaries): the lsp flavor builds positions inline with no per-case bindings — unlike the tree-sitter flavor whose let text lines keep its twins apart — so any two two-case split_at fns normalize to one AST; avoidance analysis: dropping the merged multiline case loses a row-offset mutation pin, and tuple asserts or spurious range bindings are code contorted to please the tool; the real fix folds the boundary rows into the merged fn but deletes the ungrouped split_at_boundaries, which Batch A2's surgical scope forbids — that fold-in is the owner's dissolution path"
-
-[[ignore]]
-fingerprint = "cce39c7bbaeb9e8a"
-reason = "position-encoding preference pair in with_state/tests.rs (prefers UTF-8 when offered, prefers UTF-32 over UTF-16): two rows of the POSITION_ENCODING_PREFERRED_ORDER negotiation matrix, same harness by design"
-
-[[ignore]]
-fingerprint = "4e6dfe148ea98fcc"
-reason = "link-resolve scenario-matrix pair in with_state/tests.rs (sole-doc conversion, no-sole pass-through): two rows over the shared drive_link_resolve driver; only inputs and expected columns differ"
 
 [[ignore]]
 fingerprint = "390d3562637a1839"
@@ -121,10 +109,6 @@ reason = "LongLineServer::document_diagnostics in minimal.rs and batch_diagnosti
 [[ignore]]
 fingerprint = "8cc63e9a2c94ab30"
 reason = "oneshot test fixtures' server_options pins (TestServer width 1 for per-item determinism, GatedServer width 3 for the structural concurrency test): each pin is load-bearing for ITS test's determinism and the values differ on purpose; a shared fixture would couple the two widths the tests deliberately separate (family of fe902b81118cdf76's per-suite fixtures)"
-
-[[ignore]]
-fingerprint = "aee8589448a8b248"
-reason = "gated_params in diagnostics.rs' own test module vs workspace_diagnostic_params in with_state/tests.rs: each suite owns its params builder for its fixture; hoisting one shared test helper across the module-under-test's tests and another module's tests couples suites that the per-module test layout keeps separate (fe902b81118cdf76 precedent: fixtures re-declared per suite)"
 
 [[ignore]]
 fingerprint = "b784a964c3143666"

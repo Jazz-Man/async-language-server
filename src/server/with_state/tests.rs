@@ -4,7 +4,8 @@ use crate::server::{
 };
 use crate::testing::{
     advertise_workspace_diagnostics, diagnostic, diagnostic_provider_capabilities, line_position,
-    same_line, temp_workspace, url, workspace_folder,
+    same_line, temp_workspace, test_document_matchers, url, workspace_diagnostic_params,
+    workspace_folder,
 };
 use crate::text_utils::Encoding;
 use async_lsp::lsp_types::{
@@ -594,14 +595,6 @@ fn test_capabilities() -> Option<ServerCapabilities> {
     Some(diagnostic_provider_capabilities(true, true))
 }
 
-fn test_document_matchers() -> Vec<DocumentMatcher> {
-    vec![
-        DocumentMatcher::new("Test")
-            .with_url_globs(["**/*.test", "*.test"])
-            .with_lang_strings(["test"]),
-    ]
-}
-
 fn test_document_diagnostics(
     state: &ServerState,
     params: DocumentDiagnosticParams,
@@ -767,54 +760,46 @@ fn initialize_advertises_incremental_sync_with_open_close_and_save() {
     );
 }
 
-#[test]
-fn initialize_prefers_utf8_when_the_client_offers_it() {
-    let root = temp_workspace("workspace", "prefer-utf8");
+/// Drives one row of the position-encoding preference negotiation:
+/// initializes a server over `name`'s temp workspace with a client offering
+/// `offered`, asserting the negotiated result is `expected`.
+fn initialize_with_position_encodings(
+    name: &str,
+    offered: Vec<PositionEncodingKind>,
+    expected: PositionEncodingKind,
+) {
+    let root = temp_workspace("workspace", name);
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
 
     let mut params = initialize_params(&root);
     params.capabilities.general = Some(GeneralClientCapabilities {
-        position_encodings: Some(vec![
-            PositionEncodingKind::UTF16,
-            PositionEncodingKind::UTF8,
-        ]),
+        position_encodings: Some(offered),
         ..Default::default()
     });
 
     let init_result =
         futures::executor::block_on(server.initialize(params)).expect("server can initialize");
 
-    assert_eq!(
-        init_result.capabilities.position_encoding,
-        Some(PositionEncodingKind::UTF8),
-    );
+    assert_eq!(init_result.capabilities.position_encoding, Some(expected));
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
 #[test]
-fn initialize_prefers_utf32_over_utf16() {
-    let root = temp_workspace("workspace", "prefer-utf32");
-    let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
-
-    let mut params = initialize_params(&root);
-    params.capabilities.general = Some(GeneralClientCapabilities {
-        position_encodings: Some(vec![
-            PositionEncodingKind::UTF16,
-            PositionEncodingKind::UTF32,
-        ]),
-        ..Default::default()
-    });
-
-    let init_result =
-        futures::executor::block_on(server.initialize(params)).expect("server can initialize");
-
-    assert_eq!(
-        init_result.capabilities.position_encoding,
-        Some(PositionEncodingKind::UTF32),
+fn initialize_prefers_encodings_by_the_preference_order() {
+    // UTF-8 outranks UTF-16 when both are offered.
+    initialize_with_position_encodings(
+        "prefer-utf8",
+        vec![PositionEncodingKind::UTF16, PositionEncodingKind::UTF8],
+        PositionEncodingKind::UTF8,
     );
 
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
+    // UTF-32 outranks UTF-16 when both are offered.
+    initialize_with_position_encodings(
+        "prefer-utf32",
+        vec![PositionEncodingKind::UTF16, PositionEncodingKind::UTF32],
+        PositionEncodingKind::UTF32,
+    );
 }
 
 #[tokio::test]
@@ -1170,7 +1155,7 @@ fn resolve_converts_with_sole_document_and_passes_through_with_two() {
 }
 
 #[test]
-fn link_resolve_converts_against_the_sole_tracked_document() {
+fn link_resolve_conversion_keys_on_the_sole_tracked_document() {
     // One tracked document ("🙂abc": byte 4 == UTF-16 unit 2); the link's
     // target points at an untracked URL. Resolve-side conversion keys on
     // the sole document, never the target.
@@ -1179,10 +1164,7 @@ fn link_resolve_converts_against_the_sole_tracked_document() {
 
     assert_eq!(received, Some(same_line(0, 4, 4)));
     assert_eq!(returned, same_line(0, 2, 2));
-}
 
-#[test]
-fn link_resolve_skips_conversion_without_a_sole_document() {
     // Two tracked documents: the params cannot name the source document,
     // and the target is the OTHER tracked document. Conversion must be
     // skipped — the handler sees the client's UTF-16 positions verbatim,
@@ -1556,15 +1538,6 @@ fn initialize_params(root: &PathBuf) -> InitializeParams {
         capabilities: ClientCapabilities::default(),
         workspace_folders: Some(vec![workspace_folder(root)]),
         ..Default::default()
-    }
-}
-
-fn workspace_diagnostic_params() -> WorkspaceDiagnosticParams {
-    WorkspaceDiagnosticParams {
-        identifier: None,
-        previous_result_ids: Vec::new(),
-        work_done_progress_params: WorkDoneProgressParams::default(),
-        partial_result_params: PartialResultParams::default(),
     }
 }
 
