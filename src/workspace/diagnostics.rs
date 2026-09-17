@@ -162,6 +162,14 @@ pub(crate) fn configure_capabilities(
     if supported {
         enable_workspace_folder_tracking(result);
     }
+
+    let watching = client_capabilities
+        .workspace
+        .as_ref()
+        .and_then(|workspace| workspace.did_change_watched_files.as_ref())
+        .and_then(|watched| watched.dynamic_registration)
+        .unwrap_or(false);
+    state.set_file_watching(watching);
 }
 
 /// Reads the provider's advertised `workspace_diagnostics` flag; no provider
@@ -228,6 +236,7 @@ pub(crate) fn apply_initialization_options(state: &ServerState, options: Option<
 }
 
 pub(crate) fn initialized(state: ServerState) {
+    register_watchers(state.clone());
     register_configuration(state.clone());
     request_configuration(state);
 }
@@ -301,6 +310,54 @@ fn register_configuration(state: ServerState) {
     });
 }
 
+/// The watcher registration id: matchers are session-fixed, so the
+/// registration is never re-negotiated mid-session.
+const WATCHED_FILES_REGISTRATION_ID: &str = "async-language-server.watchedFiles";
+
+/// All three kinds, explicitly: Create/Delete drive the walk cache's
+/// invalidation, Change drives the existing eager tracked-doc refresh.
+const WATCH_KIND_ALL: i32 = 7;
+
+fn register_watchers(state: ServerState) {
+    // The gated triple: the client must support dynamic watching, the
+    // consuming feature must be on (watched-file events only carry meaning
+    // for Workspace-origin documents, which exist solely under enabled
+    // diagnostics), and the registration must not repeat. A later enable
+    // re-enters here through `apply_enabled`; disable never unregisters —
+    // the events it would carry are no-ops by then.
+    if !state.file_watching()
+        || !state.workspace_diagnostics().enabled()
+        || state.watchers_registered()
+    {
+        return;
+    }
+    let globs = state.watcher_globs();
+    if globs.is_empty() {
+        return;
+    }
+    state.set_watchers_registered(true);
+
+    spawn(async move {
+        let watchers: Vec<_> = globs
+            .into_iter()
+            .map(|glob| serde_json::json!({ "globPattern": glob, "kind": WATCH_KIND_ALL }))
+            .collect();
+        let result = state
+            .client()
+            .request::<RegisterCapability>(RegistrationParams {
+                registrations: vec![Registration {
+                    id: WATCHED_FILES_REGISTRATION_ID.into(),
+                    method: "workspace/didChangeWatchedFiles".into(),
+                    register_options: Some(serde_json::json!({ "watchers": watchers })),
+                }],
+            })
+            .await;
+        if let Err(error) = &result {
+            tracing::warn!("file watching registration failed: {error}");
+        }
+    });
+}
+
 fn request_configuration(state: ServerState) {
     let workspace_diagnostics = state.workspace_diagnostics();
     if !workspace_diagnostics.can_request_configuration() {
@@ -336,8 +393,14 @@ fn request_configuration(state: ServerState) {
 }
 
 fn apply_enabled(state: ServerState, enabled: bool) {
-    let refresh = state.set_workspace_diagnostics_enabled(enabled);
-    if refresh && state.workspace_diagnostics().supported() {
+    let changed = state.set_workspace_diagnostics_enabled(enabled);
+    if changed && enabled {
+        // Idempotent via the `watchers_registered` flag: a disable does not
+        // unregister — matchers are session-fixed — so a re-enable must not
+        // double-register.
+        register_watchers(state.clone());
+    }
+    if changed && state.workspace_diagnostics().supported() {
         refresh_diagnostics(state);
     }
 }
@@ -623,8 +686,8 @@ mod tests {
     use async_lsp::ClientSocket;
     use async_lsp::lsp_types::{
         DiagnosticOptions, DiagnosticRegistrationOptions, DiagnosticWorkspaceClientCapabilities,
-        DidChangeConfigurationClientCapabilities, DocumentDiagnosticParams,
-        DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+        DidChangeConfigurationClientCapabilities, DidChangeWatchedFilesClientCapabilities,
+        DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
         RelatedFullDocumentDiagnosticReport, ServerCapabilities, UnchangedDocumentDiagnosticReport,
         WorkspaceClientCapabilities,
     };
@@ -1161,6 +1224,34 @@ mod tests {
         assert!(state.can_request_configuration());
         assert!(state.can_register_configuration());
         assert!(state.can_refresh());
+    }
+
+    #[test]
+    fn file_watching_follows_the_client_capability() {
+        let state = matrix_state(WorkspaceDiagnostics::enabled());
+        let mut result = result_with_provider(true);
+
+        let watching = ClientCapabilities {
+            workspace: Some(WorkspaceClientCapabilities {
+                did_change_watched_files: Some(DidChangeWatchedFilesClientCapabilities {
+                    dynamic_registration: Some(true),
+                    ..DidChangeWatchedFilesClientCapabilities::default()
+                }),
+                ..WorkspaceClientCapabilities::default()
+            }),
+            ..ClientCapabilities::default()
+        };
+        configure_capabilities(&state, &mut result, &watching);
+        assert!(
+            state.file_watching(),
+            "dynamic registration support captures as file watching",
+        );
+
+        configure_capabilities(&state, &mut result, &ClientCapabilities::default());
+        assert!(
+            !state.file_watching(),
+            "an absent capability — like an explicit false — captures as no watching",
+        );
     }
 
     #[test]

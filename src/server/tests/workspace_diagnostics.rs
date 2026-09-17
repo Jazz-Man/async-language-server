@@ -11,7 +11,7 @@ use std::time::Duration;
 use tokio::time::timeout;
 
 use crate::server::testing::{RawClient, WIRE_TIMEOUT, bounded, spawn_wire_server};
-use crate::server::{Server, ServerOptions, WorkspaceDiagnostics};
+use crate::server::{DocumentMatcher, Server, ServerOptions, WorkspaceDiagnostics};
 use crate::testing::diagnostic_provider_capabilities;
 
 /// How long an absence check waits before concluding nothing arrives —
@@ -59,6 +59,36 @@ impl Server for RefreshServer {
             })),
             ..ServerCapabilities::default()
         })
+    }
+}
+
+#[derive(Clone)]
+struct WatcherServer;
+
+impl Server for WatcherServer {
+    // One matcher with one url glob, so the registration's watcher list is
+    // a single entry and the arrival assertion is exact.
+    fn server_document_matchers() -> Vec<DocumentMatcher> {
+        vec![DocumentMatcher::new("watched").with_url_globs(["**/*.watched"])]
+    }
+
+    // The watcher gate requires enabled diagnostics: watched-file events only
+    // carry meaning for Workspace-origin documents, which exist solely under
+    // an advertised, enabled provider.
+    fn server_capabilities(_: ClientCapabilities) -> Option<ServerCapabilities> {
+        Some(diagnostic_provider_capabilities(true, false))
+    }
+}
+
+/// The gate's negative direction: the same url-glob matcher, but no
+/// diagnostic provider advertised — enabled diagnostics is false, so a
+/// capable client still must not receive a watcher registration.
+#[derive(Clone)]
+struct UnadvertisedWatcherServer;
+
+impl Server for UnadvertisedWatcherServer {
+    fn server_document_matchers() -> Vec<DocumentMatcher> {
+        vec![DocumentMatcher::new("watched").with_url_globs(["**/*.watched"])]
     }
 }
 
@@ -147,6 +177,79 @@ async fn initialized_registers_did_change_configuration_when_supported() {
     );
     reply_result(&mut client, &registration, json!(null)).await;
 
+    drop(client);
+    let _ = bounded(server).await;
+}
+
+#[tokio::test]
+async fn initialized_registers_file_watchers_when_supported() {
+    let (mut client, server) = spawn_wire_server(WatcherServer);
+    initialize_with_capabilities(
+        &mut client,
+        json!({
+            "workspace": {
+                "didChangeWatchedFiles": { "dynamicRegistration": true },
+            },
+        }),
+    )
+    .await;
+
+    let registration = await_server_request(&mut client, "client/registerCapability").await;
+    let registrations = registration["params"]["registrations"]
+        .as_array()
+        .expect("registrations array");
+    assert_eq!(registrations.len(), 1);
+    assert_eq!(
+        registrations[0]["id"], "async-language-server.watchedFiles",
+        "matchers are session-fixed, so the registration carries a fixed id",
+    );
+    assert_eq!(
+        registrations[0]["method"], "workspace/didChangeWatchedFiles",
+        "the registration watches the file-change mechanism",
+    );
+    let watchers = registrations[0]["registerOptions"]["watchers"]
+        .as_array()
+        .expect("watchers array");
+    assert_eq!(watchers.len(), 1);
+    assert_eq!(
+        watchers[0]["globPattern"], "**/*.watched",
+        "the watcher's glob is the fixture matcher's url glob",
+    );
+    assert_eq!(
+        watchers[0]["kind"], 7,
+        "all three kinds: create, change, delete",
+    );
+    reply_result(&mut client, &registration, json!(null)).await;
+
+    drop(client);
+    let _ = bounded(server).await;
+}
+
+#[tokio::test]
+async fn initialized_skips_watcher_registration_without_support() {
+    // Case 1 — the missing client capability holds the registration back:
+    // the fixture matcher carries a url glob and its provider is advertised,
+    // so only the capability conjunct is off.
+    let (mut client, server) = spawn_wire_server(WatcherServer);
+    initialize_with_capabilities(&mut client, json!({})).await;
+    assert_no_server_request(&mut client, "client/registerCapability").await;
+    drop(client);
+    let _ = bounded(server).await;
+
+    // Case 2 — the gate's enabled-diagnostics conjunct: the client IS
+    // capable, but this fixture advertises no provider, so watched-file
+    // events would carry no meaning and no registration may be sent.
+    let (mut client, server) = spawn_wire_server(UnadvertisedWatcherServer);
+    initialize_with_capabilities(
+        &mut client,
+        json!({
+            "workspace": {
+                "didChangeWatchedFiles": { "dynamicRegistration": true },
+            },
+        }),
+    )
+    .await;
+    assert_no_server_request(&mut client, "client/registerCapability").await;
     drop(client);
     let _ = bounded(server).await;
 }

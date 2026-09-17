@@ -8,6 +8,7 @@ use async_lsp::lsp_types::{SemanticToken, ServerCapabilities, Url};
 use dashmap::DashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 mod documents;
 mod workspace;
@@ -27,6 +28,8 @@ pub struct ServerState {
     encoding: Arc<Encoding>,
     advertised_methods: MethodInventory,
     semantic_tokens_cache: Arc<DashMap<Url, CachedSemanticTokens>>,
+    file_watching: Arc<AtomicBool>,
+    watchers_registered: Arc<AtomicBool>,
 }
 
 /// Filesystem stamp used to skip re-reading unchanged workspace files:
@@ -133,6 +136,8 @@ impl ServerState {
             encoding,
             advertised_methods,
             semantic_tokens_cache,
+            file_watching: Arc::new(AtomicBool::new(false)),
+            watchers_registered: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -180,6 +185,35 @@ impl ServerState {
 
     pub(crate) fn set_position_encoding(&mut self, kind: impl Into<Encoding>) {
         self.encoding = Arc::new(kind.into());
+    }
+
+    /// Whether the client supports dynamic `didChangeWatchedFiles`
+    /// registration — captured from its capabilities during initialize.
+    pub(crate) fn file_watching(&self) -> bool {
+        self.file_watching.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_file_watching(&self, supported: bool) {
+        self.file_watching.store(supported, Ordering::Relaxed);
+    }
+
+    pub(crate) fn watchers_registered(&self) -> bool {
+        self.watchers_registered.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_watchers_registered(&self, registered: bool) {
+        self.watchers_registered
+            .store(registered, Ordering::Relaxed);
+    }
+
+    /// Watcher glob patterns derived from the matchers' url globs: the same
+    /// strings, filtered by the matcher's own `Glob::new` validity rule.
+    /// Matchers without url globs contribute nothing.
+    pub(crate) fn watcher_globs(&self) -> Vec<String> {
+        let mut globs: Vec<_> = self.matchers.watcher_globs();
+        globs.sort();
+        globs.dedup();
+        globs
     }
 
     /// Records which [`Server`] methods the capabilities sent to the client

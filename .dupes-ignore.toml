@@ -117,3 +117,7 @@ reason = "two-assert error pins in bytes_tests.rs (out_of_range_positions_return
 [[ignore]]
 fingerprint = "fc821d768b7bc965"
 reason = "Batch A3's merged spec fns in bytes_tests.rs (split_off_returns_the_kept_side vs sub_resolves_relative_positions): two different methods' specs, each two cases over the same r(usize, usize)/TEXT vocabulary; the byte flavor has no shape-breaker (lsp builds inline nested positions, tree-sitter binds let text lines), so any two two-case fns normalize at the near threshold; the parallelism is the spec-matrix structure the file deliberately maintains (95df29debdfb5f1d/ab90a750f1ab7d48's dissolved reasons)"
+
+[[ignore]]
+fingerprint = "175d41788ff043bf"
+reason = "ServerState session-flag setters (set_file_watching, set_watchers_registered): two distinct per-session booleans — the client's didChangeWatchedFiles capability and the watchers-registered idempotence guard — whose one-line Relaxed stores normalize identically; avoidance analysis — a Flag newtype with get/set only relocates the twin (the delegating accessors re-normalize as a pair), merging the flags erases the capability/idempotence distinction the walk cache gates on, and pub(crate) fields would spread the atomic-ordering policy out of state (family of e2c7af90d4455197's atomic load-and-return accessors)"

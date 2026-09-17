@@ -1234,3 +1234,27 @@ async fn refresh_retains_open_documents_absent_from_the_fresh_set() {
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
+
+#[test]
+fn watcher_globs_sort_and_dedup_across_matchers() {
+    struct TwinMatchersServer;
+
+    impl Server for TwinMatchersServer {
+        fn server_document_matchers() -> Vec<DocumentMatcher> {
+            vec![
+                DocumentMatcher::new("a").with_url_globs(["*.z", "*.a"]),
+                DocumentMatcher::new("b").with_url_globs(["*.a", "*.m"]),
+            ]
+        }
+    }
+
+    let state = ServerState::with_options::<TwinMatchersServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    assert_eq!(
+        state.watcher_globs(),
+        ["*.a", "*.m", "*.z"],
+        "globs shared across matchers register once, in a stable order",
+    );
+}

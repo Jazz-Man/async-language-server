@@ -277,7 +277,15 @@ const WATCHED_FILES_REGISTRATION_ID: &str = "async-language-server.watchedFiles"
 const WATCH_KIND_ALL: i32 = 7;
 
 fn register_watchers(state: ServerState) {
-    if !state.file_watching() || state.watchers_registered() {
+    // Amendment (owner ruling 2026-09-17, task-3 review): also gate on
+    // enabled diagnostics — watched-file events only carry meaning for
+    // Workspace-origin documents, which exist solely under enabled
+    // diagnostics. A later enable re-enters through apply_enabled; disable
+    // never unregisters (the events would be no-ops).
+    if !state.file_watching()
+        || !state.workspace_diagnostics().enabled()
+        || state.watchers_registered()
+    {
         return;
     }
     let globs = state.watcher_globs();

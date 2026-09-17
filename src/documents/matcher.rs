@@ -112,6 +112,10 @@ impl DocumentMatcher {
         &self.lang_strings
     }
 
+    pub(crate) fn url_globs(&self) -> &[String] {
+        &self.url_globs
+    }
+
     #[cfg(feature = "tree-sitter")]
     pub(crate) fn lang_grammar(&self) -> Option<Language> {
         self.lang_grammar.clone()
@@ -224,6 +228,23 @@ impl DocumentMatchers {
             .find(|(globset, _)| globset.is_match(path))
             .map(|(_, matcher)| Arc::clone(matcher))
     }
+
+    /// The matchers' url globs: the same strings, filtered by the
+    /// matcher's own `Glob::new` validity rule — an invalid glob never
+    /// matches, so it must not be watched either. Matchers without url
+    /// globs contribute nothing.
+    pub(crate) fn watcher_globs(&self) -> Vec<String> {
+        self.globsets
+            .iter()
+            .flat_map(|(_, matcher)| {
+                matcher
+                    .url_globs()
+                    .iter()
+                    .filter(|glob| Glob::new(glob).is_ok())
+                    .cloned()
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -308,6 +329,19 @@ mod tests {
         // The getter projects the configured identifiers verbatim — no
         // trimming or casing, which is `DocumentMatchers::new`'s job.
         assert_eq!(matcher.lang_strings(), ["json"]);
+    }
+
+    #[test]
+    fn watcher_globs_return_valid_url_globs_only() {
+        let matchers = DocumentMatchers::new([
+            DocumentMatcher::new("json").with_url_globs(["**/*.json", "["]),
+            DocumentMatcher::new("lang-only").with_lang_strings(["text"]),
+        ]);
+
+        // The invalid glob is filtered by the same `Glob::new` rule the
+        // matcher compiles with, and a language-only matcher contributes
+        // nothing — there is no file shape to watch for it.
+        assert_eq!(matchers.watcher_globs(), ["**/*.json"]);
     }
 
     #[cfg(feature = "tree-sitter")]
