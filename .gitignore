@@ -29,5 +29,3 @@
 
 # Local mutation-testing baseline snapshots (regenerable; scratch)
 /.superpowers/mutants-baseline-*/
-.claude/memory/*
-!.claude/memory/.gitkeep
