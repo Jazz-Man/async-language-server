@@ -106,9 +106,9 @@ async fn at_most_limit_requests_run_concurrently() {
     client.initialize_client(&["utf-16"]).await;
     // The gated hovers must run against a TRACKED document: for an
     // untracked file URL the dispatch engine primes the fallback cache on
-    // the blocking pool before the handler, so handler entry stops being a
-    // first-poll event — and once the requests below saturate the layer,
-    // upstream #30 freezes the in-flight primes before any handler enters.
+    // the blocking pool before the handler, so handler entry is no longer
+    // a first-poll event and the limit-cohort counting below would race
+    // the primes.
     client
         .notify(
             "textDocument/didOpen",
@@ -141,28 +141,27 @@ async fn at_most_limit_requests_run_concurrently() {
 
     release_tx.send(true).expect("release sends");
 
-    // Tripwire: the release must NOT admit the overflow handler. With
-    // ConcurrencyLayer at capacity, async-lsp 0.2.4's MainLoop stops
-    // polling in-flight tasks while waiting for poll_ready
-    // (https://github.com/oxalica/async-lsp/pull/30), so the gated
-    // futures never observe the release and the permits never free.
-    // The conversion fallback's inline prime (invariants cycle, spec §9
-    // limitation 6) adds an await point before handlers, so bursts over
-    // untracked files widen this stall window; the async-lsp upgrade
-    // closes both.
-    // When this absence-check starts failing after an async-lsp
-    // upgrade, the upstream fix has landed: flip it to asserting the
-    // overflow handler enters and completes, await all the responses
-    // again, and restore the `bounded(server)` teardown.
-    timeout(Duration::from_millis(250), entered_rx.recv())
+    // PR #30 (drive in-flight tasks while waiting for poll_ready) is in
+    // the pinned async-lsp: the released gates free their permits and
+    // the overflow handler enters and completes. If this ever regresses
+    // to the overflow staying blocked, the git pin to the fix was lost
+    // (a crates.io release without the fix replaced the dependency).
+    timeout(WIRE_TIMEOUT, entered_rx.recv())
         .await
-        .expect_err(
-            "the overflow handler is still blocked after release: did upstream PR #30 land?",
-        );
+        .expect("the overflow handler enters after the release")
+        .expect("signal received");
 
-    // Upstream deadlock (see above): the join handle can never complete,
-    // so abort the task instead of awaiting it.
-    server.abort();
+    // Every request answers — the limit cohort plus the overflow.
+    for id in 0..=i64::try_from(limit).expect("core count fits i64") {
+        let response = client.await_response(id).await;
+        assert!(
+            response.get("result").is_some(),
+            "response {id} must succeed: {response:?}",
+        );
+    }
+
+    drop(client);
+    let _ = bounded(server).await;
 }
 
 #[tokio::test]

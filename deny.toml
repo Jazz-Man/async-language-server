@@ -41,3 +41,9 @@ unused-allowed-license = "warn"
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# Fires: async-lsp is temporarily a git dependency. Accepted: it carries
+# upstream PR oxalica/async-lsp#30 (concurrency poll_ready deadlock fix,
+# commit 2ac76fb9) that no crates.io release ships yet. Removed when the
+# dependency returns to the crates.io release after upstream merges the
+# fix.
+allow-git = ["https://github.com/SebTardif/async-lsp"]

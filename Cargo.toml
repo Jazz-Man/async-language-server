@@ -62,6 +62,16 @@ tower = { workspace = true }
 tracing = { workspace = true }
 tree-sitter = { workspace = true, optional = true }
 
+# Temporary fork pin: upstream PR oxalica/async-lsp#30 (drive in-flight
+# tasks while waiting for poll_ready) fixes the concurrency-saturation
+# deadlock our wire tripwire pinned. The version requirement above stays
+# intact (a bare git dependency reads as a version-less wildcard to
+# cargo-deny's bans); this patch section swaps the source to SebTardif's
+# fix branch, pinned by rev, not branch. Remove this section when
+# upstream ships the fix (and drop the matching allow-git in deny.toml).
+[patch.crates-io]
+async-lsp = { git = "https://github.com/SebTardif/async-lsp", rev = "2ac76fb98fce14959f89df8ad636f9e8e7327470" }
+
 [dev-dependencies]
 arch-lint = { workspace = true }
 criterion = { workspace = true }

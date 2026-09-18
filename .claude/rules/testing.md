@@ -30,16 +30,18 @@ exists only for what unit tests cannot see: lifecycle gating, staleness
 retry, panic mapping, the concurrency bound, termination, wire encoding.
 
 The concurrency test (`at_most_limit_requests_run_concurrently`, in
-`src/server/tests/robustness.rs`) doubles
-as a tripwire for an upstream deadlock: the limit it probes comes from
-`available_parallelism()`, and with `ConcurrencyLayer` at capacity,
-async-lsp 0.2.4's `MainLoop` stops polling in-flight tasks while waiting
-for `poll_ready` (oxalica/async-lsp#30), so the overflow request never
-proceeds even after the gates release — the test asserts that absence,
-then aborts the server task because the join handle can never complete.
-When that absence-check fails after an async-lsp upgrade, the upstream
-fix has landed: flip it to asserting recovery, following the
-instructions in the test's own comment.
+`src/server/tests/robustness.rs`) pins both the bound and the recovery:
+at most `available_parallelism()` handlers run at once, and — since the
+dependency pins async-lsp's PR #30 fix (drive in-flight tasks while
+waiting for `poll_ready`, oxalica/async-lsp#30; git-pinned to the fix
+branch in `Cargo.toml`, with the matching `allow-git` in `deny.toml`) —
+the overflow handler enters and every response arrives once the gates
+release. History: async-lsp 0.2.4 from crates.io deadlocked here (the
+overflow never proceeded and the server task had to be aborted); the
+absence-check failure after swapping the dependency was the flip signal,
+executed 2026-09-18. If the overflow-blocked failure ever reappears, the
+git pin was lost — a crates.io release without the fix replaced the
+dependency.
 
 ## Harness inventory
 
