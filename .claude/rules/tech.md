@@ -2,7 +2,7 @@
 
 ## Toolchain
 
-Rust, edition 2024, MSRV 1.88 (`rust-version` in `Cargo.toml`). The toolchain
+Rust, edition 2024, MSRV 1.90 (`rust-version` in `Cargo.toml`). The toolchain
 is pinned by `rust-toolchain.toml` to the `stable` channel with `rustfmt` and
 `clippy` components — do not bypass the pin with `rustup run` or `+nightly`.
 Edition 2024 means let-chains (`if let ... && ...`) are used freely; prefer

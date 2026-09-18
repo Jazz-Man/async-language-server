@@ -67,7 +67,10 @@ the encoding negotiated with the client — conversions are handled internally.
   (language-per-document).
 - **`Document`** — a cheap-`Clone` handle: cloning bumps a refcount, and
   edits install a fresh generation, so every outstanding clone keeps the
-  content it was created with.
+  content it was created with. `Document::derived` memoizes per-type derived
+  data for the current generation — compute once, reuse on every access
+  until the document changes (`doc.derived(|doc| build_index(doc))`);
+  fallible derives express themselves through `T` (`Option<_>`, `Result<_, _>`).
 - **`serve()`** — wires your server into async-lsp behind a tower middleware
   stack (tracing, concurrency limit, panic catching, client-process monitor)
   over the process stdio.
