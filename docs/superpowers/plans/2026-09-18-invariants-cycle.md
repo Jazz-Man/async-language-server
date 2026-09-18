@@ -812,7 +812,7 @@ async fn gitignore_edit_events_invalidate_the_walk_cache() {
 }
 ```
 
-Also update the existing `watcher_globs_sort_and_dedup_across_matchers` expectation: with no ignore names configured the built-ins still join, so the assertion becomes `["**/.gitignore", "**/.ignore", "*.a", "*.m", "*.z"]` (sorted), with the message `"globs shared across matchers register once, in a stable order; the built-in ignore names always register"`.
+Also update the existing `watcher_globs_sort_and_dedup_across_matchers` expectation: with no ignore names configured the built-in still joins, so the assertion becomes `["**/.gitignore", "*.a", "*.m", "*.z"]` (sorted), with the message `"globs shared across matchers register once, in a stable order; the built-in .gitignore always registers"`.
 
 - [ ] **Step 2: Run — expect the new tests to fail** (no ignore branch: the `.mylspignore` DELETED event currently falls into the untracked-URI `continue` without invalidating) **and the globs test to fail** (built-ins absent).
 
@@ -823,12 +823,11 @@ Also update the existing `watcher_globs_sort_and_dedup_across_matchers` expectat
 ```rust
     /// Watcher glob patterns: the matchers' url globs plus the ignore
     /// file names the walk honors — the configured names and the
-    /// built-ins (`.gitignore`, `.ignore`), whose edits change walk
-    /// membership. Sorted, deduplicated.
+    /// built-in `.gitignore`, whose edits change walk membership.
+    /// Sorted, deduplicated.
     pub(crate) fn watcher_globs(&self) -> Vec<String> {
         let mut globs: Vec<_> = self.matchers.watcher_globs();
         globs.push(String::from("**/.gitignore"));
-        globs.push(String::from("**/.ignore"));
         for name in self.ignore_filenames() {
             globs.push(format!("**/{name}"));
         }
@@ -854,14 +853,13 @@ Also update the existing `watcher_globs_sort_and_dedup_across_matchers` expectat
 and the predicate (same impl block):
 
 ```rust
-    /// Whether `uri` names an ignore file the walk honors: a configured
-    /// custom name or a built-in (`.gitignore`, `.ignore`).
+    /// Whether `uri` names an ignore file the walk reacts to: a
+    /// configured custom name or the built-in `.gitignore`.
     fn is_ignore_file(&self, uri: &Url) -> bool {
         uri.to_file_path().is_ok_and(|path| {
             path.file_name().is_some_and(|name| {
                 let name = name.to_string_lossy();
                 name == ".gitignore"
-                    || name == ".ignore"
                     || self.ignore_filenames().iter().any(|configured| *configured == name)
             })
         })

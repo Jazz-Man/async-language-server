@@ -92,11 +92,11 @@ read, no watcher additions, no behavior change).
 
 ### 3.3 Git-less semantics (documented explicitly, per D6)
 
-| Scenario | `.gitignore` honored? | `.ignore` honored? | Custom names honored? |
-|---|---|---|---|
-| Project with `.git` | yes | yes | yes |
-| No `.git` (quick POC, single file) | **no** (`require_git = true`) | yes | yes |
-| `.git` present, no project `.gitignore` (global gitignore via git config) | global gitignore honored (git config resolution, engine behavior) | yes | yes |
+| Scenario | `.gitignore` honored? | Custom names honored? |
+|---|---|---|
+| Project with `.git` | yes | yes |
+| No `.git` (quick POC, single file) | **no** (`require_git = true`) | yes |
+| `.git` present, no project `.gitignore` (global gitignore via git config) | global gitignore honored (git config resolution, engine behavior) | yes |
 
 Custom names and the global file are git-independent by construction —
 they close the exclusion gap for git-less projects.
@@ -104,9 +104,9 @@ they close the exclusion gap for git-less projects.
 ### 3.4 Watch lifecycle
 
 - `watcher_globs()` (the include-side matcher globs today) is extended
-  with the configured ignore filenames and the built-in `.gitignore` /
-  `.ignore` names, whenever watchers register (i.e. under enabled
-  diagnostics with client support, as today).
+  with the configured ignore filenames and the built-in `.gitignore`
+  name, whenever watchers register (i.e. under enabled diagnostics with
+  client support, as today).
 - `handle_watched_files_change` gains a branch **before** document
   handling: an event whose file name matches a configured ignore name
   (or the built-ins) → `walk_cache().invalidate()`; the event is not
