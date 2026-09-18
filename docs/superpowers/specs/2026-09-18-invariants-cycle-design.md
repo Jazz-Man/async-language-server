@@ -285,6 +285,19 @@ measured or cited reason.
 5. **In-flight invalidation race** (carried from the walk-cache spec):
    a walk completing during an invalidation may store a stale list;
    bounded, self-healing on the next event.
+6. **The off-executor conversion hops widen the upstream #30 stall
+   window** (accepted 2026-09-18 over the alternatives): the
+   spec-mandated await before the hooks (§5) — the fallback prime for
+   untracked URLs, and the blocking-pool hops around every hook call of
+   a disk-reading request — mean a burst of such requests still inside
+   a hop when the concurrency layer saturates can freeze the server
+   under async-lsp 0.2.4's stop-polling-at-capacity bug
+   (oxalica/async-lsp#30, pinned by the concurrency tripwire). The
+   rejected alternative — dropping the inline await and skipping
+   conversion on a cold cache — degrades every first request per
+   untracked file (wrong columns for multi-byte content); the eventual
+   async-lsp upgrade closes both this window and #30 (the tripwire
+   comment carries the flip instructions).
 
 ## 10. Testing strategy
 
