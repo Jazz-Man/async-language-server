@@ -353,6 +353,12 @@ impl ServerState {
         changes: Vec<FileEvent>,
     ) -> ControlFlow<Result<()>> {
         for event in changes {
+            if matches!(event.typ, FileChangeType::CREATED | FileChangeType::DELETED) {
+                // List membership changed: the next poll re-walks. A Change
+                // event does not alter membership — the eager refresh below
+                // and the stamp gate own the content.
+                self.walk_cache.invalidate();
+            }
             let Some(entry) = self.documents.get(&event.uri) else {
                 // Untracked URIs are not loaded here - the next workspace
                 // scan picks up new files instead.

@@ -1,3 +1,4 @@
+use super::walk_cache::WalkedFile;
 use super::{DocumentOrigin, FileStamp, ServerState};
 use crate::error::{ServerError, ServerResult};
 use crate::server::DocumentMatcher;
@@ -12,6 +13,7 @@ use std::sync::Arc;
 impl ServerState {
     pub(crate) fn set_workspace_folders(&self, folders: impl IntoIterator<Item = WorkspaceFolder>) {
         self.workspace_roots.clear();
+        self.walk_cache.clear();
 
         for folder in folders {
             if let Some(path) = workspace_folder_path(&folder) {
@@ -24,6 +26,10 @@ impl ServerState {
         &self,
         params: DidChangeWorkspaceFoldersParams,
     ) -> ControlFlow<Result<()>> {
+        // The old walk list's root premise moved: it is not stale but
+        // meaningless.
+        self.walk_cache.clear();
+
         let removed_roots: Vec<_> = params
             .event
             .removed
@@ -83,24 +89,19 @@ impl ServerState {
             return Ok(self.document_urls());
         }
 
-        let state = self.clone();
-        let walked = tokio::task::spawn_blocking({
-            let roots = roots.clone();
-            move || -> ServerResult<Vec<(PathBuf, Url, Arc<DocumentMatcher>)>> {
-                let walker = WorkspaceWalker::new(&roots, WorkspaceWalkConfig::default())?;
-                let mut walked = Vec::new();
-                for path in walker.files()? {
-                    let Some(matcher) = state.matchers.find_path(&path) else {
-                        continue;
-                    };
-                    let uri = path_to_url(&path)?;
-                    walked.push((path, uri, matcher));
-                }
-                Ok(walked)
+        // Without watcher support the events never come, so the cache could
+        // go stale forever: walk per poll instead (still off the executor).
+        let walked = if self.file_watching() {
+            if let Some(entries) = self.walk_cache.get_valid() {
+                entries
+            } else {
+                let entries = self.walk_blocking(&roots).await?;
+                self.walk_cache.store(entries.clone());
+                entries
             }
-        })
-        .await
-        .map_err(|join_error| ServerError::Other(Box::new(join_error)))??;
+        } else {
+            self.walk_blocking(&roots).await?
+        };
 
         let mut urls = Vec::new();
         let mut loads = Vec::new();
@@ -148,6 +149,29 @@ impl ServerState {
         let mut urls: Vec<_> = urls.into_iter().collect();
         urls.sort();
         Ok(urls)
+    }
+
+    /// The workspace walk, off the executor: canonicalize the roots (the
+    /// hop's only error path), scan, and build the triples in one
+    /// `spawn_blocking` hop.
+    async fn walk_blocking(&self, roots: &[PathBuf]) -> ServerResult<Vec<WalkedFile>> {
+        let state = self.clone();
+        let roots = roots.to_vec();
+        let walked = tokio::task::spawn_blocking(move || -> ServerResult<Vec<WalkedFile>> {
+            let walker = WorkspaceWalker::new(&roots, WorkspaceWalkConfig::default())?;
+            let mut walked = Vec::new();
+            for path in walker.files()? {
+                let Some(matcher) = state.matchers.find_path(&path) else {
+                    continue;
+                };
+                let uri = path_to_url(&path)?;
+                walked.push((path, uri, matcher));
+            }
+            Ok(walked)
+        })
+        .await
+        .map_err(|join_error| ServerError::Other(Box::new(join_error)))??;
+        Ok(walked)
     }
 
     pub(super) fn remove_workspace_documents(&self) {

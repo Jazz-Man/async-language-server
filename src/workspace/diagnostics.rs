@@ -395,10 +395,14 @@ fn request_configuration(state: ServerState) {
 fn apply_enabled(state: ServerState, enabled: bool) {
     let changed = state.set_workspace_diagnostics_enabled(enabled);
     if changed && enabled {
+        state.walk_cache().invalidate();
         // Idempotent via the `watchers_registered` flag: a disable does not
         // unregister — matchers are session-fixed — so a re-enable must not
         // double-register.
         register_watchers(state.clone());
+    }
+    if changed && !enabled {
+        state.walk_cache().clear();
     }
     if changed && state.workspace_diagnostics().supported() {
         refresh_diagnostics(state);

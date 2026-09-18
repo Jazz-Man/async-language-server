@@ -11,7 +11,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 mod documents;
+mod walk_cache;
 mod workspace;
+
+use self::walk_cache::WalkCache;
 
 /// Managed state for an LSP server.
 ///
@@ -30,6 +33,7 @@ pub struct ServerState {
     semantic_tokens_cache: Arc<DashMap<Url, CachedSemanticTokens>>,
     file_watching: Arc<AtomicBool>,
     watchers_registered: Arc<AtomicBool>,
+    walk_cache: Arc<WalkCache>,
 }
 
 /// Filesystem stamp used to skip re-reading unchanged workspace files:
@@ -138,6 +142,7 @@ impl ServerState {
             semantic_tokens_cache,
             file_watching: Arc::new(AtomicBool::new(false)),
             watchers_registered: Arc::new(AtomicBool::new(false)),
+            walk_cache: Arc::new(WalkCache::new()),
         }
     }
 
@@ -214,6 +219,11 @@ impl ServerState {
         globs.sort();
         globs.dedup();
         globs
+    }
+
+    /// The workspace walk cache: the file list between invalidation events.
+    pub(crate) fn walk_cache(&self) -> &WalkCache {
+        &self.walk_cache
     }
 
     /// Records which [`Server`] methods the capabilities sent to the client

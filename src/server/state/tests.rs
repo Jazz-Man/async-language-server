@@ -1,3 +1,4 @@
+use super::walk_cache::WalkCache;
 use super::{DocumentOrigin, ServerState};
 use crate::lsp_requests::{Request, SemanticTokensFullRequest};
 use crate::server::{DocumentMatcher, Server, ServerOptions, WorkspaceDiagnostics};
@@ -14,6 +15,8 @@ use async_lsp::lsp_types::{
     Url, VersionedTextDocumentIdentifier, WorkspaceFoldersChangeEvent,
 };
 use std::fs;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 struct TestServer;
 
@@ -1233,6 +1236,131 @@ async fn refresh_retains_open_documents_absent_from_the_fresh_set() {
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+/// The cache contract, black-box: list membership changes reach the
+/// returned urls only after an invalidation event. A created file is
+/// invisible until the (watcher-simulated) invalidation; a deleted file
+/// degrades to a skip, never a failure.
+#[tokio::test]
+async fn walk_cache_serves_between_invalidations_and_refreshes_on_them() {
+    let root = temp_workspace("state", "walk-cache");
+    fs::write(root.join("a.test"), "a").expect("test file can be written");
+
+    let state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
+    state.set_file_watching(true);
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("workspace documents can be refreshed");
+    let a_uri = urls[0].clone();
+    assert_eq!(urls, vec![a_uri.clone()]);
+
+    // The stored list is fresh enough to serve: the created file is
+    // invisible to the poll until an invalidation event arrives.
+    fs::write(root.join("b.test"), "b").expect("test file can be written");
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("workspace documents can be refreshed");
+    assert_eq!(
+        urls,
+        vec![a_uri.clone()],
+        "the fresh cache serves; the created file stays invisible",
+    );
+
+    // The watcher-simulated event: membership may change on the next poll.
+    state.walk_cache().invalidate();
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("workspace documents can be refreshed");
+    assert_eq!(
+        urls.len(),
+        2,
+        "the invalidation lets the created file enter the poll: {urls:?}",
+    );
+    let b_uri = urls
+        .iter()
+        .find(|uri| **uri != a_uri)
+        .expect("the created URL is identified")
+        .clone();
+    assert!(
+        state.document(&b_uri).is_some(),
+        "the created file loads on the fresh walk",
+    );
+
+    // A deleted entry degrades to a skip: the cached list may still carry
+    // the file, the failed load never fails the poll, and the retain pass
+    // drops the document.
+    fs::remove_file(root.join("b.test")).expect("test file can be removed");
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("the deleted file degrades to a skip");
+    assert_eq!(urls, vec![a_uri.clone()]);
+    assert!(
+        state.document(&b_uri).is_none(),
+        "the deleted entry falls out via the retain pass",
+    );
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+/// The both-direction pin for the dirty flag (mutation-driven rules):
+/// invalidation forces a walk; a second refresh with no event between
+/// serves the cache. Pinned through the observable list behavior —
+/// a walk-but-discard mutant is an equivalent-mutant disposition. The
+/// folders-changed `clear` is pinned at the tail: the list is gone
+/// entirely, not merely dirty.
+#[test]
+fn invalidation_flips_serving_to_walking_and_back() {
+    let entry = || {
+        (
+            PathBuf::from("/tmp/walk-cache-flip.test"),
+            url("walk-cache-flip.test"),
+            Arc::new(DocumentMatcher::new("flip")),
+        )
+    };
+
+    let cache = WalkCache::new();
+    assert!(
+        cache.get_valid().is_none(),
+        "no entries: the next refresh walks",
+    );
+
+    cache.store(vec![entry()]);
+    assert_eq!(
+        cache.get_valid().map(|entries| entries.len()),
+        Some(1),
+        "no event between refreshes: the cache serves",
+    );
+
+    cache.invalidate();
+    assert!(
+        cache.get_valid().is_none(),
+        "invalidation forces the next refresh to walk",
+    );
+
+    // The re-walk stores a fresh list, which serves again — and a clear on
+    // top of the fresh list drops it entirely (re-stored first, so the
+    // clear's effect cannot ride the earlier dirty flag).
+    cache.store(vec![entry()]);
+    assert_eq!(
+        cache.get_valid().map(|entries| entries.len()),
+        Some(1),
+        "the re-walk's store serves again",
+    );
+    cache.clear();
+    assert!(
+        cache.get_valid().is_none(),
+        "the folders-changed clear drops the list entirely",
+    );
 }
 
 #[test]

@@ -119,6 +119,19 @@ detects this once at `initialized` and simply never enables the cache; the
   diagnostics section gains the skip sentence, and the plan updates
   `structure.md` accordingly.
 
+### Known limitations (accepted, 2026-09-17)
+
+- An invalidation event arriving while a walk is in flight can be cleared by
+  the subsequent `store` (the flag carries no version). Bounded: one
+  stale-membership poll, self-healing at the next event; deleted-file
+  staleness degrades to the skip above. A version counter is the fix if this
+  ever matters.
+- Editing an ignore file (`.gitignore` and kin) does not trip the invalidators
+  (watcher globs derive from the matchers, not ignore files), so the cached
+  list can be stale with respect to fresh ignore rules until the next
+  invalidation event. Per-walk semantics are always fresh — each walk builds
+  its own walker and re-reads the ignore chain.
+
 ## Feature 2 — derived-data slot
 
 ### API
