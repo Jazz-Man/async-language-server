@@ -12,7 +12,7 @@ use tokio::time::timeout;
 
 use crate::server::Server;
 use crate::server::testing::{
-    EchoServer, WIRE_TIMEOUT, bounded, echo_hover, hover_params, spawn_wire_server,
+    EchoServer, WIRE_TIMEOUT, bounded, did_open, echo_hover, hover_params, spawn_wire_server,
 };
 
 #[derive(Clone)]
@@ -104,6 +104,17 @@ async fn at_most_limit_requests_run_concurrently() {
     };
     let (mut client, server) = spawn_wire_server(server_impl);
     client.initialize_client(&["utf-16"]).await;
+    // The gated hovers must run against a TRACKED document: for an
+    // untracked file URL the dispatch engine primes the fallback cache on
+    // the blocking pool before the handler, so handler entry stops being a
+    // first-poll event — and once the requests below saturate the layer,
+    // upstream #30 freezes the in-flight primes before any handler enters.
+    client
+        .notify(
+            "textDocument/didOpen",
+            did_open("file:///tmp/wire.txt", "wire"),
+        )
+        .await;
 
     let limit = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     // One more request than the layer admits.
@@ -135,6 +146,10 @@ async fn at_most_limit_requests_run_concurrently() {
     // polling in-flight tasks while waiting for poll_ready
     // (https://github.com/oxalica/async-lsp/pull/30), so the gated
     // futures never observe the release and the permits never free.
+    // The conversion fallback's inline prime (invariants cycle, spec §9
+    // limitation 6) adds an await point before handlers, so bursts over
+    // untracked files widen this stall window; the async-lsp upgrade
+    // closes both.
     // When this absence-check starts failing after an async-lsp
     // upgrade, the upstream fix has landed: flip it to asserting the
     // overflow handler enters and completes, await all the responses

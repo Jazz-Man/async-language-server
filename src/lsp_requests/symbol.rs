@@ -14,6 +14,7 @@ use super::conversion::{Direction, convert_range};
     params = async_lsp::lsp_types::WorkspaceSymbolParams,
     response = Option<async_lsp::lsp_types::WorkspaceSymbolResponse>,
     outgoing_standalone(self::convert_locations),
+    standalone_reads_disk,
 )]
 pub(crate) struct SymbolRequest;
 

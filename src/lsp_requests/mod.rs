@@ -150,4 +150,9 @@ pub(crate) trait Request {
     /// state-driven conversions that resolve their own documents (the
     /// workspace-symbol-resolve shape).
     fn modify_params_standalone(_state: &ServerState, _params: &mut Self::Params) {}
+
+    /// Whether the standalone hooks read files from disk. The dispatch
+    /// engines run such hooks on the blocking pool; the default hooks
+    /// never touch the filesystem.
+    const STANDALONE_READS_DISK: bool = false;
 }

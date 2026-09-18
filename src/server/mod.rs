@@ -36,4 +36,6 @@ pub use crate::error::{RangeError, ServerError, ServerErrorCode, ServerResult};
 #[cfg(feature = "tree-sitter")]
 pub use crate::documents::DocumentQueryCapture;
 
-pub(crate) use self::with_state::{LanguageServerWithState, read_document_from_disk};
+pub(crate) use self::with_state::{
+    LanguageServerWithState, document_from_disk_text, read_document_from_disk,
+};

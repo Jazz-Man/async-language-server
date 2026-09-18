@@ -1,5 +1,5 @@
 use super::walk_cache::WalkCache;
-use super::{DocumentOrigin, ServerState};
+use super::{CONVERSION_FALLBACK_BOUND, DocumentOrigin, ServerState};
 use crate::lsp_requests::{Request, SemanticTokensFullRequest};
 use crate::server::{DocumentMatcher, Server, ServerOptions, WorkspaceDiagnostics};
 use crate::testing::{
@@ -1403,6 +1403,128 @@ fn invalidation_flips_serving_to_walking_and_back() {
         cache.get_valid().is_none(),
         "the folders-changed clear drops the list entirely",
     );
+}
+
+/// The conversion-fallback cache: priming reads disk once per
+/// (URL, stamp) on the blocking pool; a changed stamp re-reads; the
+/// cache-only read replaces the old per-request disk read.
+#[tokio::test]
+async fn conversion_fallback_primes_once_per_stamp_and_rereads_on_change() {
+    let root = temp_workspace("state", "fallback-cache");
+    let file_path = root.join("untracked.test");
+    fs::write(&file_path, "first").expect("file can be written");
+    let uri = Url::from_file_path(&file_path).expect("path converts to a URL");
+
+    let state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+
+    assert!(
+        state.fallback_document(&uri).is_none(),
+        "nothing cached before the first prime",
+    );
+    state.prime_conversion_fallback(uri.clone()).await;
+    assert_eq!(
+        state
+            .fallback_document(&uri)
+            .expect("primed")
+            .text_contents(),
+        "first",
+    );
+
+    // Same stamp: the second prime must not re-read — observable through
+    // a disk write that the stamp cannot yet see. Equal size alone is not
+    // enough: filesystems stamp writes with nanosecond mtimes, so the
+    // test pins the file's mtime back to the first write's value, making
+    // the (mtime, size) stamp of both writes identical by construction.
+    let pinned_mtime = fs::metadata(&file_path)
+        .expect("file exists")
+        .modified()
+        .expect("mtime is available");
+    fs::write(&file_path, "secon").expect("same-size write keeps the stamp");
+    fs::File::options()
+        .write(true)
+        .open(&file_path)
+        .expect("file can be reopened")
+        .set_modified(pinned_mtime)
+        .expect("mtime can be pinned");
+    state.prime_conversion_fallback(uri.clone()).await;
+    assert_eq!(
+        state
+            .fallback_document(&uri)
+            .expect("still cached")
+            .text_contents(),
+        "first",
+        "an unchanged stamp does not re-read",
+    );
+
+    // Different size: the stamp changes, the prime re-reads.
+    fs::write(&file_path, "second version").expect("stamp-changing write");
+    state.prime_conversion_fallback(uri.clone()).await;
+    assert_eq!(
+        state
+            .fallback_document(&uri)
+            .expect("re-primed")
+            .text_contents(),
+        "second version",
+    );
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+/// The bound-clear contract: priming the ([`CONVERSION_FALLBACK_BOUND`] +
+/// 1)-th URL clears the whole cache and installs the fresh entry — the
+/// breaching prime is cached, every earlier entry is gone.
+#[tokio::test]
+async fn conversion_fallback_clears_whole_cache_at_the_bound() {
+    let root = temp_workspace("state", "fallback-bound");
+    let state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+
+    let urls: Vec<Url> = (0..CONVERSION_FALLBACK_BOUND)
+        .map(|index| {
+            let file_path = root.join(format!("file-{index}.txt"));
+            fs::write(&file_path, "before the bound").expect("file can be written");
+            Url::from_file_path(&file_path).expect("path converts to a URL")
+        })
+        .collect();
+    for uri in &urls {
+        state.prime_conversion_fallback(uri.clone()).await;
+    }
+    assert_eq!(
+        state
+            .fallback_document(&urls[0])
+            .expect("primed")
+            .text_contents(),
+        "before the bound",
+        "the first entry is cached before the bound is reached",
+    );
+
+    // The (bound + 1)-th prime breaches the bound: clear-then-insert —
+    // the fresh entry is cached, all earlier entries are gone.
+    let overflow_path = root.join("overflow.txt");
+    fs::write(&overflow_path, "past the bound").expect("file can be written");
+    let overflow_uri = Url::from_file_path(&overflow_path).expect("path converts to a URL");
+    state.prime_conversion_fallback(overflow_uri.clone()).await;
+    assert_eq!(
+        state
+            .fallback_document(&overflow_uri)
+            .expect("primed")
+            .text_contents(),
+        "past the bound",
+        "the bound-breaching prime is cached",
+    );
+    for uri in &urls {
+        assert!(
+            state.fallback_document(uri).is_none(),
+            "the bound breach cleared earlier entries: {uri}",
+        );
+    }
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
 #[test]

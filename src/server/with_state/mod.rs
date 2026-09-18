@@ -33,40 +33,47 @@ const POSITION_ENCODING_PREFERRED_ORDER: [Encoding; 3] = [
 ];
 
 /// Resolves the document a request's conversions run against: the
-/// tracked snapshot for `url` when tracked; otherwise, for file URLs, a
-/// per-request snapshot read from disk (best-effort — unreadable or
-/// non-file URLs convert nothing, the historical behavior); for URL-less
-/// requests, the sole tracked document when exactly one is tracked (the
-/// resolve-family heuristic), else none.
+/// tracked snapshot for `url` when tracked; otherwise the primed
+/// fallback cache (a disk snapshot read once per (URL, stamp) on the
+/// blocking pool); for URL-less requests, the sole tracked document
+/// when exactly one is tracked (the resolve-family heuristic), else
+/// none.
 fn conversion_document(state: &ServerState, url: Option<&Url>) -> Option<Document> {
     let Some(url) = url else {
         return state.sole_document();
     };
-    state.document(url).or_else(|| read_document_from_disk(url))
+    state.document(url).or_else(|| state.fallback_document(url))
 }
 
-/// Reads a per-request document snapshot from a file URL. Blocking by
-/// design, matching the crate's other disk reads; never panics on
-/// external input — failures return `None` and conversion is skipped.
-pub(crate) fn read_document_from_disk(url: &Url) -> Option<Document> {
-    if url.scheme() != "file" {
-        return None;
-    }
-    let path = url.to_file_path().ok()?;
-    // arch-lint: allow(no-sync-io) reason="the dispatch fallback reads one file per request via std::fs, matching the crate's other synchronous disk reads"
-    let text = std::fs::read_to_string(path).ok()?;
+/// Builds the per-request fallback document from bytes already read.
+pub(crate) fn document_from_disk_text(url: &Url, text: String) -> Document {
     #[cfg(feature = "tree-sitter")]
     let syntax = (None, None);
     #[cfg(not(feature = "tree-sitter"))]
     let syntax = ();
-    Some(Document::from_parts(
+    Document::from_parts(
         url.clone(),
         String::new(),
         None,
         0,
         Rope::from(text),
         syntax,
-    ))
+    )
+}
+
+/// Reads a per-request document snapshot from a file URL. Blocking by
+/// design; called only from blocking contexts (the fallback prime and
+/// the standalone symbol hooks, which the dispatch engines wrap in
+/// `spawn_blocking`). Never panics on external input — failures return
+/// `None` and conversion is skipped.
+pub(crate) fn read_document_from_disk(url: &Url) -> Option<Document> {
+    if url.scheme() != "file" {
+        return None;
+    }
+    let path = url.to_file_path().ok()?;
+    // arch-lint: allow(no-sync-io) reason="the dispatch fallback reads one file per request from blocking contexts only"
+    let text = std::fs::read_to_string(path).ok()?;
+    Some(document_from_disk_text(url, text))
 }
 
 /// The low-level language server implementation that automatically

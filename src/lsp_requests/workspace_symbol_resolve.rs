@@ -9,6 +9,7 @@ use super::conversion::{Direction, convert_range};
     response = async_lsp::lsp_types::WorkspaceSymbol,
     incoming_standalone(self::convert_params_standalone),
     outgoing_standalone(self::convert_response_standalone),
+    standalone_reads_disk,
 )]
 pub(crate) struct WorkspaceSymbolResolveRequest;
 

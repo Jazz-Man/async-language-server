@@ -34,11 +34,17 @@ pub struct ServerState {
     file_watching: Arc<AtomicBool>,
     watchers_registered: Arc<AtomicBool>,
     walk_cache: Arc<WalkCache>,
+    conversion_fallbacks: Arc<DashMap<Url, (Option<FileStamp>, Document)>>,
 }
 
 /// Filesystem stamp used to skip re-reading unchanged workspace files:
 /// (modification time, size in bytes). Any doubt re-reads.
 pub(crate) type FileStamp = (std::time::SystemTime, u64);
+
+/// Bound for the conversion-fallback cache: a pure optimization whose
+/// entries may be dropped at any time, so a bound breach clears the
+/// whole map rather than paying for an eviction policy.
+const CONVERSION_FALLBACK_BOUND: usize = 128;
 
 #[derive(Debug, Clone)]
 struct DocumentEntry {
@@ -143,6 +149,7 @@ impl ServerState {
             file_watching: Arc::new(AtomicBool::new(false)),
             watchers_registered: Arc::new(AtomicBool::new(false)),
             walk_cache: Arc::new(WalkCache::new()),
+            conversion_fallbacks: Arc::new(DashMap::new()),
         }
     }
 
@@ -242,6 +249,57 @@ impl ServerState {
     /// returns whether this call warned. See [`MethodInventory`].
     pub(crate) fn warn_once_default(&self, method: &'static str, error: &ServerError) -> bool {
         self.advertised_methods.warn_once_default(method, error)
+    }
+
+    /// A disk snapshot for a file URL the server does not track, used by
+    /// request conversions. Cache-only: filled by
+    /// [`ServerState::prime_conversion_fallback`].
+    pub(crate) fn fallback_document(&self, url: &Url) -> Option<Document> {
+        self.conversion_fallbacks
+            .get(url)
+            .map(|entry| entry.value().1.clone())
+    }
+
+    /// Primes the fallback cache for `url` off the executor: reads the disk
+    /// stamp, skips when the cached entry matches, and otherwise reads and
+    /// installs the snapshot. Failures leave the cache untouched — the
+    /// conversion then skips, exactly like today's failed disk read.
+    pub(crate) async fn prime_conversion_fallback(&self, url: Url) {
+        if url.scheme() != "file" {
+            return;
+        }
+        let state = self.clone();
+        if let Err(join_error) = tokio::task::spawn_blocking(move || {
+            let Ok(path) = url.to_file_path() else {
+                return;
+            };
+            // arch-lint: allow(no-sync-io) reason="the conversion-fallback stamp probe runs on the blocking pool by design"
+            let stamp = std::fs::metadata(&path)
+                .ok()
+                .and_then(|meta| Some((meta.modified().ok()?, meta.len())));
+            if state
+                .conversion_fallbacks
+                .get(&url)
+                .is_some_and(|entry| entry.value().0 == stamp)
+            {
+                return;
+            }
+            // arch-lint: allow(no-sync-io) reason="the conversion-fallback read runs on the blocking pool by design"
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                return;
+            };
+            if state.conversion_fallbacks.len() >= CONVERSION_FALLBACK_BOUND {
+                state.conversion_fallbacks.clear();
+            }
+            state.conversion_fallbacks.insert(
+                url.clone(),
+                (stamp, crate::server::document_from_disk_text(&url, text)),
+            );
+        })
+        .await
+        {
+            tracing::warn!("conversion fallback prime failed: {join_error}");
+        }
     }
 }
 

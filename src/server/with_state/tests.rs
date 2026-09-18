@@ -431,8 +431,9 @@ fn drive_will_create_files(documents: &[(&str, &str)]) -> Range {
 /// Drives workspace/symbol over real dispatch: opens `documents` and returns
 /// the (uri, range) pairs the client received, in handler order. The handler
 /// answers with a location in `url("a.txt")` at UTF-8 (0,4)-(0,5) and one in
-/// `second_uri` at UTF-8 (0,5)-(0,9).
-fn drive_workspace_symbol(documents: &[(&str, &str)], second_uri: Url) -> Vec<(Url, Range)> {
+/// `second_uri` at UTF-8 (0,5)-(0,9). Async: the request's standalone hook
+/// is disk-reading, so the engine hops to the blocking pool.
+async fn drive_workspace_symbol(documents: &[(&str, &str)], second_uri: Url) -> Vec<(Url, Range)> {
     let mut server =
         LanguageServerWithState::new(ClientSocket::new_closed(), SymbolServer(second_uri));
     server.state.set_position_encoding(Encoding::UTF16);
@@ -447,12 +448,14 @@ fn drive_workspace_symbol(documents: &[(&str, &str)], second_uri: Url) -> Vec<(U
         });
     }
 
-    let response = futures::executor::block_on(server.symbol(WorkspaceSymbolParams {
-        query: String::new(),
-        work_done_progress_params: WorkDoneProgressParams::default(),
-        partial_result_params: PartialResultParams::default(),
-    }))
-    .expect("symbol succeeds");
+    let response = server
+        .symbol(WorkspaceSymbolParams {
+            query: String::new(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .expect("symbol succeeds");
     let Some(WorkspaceSymbolResponse::Nested(symbols)) = response else {
         panic!("expected nested symbols");
     };
@@ -498,8 +501,9 @@ fn resolve_capture_server(
 
 /// Drives one workspaceSymbol/resolve round trip over the capture server;
 /// returns (the location the handler received, the location the client got
-/// back).
-fn drive_workspace_symbol_resolve(
+/// back). Async: the standalone hooks are disk-reading, so the engine hops
+/// to the blocking pool when no sole document resolves.
+async fn drive_workspace_symbol_resolve(
     server: &mut LanguageServerWithState<ResolveCaptureServer>,
     captures: &ResolveCaptureServer,
     location: OneOf<Location, WorkspaceLocation>,
@@ -507,15 +511,17 @@ fn drive_workspace_symbol_resolve(
     OneOf<Location, WorkspaceLocation>,
     OneOf<Location, WorkspaceLocation>,
 ) {
-    let resolved = futures::executor::block_on(server.workspace_symbol_resolve(WorkspaceSymbol {
-        name: "s".into(),
-        kind: SymbolKind::FUNCTION,
-        tags: None,
-        container_name: None,
-        location,
-        data: None,
-    }))
-    .expect("symbol resolves");
+    let resolved = server
+        .workspace_symbol_resolve(WorkspaceSymbol {
+            name: "s".into(),
+            kind: SymbolKind::FUNCTION,
+            tags: None,
+            container_name: None,
+            location,
+            data: None,
+        })
+        .await
+        .expect("symbol resolves");
     let received = captures
         .workspace_symbol
         .lock()
@@ -1249,8 +1255,10 @@ fn inlay_hint_resolve_round_trips_through_the_sole_document() {
     assert_eq!(resolved.position, line_position(0, 2));
 }
 
-#[test]
-fn workspace_symbol_resolve_converts_per_url_and_passes_right_through() {
+// The disk-reading resolve path hops to the blocking pool, so the test
+// needs a tokio runtime under the dispatched future.
+#[tokio::test]
+async fn workspace_symbol_resolve_converts_per_url_and_passes_right_through() {
     // Sole tracked document "🙂abc"; the symbol's location resolves against
     // ITS OWN document — the tracked snapshot when the URL is tracked, a
     // disk read when it only exists on disk ("x🙂🙂": byte 1 == UTF-16 unit
@@ -1272,7 +1280,8 @@ fn workspace_symbol_resolve_converts_per_url_and_passes_right_through() {
             uri: url("only.txt"),
             range: same_line(0, 2, 3),
         }),
-    );
+    )
+    .await;
     let OneOf::Left(received_location) = received else {
         panic!("expected a ranged location");
     };
@@ -1291,7 +1300,8 @@ fn workspace_symbol_resolve_converts_per_url_and_passes_right_through() {
             uri: disk_url,
             range: same_line(0, 1, 5),
         }),
-    );
+    )
+    .await;
     let OneOf::Left(received_location) = received else {
         panic!("expected a ranged location");
     };
@@ -1312,15 +1322,18 @@ fn workspace_symbol_resolve_converts_per_url_and_passes_right_through() {
         OneOf::Right(WorkspaceLocation {
             uri: url("only.txt"),
         }),
-    );
+    )
+    .await;
     assert_eq!(received, expected_right);
     assert_eq!(returned, expected_right);
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn workspace_symbol_resolve_converts_in_multi_document_states() {
+// No sole document resolves, so both standalone arms hop to the blocking
+// pool: the test needs a tokio runtime.
+#[tokio::test]
+async fn workspace_symbol_resolve_converts_in_multi_document_states() {
     // Two tracked documents: no sole conversion document, so the engine
     // drives the standalone pair directly. Per-URL conversion must still run
     // — the handler sees UTF-8 and the client its UTF-16 columns back for a
@@ -1336,7 +1349,8 @@ fn workspace_symbol_resolve_converts_in_multi_document_states() {
             uri: url("a.txt"),
             range: same_line(0, 2, 3),
         }),
-    );
+    )
+    .await;
     let OneOf::Left(received_location) = received else {
         panic!("expected a ranged location");
     };
@@ -1353,7 +1367,8 @@ fn workspace_symbol_resolve_converts_in_multi_document_states() {
             uri: url("b.txt"),
             range: same_line(0, 1, 5),
         }),
-    );
+    )
+    .await;
     let OneOf::Left(received_location) = received else {
         panic!("expected a ranged location");
     };
@@ -1388,8 +1403,10 @@ fn url_less_passes_through_without_sole_document() {
     );
 }
 
-#[test]
-fn workspace_symbol_converts_in_sole_and_multi_document_states() {
+// The engine's standalone arm hops to the blocking pool for the
+// disk-reading symbol hook, so the test needs a tokio runtime.
+#[tokio::test]
+async fn workspace_symbol_converts_in_sole_and_multi_document_states() {
     // Sole document: the engine resolves a sole conversion document, so
     // dispatch goes through `modify_response` — whose trait default
     // delegates to the standalone hook. The tracked location must still
@@ -1400,7 +1417,7 @@ fn workspace_symbol_converts_in_sole_and_multi_document_states() {
     let missing =
         Url::from_file_path(temp_workspace("with_state", "symbol-missing").join("missing.txt"))
             .expect("path converts to a URL");
-    let locations = drive_workspace_symbol(&[("a.txt", "🙂abc")], missing.clone());
+    let locations = drive_workspace_symbol(&[("a.txt", "🙂abc")], missing.clone()).await;
 
     assert_eq!(locations[0], (url("a.txt"), same_line(0, 2, 3)));
     assert_eq!(locations[1], (missing, same_line(0, 5, 9)));
@@ -1411,14 +1428,17 @@ fn workspace_symbol_converts_in_sole_and_multi_document_states() {
     // unit 5) — converting either location against the other document
     // moves it to different columns in both directions. This is the exact
     // state where URL-less responses used to pass through raw.
-    let locations = drive_workspace_symbol(&[("a.txt", "🙂abc"), ("b.txt", "x🙂🙂")], url("b.txt"));
+    let locations =
+        drive_workspace_symbol(&[("a.txt", "🙂abc"), ("b.txt", "x🙂🙂")], url("b.txt")).await;
 
     assert_eq!(locations[0], (url("a.txt"), same_line(0, 2, 3)));
     assert_eq!(locations[1], (url("b.txt"), same_line(0, 3, 5)));
 }
 
-#[test]
-fn untracked_url_converts_against_disk() {
+// The engine path hops to the blocking pool (the fallback prime), so the
+// test needs a tokio runtime under the dispatched future.
+#[tokio::test]
+async fn untracked_url_converts_against_disk() {
     // "🙂abc" on disk, never opened: byte 4 == UTF-16 unit 2. A second,
     // unrelated document is tracked (with ASCII text, so converting against
     // it would NOT move column 2 to byte 4) — the conversion must read the
@@ -1446,14 +1466,16 @@ fn untracked_url_converts_against_disk() {
         ),
     });
 
-    let hover = futures::executor::block_on(server.hover(HoverParams {
-        text_document_position_params: TextDocumentPositionParams::new(
-            TextDocumentIdentifier::new(disk_url),
-            line_position(0, 2),
-        ),
-        work_done_progress_params: WorkDoneProgressParams::default(),
-    }))
-    .expect("hover succeeds");
+    let hover = server
+        .hover(HoverParams {
+            text_document_position_params: TextDocumentPositionParams::new(
+                TextDocumentIdentifier::new(disk_url),
+                line_position(0, 2),
+            ),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        })
+        .await
+        .expect("hover succeeds");
 
     // Params side: the handler saw the disk text's UTF-8 byte column...
     assert_eq!(

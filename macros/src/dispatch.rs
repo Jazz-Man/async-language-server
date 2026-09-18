@@ -119,10 +119,190 @@ fn engine(row: &DispatchRow) -> TokenStream {
     wrapped(alsp, request, &core)
 }
 
+/// Which conversion a [`blocking_arm`] hop wraps: the standalone hooks run
+/// state-driven conversions against `state` alone, while
+/// `convert_resolve_item` routes through the anchored hooks — whose trait
+/// defaults delegate to the standalone pair — against the sole tracked
+/// document.
+#[derive(Clone, Copy)]
+enum Conversion {
+    /// A standalone hook (`modify_params_standalone` /
+    /// `modify_response_standalone`), state-driven.
+    Standalone {
+        /// The hook method name.
+        hook: &'static str,
+    },
+    /// `convert_resolve_item` against the sole tracked document, in the
+    /// named `Direction` variant (`Incoming` before the handler,
+    /// `Outgoing` after).
+    SoleResolve {
+        /// The `Direction` variant name.
+        direction: &'static str,
+    },
+    /// An anchored hook (`modify_params` / `modify_response`) against the
+    /// request's conversion document. Reachable for marked URL-less
+    /// requests too — `conversion_document` then resolves the sole
+    /// tracked document — and the anchored defaults delegate to the
+    /// standalone pair, so the delegation must not smuggle the disk read
+    /// back onto the executor thread.
+    Anchored {
+        /// The hook method name.
+        hook: &'static str,
+    },
+}
+
+/// The three token-stream pieces a [`blocking_arm`] hop is built from:
+/// the prelude (clones inserted before the closure), the blocking call
+/// (inside the closure), and the direct call (the plain inline branch).
+fn conversion_calls(
+    request: &Path,
+    field: &Ident,
+    conversion: Conversion,
+) -> (TokenStream, TokenStream, TokenStream) {
+    match conversion {
+        Conversion::Standalone { hook } => {
+            let hook = Ident::new(hook, proc_macro2::Span::call_site());
+            (
+                quote! {},
+                quote! {
+                    <#request as crate::lsp_requests::Request>::#hook(
+                        &state_for_pool,
+                        &mut #field,
+                    );
+                },
+                quote! {
+                    <#request as crate::lsp_requests::Request>::#hook(
+                        &state,
+                        &mut #field,
+                    );
+                },
+            )
+        }
+        Conversion::SoleResolve { direction } => {
+            let direction = Ident::new(direction, proc_macro2::Span::call_site());
+            (
+                quote! { let document_for_pool = document.clone(); },
+                quote! {
+                    convert_resolve_item::<#request, _>(
+                        &state_for_pool,
+                        Some(&document_for_pool),
+                        &mut #field,
+                        Direction::#direction,
+                    );
+                },
+                quote! {
+                    convert_resolve_item::<#request, _>(
+                        &state, Some(document), &mut #field, Direction::#direction,
+                    );
+                },
+            )
+        }
+        Conversion::Anchored { hook } => {
+            let hook = Ident::new(hook, proc_macro2::Span::call_site());
+            (
+                // The conversion document, cloned for the pool — never
+                // re-resolved (the response step reuses the request's
+                // document on purpose).
+                quote! { let document_for_pool = doc.clone(); },
+                quote! {
+                    <#request as crate::lsp_requests::Request>::#hook(
+                        &state_for_pool,
+                        &document_for_pool,
+                        &mut #field,
+                    );
+                },
+                quote! {
+                    <#request as crate::lsp_requests::Request>::#hook(
+                        &state, doc, &mut #field,
+                    );
+                },
+            )
+        }
+    }
+}
+
+/// The conditional blocking-pool hop for a disk-reading conversion:
+/// `field` is the value moved through `spawn_blocking` (`params` or
+/// `result`). The blocking branch clones the captures the conversion
+/// needs — always `state`, plus the conversion document for
+/// [`Conversion::SoleResolve`] and [`Conversion::Anchored`] — moves the
+/// value into the closure, and restores it from the closure's return;
+/// join failures map to `INTERNAL_ERROR`. The direct branch is the plain
+/// inline call, and unmarked requests (`STANDALONE_READS_DISK == false`)
+/// never hop.
+fn blocking_arm(
+    request: &Path,
+    trait_method: &Ident,
+    field: &str,
+    conversion: Conversion,
+) -> TokenStream {
+    let field = Ident::new(field, proc_macro2::Span::call_site());
+    let (prelude, blocking_call, direct_call) = conversion_calls(request, &field, conversion);
+    quote! {
+        if <#request as crate::lsp_requests::Request>::STANDALONE_READS_DISK {
+            let state_for_pool = state.clone();
+            #prelude
+            #field = tokio::task::spawn_blocking(move || {
+                let mut #field = #field;
+                #blocking_call
+                #field
+            })
+            .await
+            .map_err(|join_error| {
+                ResponseError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!(
+                        "{} conversion failed: {join_error}",
+                        stringify!(#trait_method),
+                    ),
+                )
+            })?;
+        } else {
+            #direct_call
+        }
+    }
+}
+
 /// The sole-document core (6 `resolve(...)` rows): converts against the
 /// single tracked document, falling back to the standalone hooks when none
-/// is sole.
+/// is sole. Both arms hop to the blocking pool for marked requests: the
+/// `None` arms call the standalone hooks directly, and the `Some` arms go
+/// through `convert_resolve_item`, whose anchored-hook defaults delegate
+/// to the standalone pair — the delegation must not smuggle the disk read
+/// back onto the executor thread.
 fn sole_document_core(trait_method: &Ident, request: &Path) -> TokenStream {
+    let params_arm = blocking_arm(
+        request,
+        trait_method,
+        "params",
+        Conversion::Standalone {
+            hook: "modify_params_standalone",
+        },
+    );
+    let response_arm = blocking_arm(
+        request,
+        trait_method,
+        "result",
+        Conversion::Standalone {
+            hook: "modify_response_standalone",
+        },
+    );
+    let anchored_params_arm = blocking_arm(
+        request,
+        trait_method,
+        "params",
+        Conversion::SoleResolve {
+            direction: "Incoming",
+        },
+    );
+    let anchored_response_arm = blocking_arm(
+        request,
+        trait_method,
+        "result",
+        Conversion::SoleResolve {
+            direction: "Outgoing",
+        },
+    );
     quote! {
         // Resolve requests carry no text-document URL: convert against the
         // sole tracked document, if the server tracks exactly one; with no
@@ -130,16 +310,8 @@ fn sole_document_core(trait_method: &Ident, request: &Path) -> TokenStream {
         // instead of skipping them.
         let sole = state.sole_document();
         match sole.as_ref() {
-            Some(document) => {
-                convert_resolve_item::<#request, _>(
-                    &state, Some(document), &mut params, Direction::Incoming,
-                );
-            }
-            None => {
-                <#request as crate::lsp_requests::Request>::modify_params_standalone(
-                    &state, &mut params,
-                );
-            }
+            Some(document) => { #anchored_params_arm }
+            None => { #params_arm }
         }
         let mut result = match server.#trait_method(state.clone(), params).await {
             Ok(result) => result,
@@ -149,16 +321,8 @@ fn sole_document_core(trait_method: &Ident, request: &Path) -> TokenStream {
             }
         };
         match sole.as_ref() {
-            Some(document) => {
-                convert_resolve_item::<#request, _>(
-                    &state, Some(document), &mut result, Direction::Outgoing,
-                );
-            }
-            None => {
-                <#request as crate::lsp_requests::Request>::modify_response_standalone(
-                    &state, &mut result,
-                );
-            }
+            Some(document) => { #anchored_response_arm }
+            None => { #response_arm }
         }
         Ok(result)
     }
@@ -168,17 +332,50 @@ fn sole_document_core(trait_method: &Ident, request: &Path) -> TokenStream {
 /// converts params and response against the conversion document, and
 /// rejects stale results with `CONTENT_MODIFIED`.
 fn url_anchored_core(trait_method: &Ident, request: &Path) -> TokenStream {
+    let response_arm = blocking_arm(
+        request,
+        trait_method,
+        "result",
+        Conversion::Standalone {
+            hook: "modify_response_standalone",
+        },
+    );
+    let anchored_params_arm = blocking_arm(
+        request,
+        trait_method,
+        "params",
+        Conversion::Anchored {
+            hook: "modify_params",
+        },
+    );
+    let anchored_response_arm = blocking_arm(
+        request,
+        trait_method,
+        "result",
+        Conversion::Anchored {
+            hook: "modify_response",
+        },
+    );
     quote! {
         // 1. Try to extract the URL from the params for document tracking
         let url: Option<Url> =
             <#request as crate::lsp_requests::Request>::extract_url(&params);
+        // 1.5 Off-executor fallback prime: an untracked file URL gets its
+        //     disk snapshot read once per (URL, stamp) on the blocking
+        //     pool, so conversions never read disk on the executor thread.
+        if let Some(untracked) = url
+            .as_ref()
+            .filter(|url| state.document(url).is_none())
+        {
+            state.prime_conversion_fallback(untracked.clone()).await;
+        }
         // 2. Version probe (clone-free) and one conversion document
         //    for the whole request.
         let ver: Option<i32> =
             url.as_ref().and_then(|url| state.document_version(url));
         let params_doc = conversion_document(&state, url.as_ref());
         if let Some(doc) = params_doc.as_ref() {
-            <#request as crate::lsp_requests::Request>::modify_params(&state, doc, &mut params,);
+            #anchored_params_arm
         }
 
         // 3. Call the user-defined language server function. A default
@@ -207,14 +404,8 @@ fn url_anchored_core(trait_method: &Ident, request: &Path) -> TokenStream {
         //    re-resolving (one snapshot and at most one disk read per
         //    request).
         match params_doc.as_ref() {
-            Some(doc) => {
-                <#request as crate::lsp_requests::Request>::modify_response(&state, doc, &mut result,);
-            }
-            None => {
-                <#request as crate::lsp_requests::Request>::modify_response_standalone(
-                    &state, &mut result,
-                );
-            }
+            Some(doc) => { #anchored_response_arm }
+            None => { #response_arm }
         }
 
         Ok(result)
@@ -279,6 +470,11 @@ mod tests {
             "CONTENT_MODIFIED",
             "modify_response_standalone",
             "warn_once_default",
+            "prime_conversion_fallback",
+            "STANDALONE_READS_DISK",
+            // The anchored Some-arms hop too, cloning the conversion
+            // document into the closure instead of re-resolving it.
+            "document_for_pool",
             ". hover (state . clone () , params)",
         ] {
             assert!(text.contains(needle), "missing {needle:?} from {text}");
@@ -299,6 +495,7 @@ mod tests {
         assert!(text.contains("convert_resolve_item"));
         assert!(text.contains("Direction :: Incoming"));
         assert!(text.contains("sole_document"));
+        assert!(text.contains("STANDALONE_READS_DISK"));
         assert!(text.contains("warn_once_default"));
         assert!(!text.contains("CONTENT_MODIFIED"));
     }

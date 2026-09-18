@@ -4,8 +4,9 @@
 //! hook is a parenthesized list carrying one field path (`document`,
 //! `incoming_position`, `incoming_range`) or one function path
 //! (`incoming_custom`, `outgoing`, `incoming_standalone`,
-//! `outgoing_standalone`). Unspecified hooks keep the `Request` trait's
-//! delegating defaults.
+//! `outgoing_standalone`); and a bare `standalone_reads_disk` flag stamps
+//! `Request::STANDALONE_READS_DISK` for hooks that read the filesystem.
+//! Unspecified hooks keep the `Request` trait's delegating defaults.
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -23,6 +24,7 @@ struct RequestSpec {
     outgoing: Option<Path>,
     incoming_standalone: Option<Path>,
     outgoing_standalone: Option<Path>,
+    standalone_reads_disk: bool,
 }
 
 /// Expands `#[lsp_request(...)]` on a non-generic struct into the struct
@@ -50,6 +52,7 @@ pub(super) fn expand(attr: TokenStream, item: &ItemStruct) -> syn::Result<TokenS
         outgoing,
         incoming_standalone,
         outgoing_standalone,
+        standalone_reads_disk,
     } = spec;
     let name = &item.ident;
     let extract_url = document.map(|segments| extract_url_fn(&segments));
@@ -58,6 +61,11 @@ pub(super) fn expand(attr: TokenStream, item: &ItemStruct) -> syn::Result<TokenS
     let modify_params_standalone = incoming_standalone.map(|fun| modify_params_standalone_fn(&fun));
     let modify_response_standalone =
         outgoing_standalone.map(|fun| modify_response_standalone_fn(&fun));
+    let standalone_reads_disk = standalone_reads_disk.then(|| {
+        quote! {
+            const STANDALONE_READS_DISK: bool = true;
+        }
+    });
 
     Ok(quote! {
         #item
@@ -71,6 +79,7 @@ pub(super) fn expand(attr: TokenStream, item: &ItemStruct) -> syn::Result<TokenS
             #modify_response
             #modify_params_standalone
             #modify_response_standalone
+            #standalone_reads_disk
         }
     })
 }
@@ -162,7 +171,8 @@ fn modify_response_standalone_fn(fun: &Path) -> TokenStream {
 }
 
 /// The attribute grammar: comma-separated entries, each either
-/// `name = <type>` or `name(<tokens>)` (trailing comma allowed).
+/// `name = <type>`, `name(<tokens>)`, or a bare `name` flag (trailing
+/// comma allowed).
 ///
 /// Parsed with a dedicated grammar rather than [`syn::Meta`] because
 /// attribute values are expressions to syn — `Option<Hover>` reads as a
@@ -188,6 +198,11 @@ enum Entry {
         /// The parenthesized tokens.
         tokens: TokenStream,
     },
+    /// `name` — a bare flag, no payload.
+    Flag {
+        /// Field name as written.
+        name: Ident,
+    },
 }
 
 impl Parse for Entries {
@@ -201,13 +216,15 @@ impl Parse for Entries {
                     name,
                     ty: Box::new(input.parse()?),
                 }
-            } else {
+            } else if input.peek(syn::token::Paren) {
                 let content;
                 parenthesized!(content in input);
                 Entry::List {
                     name,
                     tokens: content.parse()?,
                 }
+            } else {
+                Entry::Flag { name }
             };
             entries.push(entry);
             if !input.is_empty() {
@@ -219,7 +236,7 @@ impl Parse for Entries {
 }
 
 /// The parsed attribute fields; `params`/`response` are required, the
-/// seven hooks optional.
+/// seven hooks and the bare flag optional.
 #[derive(Default)]
 struct PartialSpec {
     params: Option<Type>,
@@ -231,6 +248,7 @@ struct PartialSpec {
     outgoing: Option<Path>,
     incoming_standalone: Option<Path>,
     outgoing_standalone: Option<Path>,
+    standalone_reads_disk: Option<()>,
 }
 
 /// The seven hooks and the shape their list payload takes.
@@ -272,6 +290,7 @@ fn parse_spec(attr: TokenStream) -> syn::Result<RequestSpec> {
         match entry {
             Entry::Type { name, ty } => apply_type(&mut partial, &name, *ty)?,
             Entry::List { name, tokens } => apply_hook(&mut partial, &name, tokens)?,
+            Entry::Flag { name } => apply_flag(&mut partial, &name)?,
         }
     }
     let params = partial.params.ok_or_else(|| {
@@ -293,6 +312,7 @@ fn parse_spec(attr: TokenStream) -> syn::Result<RequestSpec> {
         outgoing: partial.outgoing,
         incoming_standalone: partial.incoming_standalone,
         outgoing_standalone: partial.outgoing_standalone,
+        standalone_reads_disk: partial.standalone_reads_disk.is_some(),
     })
 }
 
@@ -350,6 +370,18 @@ fn apply_hook(spec: &mut PartialSpec, name: &Ident, tokens: TokenStream) -> syn:
                 _ => set(&mut spec.outgoing_standalone, path, name),
             }
         }
+    }
+}
+
+/// Applies a bare flag entry.
+///
+/// # Errors
+///
+/// Spanned errors for unknown fields and duplicate flags.
+fn apply_flag(spec: &mut PartialSpec, name: &Ident) -> syn::Result<()> {
+    match name.to_string().as_str() {
+        "standalone_reads_disk" => set(&mut spec.standalone_reads_disk, (), name),
+        _ => Err(unknown_field(name)),
     }
 }
 
@@ -445,6 +477,9 @@ mod tests {
         // `modify_params_standalone` the resolve engine reaches through.
         assert!(!text.contains("extract_url"));
         assert!(!text.contains("modify_params"));
+        // The flag is absent, so the impl must not shadow the trait
+        // default of `STANDALONE_READS_DISK`.
+        assert!(!text.contains("STANDALONE_READS_DISK"));
     }
 
     #[test]
@@ -461,6 +496,7 @@ mod tests {
                 outgoing(f),
                 incoming_standalone(g),
                 outgoing_standalone(h),
+                standalone_reads_disk,
             },
             &item,
         )
@@ -477,6 +513,7 @@ mod tests {
             // The custom hook's call, pinned with its arguments so it cannot
             // be confused with the standard converters.
             "k (state , document , params)",
+            "STANDALONE_READS_DISK : bool = true",
         ] {
             assert!(text.contains(needle), "missing {needle}");
         }
