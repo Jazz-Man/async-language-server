@@ -109,8 +109,9 @@ they close the exclusion gap for git-less projects.
   client support, as today).
 - `handle_watched_files_change` gains a branch **before** document
   handling: an event whose file name matches a configured ignore name
-  (or the built-ins) → `walk_cache().invalidate()`; the event is not
-  processed as a document event. The existing refresh path then
+  (or the built-in `.gitignore`) → `walk_cache().invalidate()`; the
+  event is not processed as a document event. The existing refresh path
+  then
   re-walks with fresh ignore state; now-ignored documents fall out via
   the existing retain pass, newly-included files load on the next walk.
 - This closes the walk-cache spec's documented `.gitignore`-staleness
@@ -257,10 +258,12 @@ measured or cited reason.
 
 ## 8. Public surface and compatibility
 
-- Additive only: two `ServerOptions` builder methods (§3.1), with full
-  `///` docs per `missing_docs`. No signature changes; no new
-  dependencies (rayon rejected by D2; dua-core removed); no feature
-  changes (D3).
+- Additive only: two `ServerOptions` builder methods (§3.1) and — added
+  by owner ruling mid-cycle — the two mirroring
+  `WorkspaceDiagnosticConfig` setters on the oneshot side (lands in
+  commit `abdb9c0`), with full `///` docs per `missing_docs`. No
+  signature changes; no new dependencies (rayon rejected by D2;
+  dua-core removed); no feature changes (D3).
 - **Behavior change (W4), flagged in the commit message**: requests for
   methods absent from the final `ServerCapabilities` now answer
   `-32601` instead of silently serving. Downstream servers that
