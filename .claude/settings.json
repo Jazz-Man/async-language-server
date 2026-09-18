@@ -1,4 +1,7 @@
 {
 	"$schema": "https://www.schemastore.org/claude-code-settings.json",
-	"alwaysThinkingEnabled": true
+	"alwaysThinkingEnabled": true,
+	"env": {
+		"CLAUDE_CODE_DISABLE_MOUSE_CLICKS": "1"
+	}
 }
