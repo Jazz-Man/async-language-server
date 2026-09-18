@@ -8,9 +8,10 @@ use async_lsp::lsp_types::request::{
 };
 use async_lsp::lsp_types::{
     ClientCapabilities, ConfigurationParams, DiagnosticServerCapabilities,
-    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportKind,
-    DocumentDiagnosticReportResult, FullDocumentDiagnosticReport, InitializeResult, LSPAny, OneOf,
-    PartialResultParams, Registration, RegistrationParams, TextDocumentIdentifier, Url,
+    DidChangeWatchedFilesRegistrationOptions, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportKind, DocumentDiagnosticReportResult, FileSystemWatcher,
+    FullDocumentDiagnosticReport, InitializeResult, LSPAny, OneOf, PartialResultParams,
+    Registration, RegistrationParams, TextDocumentIdentifier, Url, WatchKind,
     WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReport,
     WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
     WorkspaceFoldersServerCapabilities, WorkspaceFullDocumentDiagnosticReport,
@@ -316,7 +317,9 @@ const WATCHED_FILES_REGISTRATION_ID: &str = "async-language-server.watchedFiles"
 
 /// All three kinds, explicitly: Create/Delete drive the walk cache's
 /// invalidation, Change drives the existing eager tracked-doc refresh.
-const WATCH_KIND_ALL: i32 = 7;
+const WATCH_KIND_ALL: WatchKind = WatchKind::Create
+    .union(WatchKind::Change)
+    .union(WatchKind::Delete);
 
 fn register_watchers(state: ServerState) {
     // The gated triple: the client must support dynamic watching, the
@@ -335,25 +338,49 @@ fn register_watchers(state: ServerState) {
     if globs.is_empty() {
         return;
     }
-    state.set_watchers_registered(true);
 
+    // The flag is not reserved here: it is set only when the client accepts
+    // the registration (the spawn's success arm), so a failure leaves it
+    // false and the next enable transition retries. Two entries can race
+    // past this gate before either registers — `initialized` against
+    // `apply_enabled`'s re-entry — and both send; benign, the requests
+    // carry the same fixed id and a client replaces a registration by id.
     spawn(async move {
-        let watchers: Vec<_> = globs
-            .into_iter()
-            .map(|glob| serde_json::json!({ "globPattern": glob, "kind": WATCH_KIND_ALL }))
-            .collect();
+        // Static typed options cannot fail to serialize; a failure would be
+        // an lsp_types bug. It is traced, not swallowed: the flag stays
+        // false, so every later enable transition retries and re-announces.
+        let options = match serde_json::to_value(DidChangeWatchedFilesRegistrationOptions {
+            watchers: globs
+                .into_iter()
+                .map(|glob| FileSystemWatcher {
+                    glob_pattern: glob.into(),
+                    kind: Some(WATCH_KIND_ALL),
+                })
+                .collect(),
+        }) {
+            Ok(options) => options,
+            Err(error) => {
+                tracing::warn!("registration options failed to serialize: {error}");
+                return;
+            }
+        };
         let result = state
             .client()
             .request::<RegisterCapability>(RegistrationParams {
                 registrations: vec![Registration {
                     id: WATCHED_FILES_REGISTRATION_ID.into(),
                     method: "workspace/didChangeWatchedFiles".into(),
-                    register_options: Some(serde_json::json!({ "watchers": watchers })),
+                    register_options: Some(options),
                 }],
             })
             .await;
-        if let Err(error) = &result {
-            tracing::warn!("file watching registration failed: {error}");
+        match result {
+            // "Registered" means accepted: only a success marks the state,
+            // keeping the flag a truthful input for the walk-cache gate.
+            Ok(()) => state.set_watchers_registered(true),
+            Err(error) => {
+                tracing::warn!("file watching registration failed: {error}");
+            }
         }
     });
 }

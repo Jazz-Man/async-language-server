@@ -89,9 +89,11 @@ impl ServerState {
             return Ok(self.document_urls());
         }
 
-        // Without watcher support the events never come, so the cache could
-        // go stale forever: walk per poll instead (still off the executor).
-        let walked = if self.file_watching() {
+        // Until the client accepts the watcher registration, the events
+        // never come, so the cache could go stale forever: walk per poll
+        // instead (still off the executor). A poll racing the in-flight
+        // registration degrades the same way.
+        let walked = if self.watchers_registered() {
             if let Some(entries) = self.walk_cache.get_valid() {
                 entries
             } else {

@@ -202,10 +202,15 @@ impl ServerState {
         self.file_watching.store(supported, Ordering::Relaxed);
     }
 
+    /// Whether the client accepted the `workspace/didChangeWatchedFiles`
+    /// registration: set only by the registration's success arm, so a
+    /// failed attempt stays false for the next enable transition to retry.
+    /// The walk cache serves only under this flag.
     pub(crate) fn watchers_registered(&self) -> bool {
         self.watchers_registered.load(Ordering::Relaxed)
     }
 
+    /// Records whether the client accepted the watcher registration.
     pub(crate) fn set_watchers_registered(&self, registered: bool) {
         self.watchers_registered
             .store(registered, Ordering::Relaxed);

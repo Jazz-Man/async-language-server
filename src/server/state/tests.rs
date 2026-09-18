@@ -1253,7 +1253,11 @@ async fn walk_cache_serves_between_invalidations_and_refreshes_on_them() {
     );
     state.set_workspace_folders([workspace_folder(&root)]);
     advertise_workspace_diagnostics(&state);
+    // The end state a successful initialize produces: the client is capable
+    // and its acceptance of the watcher registration arrived — both flags
+    // gate the cache-serving branch.
     state.set_file_watching(true);
+    state.set_watchers_registered(true);
     let urls = state
         .refresh_workspace_documents()
         .await
@@ -1307,6 +1311,44 @@ async fn walk_cache_serves_between_invalidations_and_refreshes_on_them() {
     assert!(
         state.document(&b_uri).is_none(),
         "the deleted entry falls out via the retain pass",
+    );
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+/// The cache gate's negative direction: without an accepted watcher
+/// registration the cache never serves, so every poll walks and a file
+/// created between two refreshes is visible immediately — no invalidation
+/// needed. The both-direction pin for the `watchers_registered()` gate
+/// (the serving test above pins the positive direction).
+#[tokio::test]
+async fn without_watchers_every_poll_walks_and_sees_new_files() {
+    let root = temp_workspace("state", "walk-per-poll");
+    fs::write(root.join("a.test"), "a").expect("test file can be written");
+
+    let state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
+    // Neither flag set: no watcher support (or the registration never
+    // completed) — the cache must stay out of the way.
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("workspace documents can be refreshed");
+    assert_eq!(urls.len(), 1);
+
+    fs::write(root.join("b.test"), "b").expect("test file can be written");
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("workspace documents can be refreshed");
+    assert_eq!(
+        urls.len(),
+        2,
+        "no cache without a registration: the new file is visible at once",
     );
 
     fs::remove_dir_all(root).expect("temp workspace can be removed");
