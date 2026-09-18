@@ -30,16 +30,20 @@ impl ServerState {
         // meaningless.
         self.walk_cache.clear();
 
-        let removed_roots: Vec<_> = params
+        // Removed roots drop their already-canonicalized paths straight from
+        // the map — no disk re-canonicalization per event, and only folders
+        // we actually tracked can have workspace documents to drop.
+        let removed_roots: Vec<PathBuf> = params
             .event
             .removed
             .iter()
-            .filter_map(workspace_folder_path)
+            .filter_map(|folder| {
+                self.workspace_roots
+                    .remove(&folder.uri)
+                    .map(|(_, path)| path)
+            })
             .collect();
 
-        for folder in params.event.removed {
-            self.workspace_roots.remove(&folder.uri);
-        }
         self.remove_workspace_documents_in_roots(&removed_roots);
 
         for folder in params.event.added {
@@ -258,7 +262,7 @@ pub(super) fn url_is_in_roots(url: &Url, roots: &[PathBuf]) -> bool {
 
 fn workspace_folder_path(folder: &WorkspaceFolder) -> Option<PathBuf> {
     let path = folder.uri.to_file_path().ok()?;
-    // arch-lint: allow(no-sync-io) reason="one-time path canonicalization during workspace-folder setup"
+    // arch-lint: allow(no-sync-io) reason="canonicalization of added workspace folders only — removal reuses the stored canonical paths"
     Some(std::fs::canonicalize(&path).unwrap_or(path))
 }
 

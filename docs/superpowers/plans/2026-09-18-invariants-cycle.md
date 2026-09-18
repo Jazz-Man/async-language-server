@@ -57,7 +57,11 @@ pub(crate) fn handle_workspace_folders_change(
         .event
         .removed
         .iter()
-        .filter_map(|folder| self.workspace_roots.remove(&folder.uri))
+        .filter_map(|folder| {
+            self.workspace_roots
+                .remove(&folder.uri)
+                .map(|(_, path)| path)
+        })
         .collect();
 
     self.remove_workspace_documents_in_roots(&removed_roots);
