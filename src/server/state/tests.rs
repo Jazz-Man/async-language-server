@@ -1354,6 +1354,194 @@ async fn without_watchers_every_poll_walks_and_sees_new_files() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
+/// An event on a configured ignore file invalidates the walk cache: a
+/// file the new rules exclude falls out, a file they newly include loads
+/// — through the ordinary refresh path, no new state channel.
+#[tokio::test]
+async fn ignore_file_events_invalidate_the_walk_cache_not_documents() {
+    let root = temp_workspace("state", "ignore-watch");
+    fs::write(root.join("a.test"), "a").expect("file can be written");
+    fs::write(root.join("b.test"), "b").expect("file can be written");
+    // Empty rules exclude nothing: the first walk sees both files, and
+    // the write below is the rule flip the changed event responds to.
+    fs::write(root.join(".mylspignore"), "").expect("ignore file can be written");
+
+    let state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default().with_ignore_filenames([".mylspignore"]),
+    );
+    state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
+    state.set_file_watching(true);
+    state.set_watchers_registered(true);
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("refresh succeeds");
+    let a_uri = urls
+        .iter()
+        .find(|url| url.as_str().ends_with("a.test"))
+        .expect("a.test is walked")
+        .clone();
+    let b_uri = urls
+        .iter()
+        .find(|url| url.as_str().ends_with("b.test"))
+        .expect("b.test is walked")
+        .clone();
+    assert_eq!(urls.len(), 2, "no ignore event yet: both files are in");
+
+    // The event flips the rules: the CHANGED event on the ignore file
+    // invalidates the cache, the re-walk excludes b.test, and its
+    // workspace document falls out via the retain pass.
+    fs::write(root.join(".mylspignore"), "b.test\n").expect("ignore file can be written");
+    let _ = state.handle_watched_files_change(vec![FileEvent::new(
+        Url::from_file_path(root.join(".mylspignore")).expect("path converts"),
+        FileChangeType::CHANGED,
+    )]);
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("refresh succeeds");
+    assert_eq!(
+        urls,
+        vec![a_uri.clone()],
+        "the flipped rules exclude b.test from the walk",
+    );
+    assert!(
+        state.document(&b_uri).is_none(),
+        "the newly excluded document falls out via the retain pass",
+    );
+
+    // The event flips the rules back: without the ignore file both files
+    // walk again, and the re-walk re-loads what the rules had dropped.
+    fs::remove_file(root.join(".mylspignore")).expect("ignore file can be removed");
+    let _ = state.handle_watched_files_change(vec![FileEvent::new(
+        Url::from_file_path(root.join(".mylspignore")).expect("path converts"),
+        FileChangeType::DELETED,
+    )]);
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("refresh succeeds");
+    assert_eq!(
+        urls.len(),
+        2,
+        "without the ignore file both files walk again",
+    );
+    assert!(state.document(&a_uri).is_some());
+    assert!(state.document(&b_uri).is_some());
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+/// Ignore rules govern walking only (spec §6, pin 2): an open document
+/// the rules exclude stays tracked with its editor's text, stays out of
+/// the poll's list, and an ignore-file event never evicts it.
+#[tokio::test]
+async fn open_documents_stay_tracked_when_ignore_rules_exclude_them() {
+    let root = temp_workspace("state", "ignore-open-immunity");
+    fs::write(root.join("a.test"), "a").expect("file can be written");
+    fs::write(root.join("b.test"), "b").expect("file can be written");
+    fs::write(root.join(".mylspignore"), "b.test\n").expect("ignore file can be written");
+    let canonical_b =
+        fs::canonicalize(root.join("b.test")).expect("test file can be canonicalized");
+    let b_uri = Url::from_file_path(canonical_b).expect("path can be converted to a URL");
+
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default().with_ignore_filenames([".mylspignore"]),
+    );
+    state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
+    open_document(&mut state, b_uri.clone(), "open b");
+    state.set_file_watching(true);
+    state.set_watchers_registered(true);
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("refresh succeeds");
+    assert!(
+        !urls.contains(&b_uri),
+        "the rules keep the open document out of the poll's walk",
+    );
+    assert_eq!(
+        state
+            .document(&b_uri)
+            .expect("open document stays tracked")
+            .text_contents(),
+        "open b",
+        "the tracked snapshot keeps the editor's text",
+    );
+
+    // The ignore file's deletion re-includes the file in the walk, and
+    // the open document survives the event untouched.
+    fs::remove_file(root.join(".mylspignore")).expect("ignore file can be removed");
+    let _ = state.handle_watched_files_change(vec![FileEvent::new(
+        Url::from_file_path(root.join(".mylspignore")).expect("path converts"),
+        FileChangeType::DELETED,
+    )]);
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("refresh succeeds");
+    assert!(
+        urls.contains(&b_uri),
+        "the open document reports again once the rules are gone",
+    );
+    assert!(
+        state.document(&b_uri).is_some(),
+        "an open document is never evicted by ignore rules",
+    );
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
+/// The built-in `.gitignore` closes the walk-cache spec's staleness
+/// limitation: an edit event invalidates, so membership changes are seen
+/// on the next poll.
+#[tokio::test]
+async fn gitignore_edit_events_invalidate_the_walk_cache() {
+    let root = temp_workspace("state", "gitignore-watch");
+    // ignore 0.4.33 defaults to require_git = true: .gitignore is honored
+    // only with a .git at or above the walk root.
+    fs::create_dir_all(root.join(".git")).expect("git dir can be created");
+    fs::write(root.join("a.test"), "a").expect("file can be written");
+    fs::write(root.join(".gitignore"), "\n").expect("gitignore exists");
+
+    let state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    state.set_workspace_folders([workspace_folder(&root)]);
+    advertise_workspace_diagnostics(&state);
+    state.set_file_watching(true);
+    state.set_watchers_registered(true);
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("refresh succeeds");
+    assert_eq!(urls.len(), 1);
+
+    fs::write(root.join(".gitignore"), "a.test\n").expect("a.test becomes ignored");
+    fs::write(root.join("b.test"), "b").expect("file can be written");
+    let _ = state.handle_watched_files_change(vec![FileEvent::new(
+        Url::from_file_path(root.join(".gitignore")).expect("path converts"),
+        FileChangeType::CHANGED,
+    )]);
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("refresh succeeds");
+    assert_eq!(
+        urls.len(),
+        1,
+        "the gitignore edit re-walks: a.test excluded, b.test included",
+    );
+    assert!(urls[0].as_str().ends_with("b.test"));
+
+    fs::remove_dir_all(root).expect("temp workspace can be removed");
+}
+
 /// The both-direction pin for the dirty flag (mutation-driven rules):
 /// invalidation forces a walk; a second refresh with no event between
 /// serves the cache. Pinned through the observable list behavior —
@@ -1546,9 +1734,25 @@ fn watcher_globs_sort_and_dedup_across_matchers() {
     );
     assert_eq!(
         state.watcher_globs(),
-        ["*.a", "*.m", "*.z"],
-        "globs shared across matchers register once, in a stable order",
+        ["**/.gitignore", "*.a", "*.m", "*.z"],
+        "globs shared across matchers register once, in a stable order; the built-in .gitignore always registers",
     );
+}
+
+/// One invalid configured ignore name must not poison the registration:
+/// it is skipped (warned), the valid names and the built-in still
+/// register — the same validity rule the matcher globs are filtered by.
+#[test]
+fn watcher_globs_skip_invalid_configured_names() {
+    struct BareServer;
+
+    impl Server for BareServer {}
+
+    let state = ServerState::with_options::<BareServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default().with_ignore_filenames([".valid", "bad[glob"]),
+    );
+    assert_eq!(state.watcher_globs(), ["**/.gitignore", "**/.valid"]);
 }
 
 #[test]

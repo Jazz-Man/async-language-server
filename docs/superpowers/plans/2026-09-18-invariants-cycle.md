@@ -814,6 +814,8 @@ async fn gitignore_edit_events_invalidate_the_walk_cache() {
 
 Also update the existing `watcher_globs_sort_and_dedup_across_matchers` expectation: with no ignore names configured the built-in still joins, so the assertion becomes `["**/.gitignore", "*.a", "*.m", "*.z"]` (sorted), with the message `"globs shared across matchers register once, in a stable order; the built-in .gitignore always registers"`.
 
+> **Plan erratum (found by the T4 implementer, controller-verified):** the merged test above was internally impossible — Task 3's walker honors configured ignore names from the very first refresh, so a `.mylspignore` naming `b.test` excludes it before any event; and the generic CREATED/DELETED branch already invalidates, so only a CHANGED flip is a genuine failing-test delta. The landed tests (`src/server/state/tests.rs`) use empty initial rules, a CHANGED flip to install the rules, §6 assertions on tracked-ness (not urls equality), and are split into two tests (clippy `too_many_lines`). The disk state is authoritative.
+
 - [ ] **Step 2: Run — expect the new tests to fail** (no ignore branch: the `.mylspignore` DELETED event currently falls into the untracked-URI `continue` without invalidating) **and the globs test to fail** (built-ins absent).
 
 - [ ] **Step 3: Implement.**

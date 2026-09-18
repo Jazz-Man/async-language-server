@@ -348,11 +348,34 @@ impl ServerState {
         ControlFlow::Continue(())
     }
 
+    /// Whether `uri` names an ignore file the walk reacts to: a
+    /// configured custom name or the built-in `.gitignore`.
+    fn is_ignore_file(&self, uri: &Url) -> bool {
+        uri.to_file_path().is_ok_and(|path| {
+            path.file_name().is_some_and(|name| {
+                let name = name.to_string_lossy();
+                name == ".gitignore"
+                    || self
+                        .ignore_filenames()
+                        .iter()
+                        .any(|configured| *configured == name)
+            })
+        })
+    }
+
     pub(crate) fn handle_watched_files_change(
         &self,
         changes: Vec<FileEvent>,
     ) -> ControlFlow<Result<()>> {
         for event in changes {
+            if self.is_ignore_file(&event.uri) {
+                // Ignore-file events change walk membership semantics,
+                // not documents: invalidate the walk list and leave the
+                // document store alone — open documents are never
+                // subject to ignore rules (spec §6).
+                self.walk_cache.invalidate();
+                continue;
+            }
             if matches!(event.typ, FileChangeType::CREATED | FileChangeType::DELETED) {
                 // List membership changed: the next poll re-walks. A Change
                 // event does not alter membership — the eager refresh below

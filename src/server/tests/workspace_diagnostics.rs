@@ -210,10 +210,14 @@ async fn initialized_registers_file_watchers_when_supported() {
     let watchers = registrations[0]["registerOptions"]["watchers"]
         .as_array()
         .expect("watchers array");
-    assert_eq!(watchers.len(), 1);
+    assert_eq!(watchers.len(), 2);
     assert_eq!(
         watchers[0]["globPattern"], "**/*.watched",
         "the watcher's glob is the fixture matcher's url glob",
+    );
+    assert_eq!(
+        watchers[1]["globPattern"], "**/.gitignore",
+        "the built-in .gitignore always registers: its edits change walk membership",
     );
     assert_eq!(
         watchers[0]["kind"], 7,
