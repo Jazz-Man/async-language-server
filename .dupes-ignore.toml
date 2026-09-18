@@ -121,3 +121,7 @@ reason = "Batch A3's merged spec fns in bytes_tests.rs (split_off_returns_the_ke
 [[ignore]]
 fingerprint = "175d41788ff043bf"
 reason = "ServerState session-flag setters (set_file_watching, set_watchers_registered): two distinct per-session booleans — the client's didChangeWatchedFiles capability and the watchers-registered idempotence guard — whose one-line Relaxed stores normalize identically; avoidance analysis — a Flag newtype with get/set only relocates the twin (the delegating accessors re-normalize as a pair), merging the flags erases the capability/idempotence distinction the walk cache gates on, and pub(crate) fields would spread the atomic-ordering policy out of state (family of e2c7af90d4455197's atomic load-and-return accessors)"
+
+[[ignore]]
+fingerprint = "45fca6ff97a3c948"
+reason = "builder setters on unrelated types (ServerOptions::with_ignore_filenames, WorkspaceWalkConfig::with_ignore_filenames): each collects into its own type's field and the config setter is the pub(crate) plumbing twin the public one feeds; avoidance analysis — a builder macro for two members is barred by macro-prefer-functions (the macros cycle dismantled exactly this class), a shared setter trait is premature abstraction whose only value is dedup, and reshaping either body to differ syntactically would be code contorted to please the tool (family of 8f2f2ab783a0dc96's builder mirror pair)"

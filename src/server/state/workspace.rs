@@ -164,7 +164,10 @@ impl ServerState {
         let state = self.clone();
         let roots = roots.to_vec();
         let walked = tokio::task::spawn_blocking(move || -> ServerResult<Vec<WalkedFile>> {
-            let walker = WorkspaceWalker::new(&roots, WorkspaceWalkConfig::default())?;
+            let config = WorkspaceWalkConfig::default()
+                .with_ignore_filenames(state.ignore_filenames().iter().cloned())
+                .with_global_ignore_file(state.global_ignore_file().map(ToOwned::to_owned));
+            let walker = WorkspaceWalker::new(&roots, config)?;
             let mut walked = Vec::new();
             for path in walker.files()? {
                 let Some(matcher) = state.matchers.find_path(&path) else {

@@ -54,6 +54,28 @@ impl WorkspaceDiagnosticConfig {
         self.walk = self.walk.with_ignore_files(yes);
         self
     }
+
+    /// Names of ignore files honored during the scan — gitignore syntax,
+    /// matched per directory with cascading, independent of git presence
+    /// (the same semantics as
+    /// [`ServerOptions::with_ignore_filenames`](crate::server::ServerOptions::with_ignore_filenames)).
+    #[must_use]
+    pub fn with_ignore_filenames(
+        mut self,
+        names: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.walk = self.walk.with_ignore_filenames(names);
+        self
+    }
+
+    /// Sets one global ignore file (gitignore syntax) applied to every
+    /// root regardless of git presence (the same semantics as
+    /// [`ServerOptions::with_global_ignore_file`](crate::server::ServerOptions::with_global_ignore_file)).
+    #[must_use]
+    pub fn with_global_ignore_file(mut self, path: impl Into<PathBuf>) -> Self {
+        self.walk = self.walk.with_global_ignore_file(Some(path.into()));
+        self
+    }
 }
 
 /// Diagnostics produced by running a server over a workspace.
@@ -364,6 +386,25 @@ mod tests {
                 .iter()
                 .any(|doc| doc.uri.path().ends_with("/nested/c.test")),
         );
+
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
+
+    #[test]
+    fn workspace_diagnostics_honors_custom_ignore_names_without_git() {
+        let root = temp_workspace("oneshot", "custom-ignore");
+        fs::write(root.join("a.test"), "").expect("test file can be written");
+        fs::write(root.join("skip.test"), "").expect("ignored file can be written");
+        fs::write(root.join(".mylspignore"), "skip.test\n").expect("ignore file can be written");
+
+        let report = futures::executor::block_on(workspace_diagnostics(
+            TestServer,
+            WorkspaceDiagnosticConfig::new(&root).with_ignore_filenames([".mylspignore"]),
+        ))
+        .expect("workspace diagnostics succeeds");
+
+        assert_eq!(report.documents.len(), 1);
+        assert!(report.documents[0].uri.path().ends_with("/a.test"));
 
         fs::remove_dir_all(root).expect("temp workspace can be removed");
     }

@@ -28,6 +28,8 @@ pub struct ServerState {
     workspace_diagnostics: WorkspaceDiagnosticsState,
     diagnostics_parallelism: usize,
     matchers: DocumentMatchers,
+    ignore_filenames: Arc<[String]>,
+    global_ignore_file: Option<PathBuf>,
     encoding: Arc<Encoding>,
     advertised_methods: MethodInventory,
     semantic_tokens_cache: Arc<DashMap<Url, CachedSemanticTokens>>,
@@ -133,6 +135,8 @@ impl ServerState {
         let workspace_diagnostics = WorkspaceDiagnosticsState::new(options);
         let diagnostics_parallelism = options.diagnostics_parallelism();
         let matchers = DocumentMatchers::new(T::server_document_matchers());
+        let ignore_filenames: Arc<[String]> = options.ignore_filenames.iter().cloned().collect();
+        let global_ignore_file = options.global_ignore_file.clone();
         let encoding = Arc::new(Encoding::default());
         let advertised_methods = MethodInventory::new();
         let semantic_tokens_cache = Arc::new(DashMap::new());
@@ -143,6 +147,8 @@ impl ServerState {
             workspace_diagnostics,
             diagnostics_parallelism,
             matchers,
+            ignore_filenames,
+            global_ignore_file,
             encoding,
             advertised_methods,
             semantic_tokens_cache,
@@ -162,6 +168,16 @@ impl ServerState {
     /// the CPU core count).
     pub(crate) fn diagnostics_parallelism(&self) -> usize {
         self.diagnostics_parallelism
+    }
+
+    /// The configured ignore-file names (`ServerOptions::with_ignore_filenames`).
+    pub(crate) fn ignore_filenames(&self) -> &[String] {
+        &self.ignore_filenames
+    }
+
+    /// The configured global ignore file path, if any.
+    pub(crate) fn global_ignore_file(&self) -> Option<&std::path::Path> {
+        self.global_ignore_file.as_deref()
     }
 
     pub(crate) fn set_workspace_diagnostics_enabled(&self, enabled: bool) -> bool {

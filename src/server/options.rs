@@ -7,6 +7,8 @@ use async_lsp::lsp_types::{ConfigurationItem, LSPAny};
 pub struct ServerOptions {
     pub(crate) workspace_diagnostics: WorkspaceDiagnostics,
     pub(crate) diagnostics_parallelism: Option<NonZeroUsize>,
+    pub(crate) ignore_filenames: Vec<String>,
+    pub(crate) global_ignore_file: Option<std::path::PathBuf>,
 }
 
 impl ServerOptions {
@@ -55,6 +57,50 @@ impl ServerOptions {
     pub(crate) fn diagnostics_parallelism(&self) -> usize {
         self.diagnostics_parallelism
             .map_or_else(default_parallelism, NonZeroUsize::get)
+    }
+
+    /// Names of ignore files honored during workspace walks — gitignore
+    /// syntax, matched per directory with cascading, independent of git
+    /// presence (a project without `.git` still honors them, unlike
+    /// `.gitignore` itself). Session-fixed, like matchers. Unconfigured
+    /// (the default): no ignore files beyond the built-in git family,
+    /// and the walk is byte-identical to a server that never set this.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use async_language_server::server::ServerOptions;
+    ///
+    /// let options = ServerOptions::default()
+    ///     .with_ignore_filenames([".mylspignore"]);
+    /// ```
+    #[must_use]
+    pub fn with_ignore_filenames(
+        mut self,
+        names: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.ignore_filenames = names.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Sets one global ignore file (gitignore syntax) applied to every
+    /// workspace walk across all roots, regardless of git presence. The
+    /// location is the downstream server's choice — the framework
+    /// defines no default path. Unset (the default): no global
+    /// exclusions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use async_language_server::server::ServerOptions;
+    ///
+    /// let options = ServerOptions::default()
+    ///     .with_global_ignore_file("/etc/my-server/ignore");
+    /// ```
+    #[must_use]
+    pub fn with_global_ignore_file(mut self, path: impl Into<std::path::PathBuf>) -> Self {
+        self.global_ignore_file = Some(path.into());
+        self
     }
 }
 

@@ -1550,3 +1550,10 @@ fn watcher_globs_sort_and_dedup_across_matchers() {
         "globs shared across matchers register once, in a stable order",
     );
 }
+
+#[test]
+fn ignore_configuration_defaults_to_inert() {
+    let options = ServerOptions::default();
+    assert!(options.ignore_filenames.is_empty());
+    assert!(options.global_ignore_file.is_none());
+}

@@ -1,15 +1,18 @@
 use crate::error::ServerError;
 use crate::server::ServerResult;
 use async_lsp::lsp_types::Url;
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use ignore::{WalkBuilder, WalkState};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 
 #[derive(Debug, Clone)]
 pub(crate) struct WorkspaceWalkConfig {
     include_hidden_files: bool,
     respect_ignore_files: bool,
+    ignore_filenames: Vec<String>,
+    global_ignore_file: Option<PathBuf>,
 }
 
 impl WorkspaceWalkConfig {
@@ -22,6 +25,19 @@ impl WorkspaceWalkConfig {
         self.respect_ignore_files = yes;
         self
     }
+
+    pub(crate) fn with_ignore_filenames(
+        mut self,
+        names: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.ignore_filenames = names.into_iter().map(Into::into).collect();
+        self
+    }
+
+    pub(crate) fn with_global_ignore_file(mut self, file: Option<PathBuf>) -> Self {
+        self.global_ignore_file = file;
+        self
+    }
 }
 
 impl Default for WorkspaceWalkConfig {
@@ -29,6 +45,8 @@ impl Default for WorkspaceWalkConfig {
         Self {
             include_hidden_files: false,
             respect_ignore_files: true,
+            ignore_filenames: Vec::new(),
+            global_ignore_file: None,
         }
     }
 }
@@ -59,16 +77,35 @@ impl WorkspaceWalker {
         for root in &self.roots {
             let mut builder = WalkBuilder::new(root);
             configure_walker(&mut builder, &self.config);
+            let global = self
+                .config
+                .global_ignore_file
+                .as_ref()
+                .map(|file| Arc::new(global_ignore_matcher(file, root)));
 
             builder.build_parallel().run(|| {
                 let sender = sender.clone();
+                let global = global.clone();
                 Box::new(move |entry| match entry {
                     Ok(entry) => {
                         // arch-lint: allow(no-sync-io) reason="the ignore-crate walk is a synchronous batch scan by design"
-                        if entry.file_type().is_some_and(|ty| ty.is_file()) {
-                            // The receiver outlives every send: it is dropped
-                            // only after all walks have joined, so the send
-                            // cannot fail.
+                        if entry.file_type().is_some_and(|ty| ty.is_file())
+                            && global.as_ref().is_none_or(|matcher| {
+                                // Parents walk with the match: a
+                                // directory pattern must drop the files
+                                // below it, since this matcher is
+                                // consulted per file, not during
+                                // traversal. Entries always sit under
+                                // the matcher's root — the walk built
+                                // them from it.
+                                !matcher
+                                    .matched_path_or_any_parents(entry.path(), false)
+                                    .is_ignore()
+                            })
+                        {
+                            // The receiver outlives every send: it is
+                            // dropped only after all walks have
+                            // joined, so the send cannot fail.
                             let _ = sender.send(entry.into_path());
                         }
                         WalkState::Continue
@@ -88,6 +125,33 @@ impl WorkspaceWalker {
     }
 }
 
+/// Compiles the global ignore file against one walk root: gitignore
+/// syntax, patterns anchored at the root — git's per-repo semantics. A
+/// missing or unreadable file matches nothing (warned, never fatal).
+fn global_ignore_matcher(file: &Path, root: &Path) -> Gitignore {
+    let shown = file.display();
+    let mut builder = GitignoreBuilder::new(root);
+    match fs::read_to_string(file) {
+        Ok(text) => {
+            for line in text.lines() {
+                if let Err(error) = builder.add_line(None, line) {
+                    tracing::warn!("skipping bad pattern '{line}' in '{shown}': {error}");
+                }
+            }
+        }
+        Err(error) => {
+            tracing::warn!("skipping unreadable global ignore file '{shown}': {error}");
+        }
+    }
+    match builder.build() {
+        Ok(matcher) => matcher,
+        Err(error) => {
+            tracing::warn!("skipping invalid global ignore file '{shown}': {error}");
+            Gitignore::empty()
+        }
+    }
+}
+
 fn configure_walker(builder: &mut WalkBuilder, config: &WorkspaceWalkConfig) {
     builder
         .standard_filters(false)
@@ -97,6 +161,9 @@ fn configure_walker(builder: &mut WalkBuilder, config: &WorkspaceWalkConfig) {
         .git_ignore(config.respect_ignore_files)
         .git_global(config.respect_ignore_files)
         .git_exclude(config.respect_ignore_files);
+    for name in &config.ignore_filenames {
+        builder.add_custom_ignore_filename(name);
+    }
 }
 
 pub(crate) fn path_to_url(path: &Path) -> ServerResult<Url> {
@@ -192,6 +259,102 @@ mod tests {
         );
 
         fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
+
+    // Custom ignore names work with no `.git` anywhere (spec §3.3): the
+    // mechanism is git-independent, gitignore syntax, cascading per
+    // directory, with negation.
+    #[test]
+    fn custom_ignore_filenames_exclude_entries_without_git() {
+        let root = temp_workspace("walker", "custom-ignore");
+        fs::create_dir_all(root.join("nested")).expect("nested dir can be created");
+        fs::create_dir_all(root.join("skipped-dir")).expect("skipped dir can be created");
+        fs::write(root.join("a.test"), "a").expect("file can be written");
+        fs::write(root.join("skip.test"), "skip").expect("file can be written");
+        fs::write(root.join("keep.log"), "keep").expect("file can be written");
+        fs::write(root.join("drop.log"), "drop").expect("file can be written");
+        fs::write(root.join("skipped-dir/x.test"), "x").expect("file can be written");
+        fs::write(root.join("nested/inner.test"), "inner").expect("file can be written");
+        fs::write(
+            root.join(".mylspignore"),
+            "skip.test\nskipped-dir/\n*.log\n!keep.log\n",
+        )
+        .expect("custom ignore file can be written");
+
+        let walker = WorkspaceWalker::new(
+            std::slice::from_ref(&root),
+            WorkspaceWalkConfig::default().with_ignore_filenames([".mylspignore"]),
+        )
+        .expect("walker can be created");
+        let canonical = &walker.roots()[0];
+        assert_eq!(
+            walker.files().expect("walk succeeds"),
+            vec![
+                canonical.join("a.test"),
+                canonical.join("keep.log"),
+                canonical.join("nested/inner.test"),
+            ],
+        );
+
+        // Cascading: a nested .mylspignore drops only what it names.
+        fs::write(root.join("nested/.mylspignore"), "inner.test\n")
+            .expect("nested ignore file can be written");
+        assert_eq!(
+            walker.files().expect("walk succeeds"),
+            vec![canonical.join("a.test"), canonical.join("keep.log")],
+        );
+
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
+    }
+
+    // The global ignore file applies to every root regardless of git
+    // presence; patterns anchor at each root (git per-repo semantics).
+    #[test]
+    fn global_ignore_file_filters_every_root() {
+        let root = temp_workspace("walker", "global-ignore");
+        let sibling = temp_workspace("walker", "global-ignore-b");
+        fs::create_dir_all(root.join("vendor")).expect("vendor dir can be created");
+        fs::write(root.join("vendor/v.test"), "v").expect("file can be written");
+        fs::write(root.join("top.test"), "t").expect("file can be written");
+        fs::write(root.join("deep.test"), "d").expect("file can be written");
+        let global = root.join("global.ignore");
+        fs::write(&global, "/top.test\nvendor/\ndeep.test\n")
+            .expect("global ignore file can be written");
+        fs::write(sibling.join("s.test"), "s").expect("file can be written");
+        fs::write(sibling.join("deep.test"), "deep").expect("file can be written");
+
+        let walker = WorkspaceWalker::new(
+            &[root.clone(), sibling.clone()],
+            WorkspaceWalkConfig::default().with_global_ignore_file(Some(global.clone())),
+        )
+        .expect("walker can be created");
+        // The walk reports canonical paths; assertions use the walker's own
+        // roots so the comparison holds where the temp dir sits behind a
+        // symlink (macOS /var -> private/var).
+        let (canonical_root, canonical_sibling) =
+            (walker.roots()[0].clone(), walker.roots()[1].clone());
+        let files = walker.files().expect("walk succeeds");
+        assert!(
+            files.contains(&canonical_root.join("global.ignore")),
+            "the global file itself is a plain file: {files:?}",
+        );
+        assert!(
+            !files.contains(&canonical_root.join("top.test")),
+            "anchored pattern drops the root file",
+        );
+        assert!(
+            !files.contains(&canonical_root.join("vendor/v.test")),
+            "directory pattern prunes",
+        );
+        assert!(
+            !files.contains(&canonical_root.join("deep.test"))
+                && !files.contains(&canonical_sibling.join("deep.test")),
+            "unanchored pattern matches in every root",
+        );
+        assert!(files.contains(&canonical_sibling.join("s.test")));
+
+        fs::remove_dir_all(root).expect("temp workspace can be removed");
+        fs::remove_dir_all(sibling).expect("temp workspace can be removed");
     }
 
     // One unreadable entry must not abort the scan; this test is unix-only
