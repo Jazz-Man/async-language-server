@@ -3,9 +3,9 @@ use crate::server::{
     WorkspaceDiagnostics,
 };
 use crate::testing::{
-    advertise_workspace_diagnostics, diagnostic, diagnostic_provider_capabilities, line_position,
-    same_line, temp_workspace, test_document_matchers, url, workspace_diagnostic_params,
-    workspace_folder,
+    advertise_workspace_diagnostics, allow_all_methods, diagnostic,
+    diagnostic_provider_capabilities, line_position, same_line, temp_workspace,
+    test_document_matchers, url, workspace_diagnostic_params, workspace_folder,
 };
 use crate::text_utils::Encoding;
 use async_lsp::lsp_types::{
@@ -375,6 +375,7 @@ fn drive_link_resolve(documents: &[(&str, &str)], target: Option<Url>) -> (Optio
         },
     );
     server.state.set_position_encoding(Encoding::UTF16);
+    allow_all_methods(&mut server.state);
     for (name, text) in documents {
         let _ = server.did_open(DidOpenTextDocumentParams {
             text_document: TextDocumentItem {
@@ -403,6 +404,7 @@ fn drive_link_resolve(documents: &[(&str, &str)], target: Option<Url>) -> (Optio
 fn drive_will_create_files(documents: &[(&str, &str)]) -> Range {
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), EditServer);
     server.state.set_position_encoding(Encoding::UTF16);
+    allow_all_methods(&mut server.state);
     for (name, text) in documents {
         let _ = server.did_open(DidOpenTextDocumentParams {
             text_document: TextDocumentItem {
@@ -437,6 +439,7 @@ async fn drive_workspace_symbol(documents: &[(&str, &str)], second_uri: Url) -> 
     let mut server =
         LanguageServerWithState::new(ClientSocket::new_closed(), SymbolServer(second_uri));
     server.state.set_position_encoding(Encoding::UTF16);
+    allow_all_methods(&mut server.state);
     for (name, text) in documents {
         let _ = server.did_open(DidOpenTextDocumentParams {
             text_document: TextDocumentItem {
@@ -491,6 +494,7 @@ fn resolve_capture_server(
         },
     );
     server.state.set_position_encoding(Encoding::UTF16);
+    allow_all_methods(&mut server.state);
     for (name, text) in documents {
         let _ = server.did_open(DidOpenTextDocumentParams {
             text_document: TextDocumentItem::new(url(name), "plaintext".into(), 0, (*text).into()),
@@ -1125,6 +1129,10 @@ fn resolve_converts_with_sole_document_and_passes_through_with_two() {
         ..Default::default()
     });
     futures::executor::block_on(server.initialize(params)).expect("server can initialize");
+    // `initialize` records the advertised set from the fixture's
+    // capabilities (diagnostics only); the resolve echo below needs its
+    // gate open regardless.
+    allow_all_methods(&mut server.state);
 
     let first = Url::from_file_path(root.join("a.test")).expect("path can be converted to a URL");
     let _ = server.did_open(DidOpenTextDocumentParams {
@@ -1457,6 +1465,7 @@ async fn untracked_url_converts_against_disk() {
         },
     );
     server.state.set_position_encoding(Encoding::UTF16);
+    allow_all_methods(&mut server.state);
     let _ = server.did_open(DidOpenTextDocumentParams {
         text_document: TextDocumentItem::new(
             url("other.txt"),

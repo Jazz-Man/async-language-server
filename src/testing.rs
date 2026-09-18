@@ -224,3 +224,139 @@ pub(crate) fn assert_converted_position<T>(
 ) {
     assert_eq!(extract(value), expected, "{message}");
 }
+
+/// Capabilities advertising every gateable dispatch method — the
+/// dispatch-row wire fixture (spec W4). The type-hierarchy trio is
+/// exempt from the gate and needs no field. Constructor names for the
+/// provider-capability enums follow `inventory.rs`'s predicates; the
+/// self-verifying test in `src/server/inventory.rs` makes a wrong
+/// construction fail loudly, not silently.
+pub(crate) fn all_request_capabilities() -> ServerCapabilities {
+    use async_lsp::lsp_types::{
+        CallHierarchyServerCapability, ColorProviderCapability, DeclarationCapability,
+        DiagnosticOptions, DiagnosticServerCapabilities, DocumentOnTypeFormattingOptions,
+        ExecuteCommandOptions, FileOperationRegistrationOptions, FoldingRangeProviderCapability,
+        HoverProviderCapability, ImplementationProviderCapability,
+        LinkedEditingRangeServerCapabilities, OneOf, SelectionRangeProviderCapability,
+        SignatureHelpOptions, TextDocumentSyncCapability, TextDocumentSyncOptions,
+        TypeDefinitionProviderCapability, WorkspaceFileOperationsServerCapabilities,
+        WorkspaceServerCapabilities,
+    };
+
+    ServerCapabilities {
+        hover_provider: Some(HoverProviderCapability::Simple(true)),
+        declaration_provider: Some(DeclarationCapability::Simple(true)),
+        definition_provider: Some(OneOf::Left(true)),
+        references_provider: Some(OneOf::Left(true)),
+        document_formatting_provider: Some(OneOf::Left(true)),
+        document_range_formatting_provider: Some(OneOf::Left(true)),
+        implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
+        type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(true)),
+        document_highlight_provider: Some(OneOf::Left(true)),
+        document_on_type_formatting_provider: Some(DocumentOnTypeFormattingOptions {
+            first_trigger_character: String::new(),
+            ..DocumentOnTypeFormattingOptions::default()
+        }),
+        folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
+        linked_editing_range_provider: Some(LinkedEditingRangeServerCapabilities::Simple(true)),
+        text_document_sync: Some(TextDocumentSyncCapability::Options(
+            TextDocumentSyncOptions {
+                will_save_wait_until: Some(true),
+                ..TextDocumentSyncOptions::default()
+            },
+        )),
+        color_provider: Some(ColorProviderCapability::Simple(true)),
+        call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
+        moniker_provider: Some(OneOf::Left(true)),
+        document_symbol_provider: Some(OneOf::Left(true)),
+        execute_command_provider: Some(ExecuteCommandOptions::default()),
+        semantic_tokens_provider: Some(semantic_tokens_full_delta_provider()),
+        diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
+            DiagnosticOptions::default(),
+        )),
+        selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
+        inline_value_provider: Some(OneOf::Left(true)),
+        signature_help_provider: Some(SignatureHelpOptions::default()),
+        workspace: Some(WorkspaceServerCapabilities {
+            file_operations: Some(WorkspaceFileOperationsServerCapabilities {
+                will_create: Some(FileOperationRegistrationOptions::default()),
+                will_rename: Some(FileOperationRegistrationOptions::default()),
+                will_delete: Some(FileOperationRegistrationOptions::default()),
+                ..WorkspaceFileOperationsServerCapabilities::default()
+            }),
+            ..WorkspaceServerCapabilities::default()
+        }),
+        ..resolve_enabled_providers()
+    }
+}
+
+/// The provider fields whose shape carries a resolve (or prepare) option:
+/// every resolve-family row plus `rename_prepare` gates on these, so the
+/// fixture always sets them on.
+fn resolve_enabled_providers() -> ServerCapabilities {
+    use async_lsp::lsp_types::{
+        CodeActionOptions, CodeActionProviderCapability, CodeLensOptions, CompletionOptions,
+        DocumentLinkOptions, InlayHintOptions, InlayHintServerCapabilities, OneOf, RenameOptions,
+        WorkDoneProgressOptions, WorkspaceSymbolOptions,
+    };
+
+    // `DocumentLinkOptions`, `RenameOptions`, and `WorkspaceSymbolOptions`
+    // derive no `Default` in lsp-types 0.95.1 — their flattened
+    // `work_done_progress_options` is spelled out.
+    ServerCapabilities {
+        document_link_provider: Some(DocumentLinkOptions {
+            resolve_provider: Some(true),
+            work_done_progress_options: WorkDoneProgressOptions::default(),
+        }),
+        rename_provider: Some(OneOf::Right(RenameOptions {
+            prepare_provider: Some(true),
+            work_done_progress_options: WorkDoneProgressOptions::default(),
+        })),
+        code_lens_provider: Some(CodeLensOptions {
+            resolve_provider: Some(true),
+        }),
+        workspace_symbol_provider: Some(OneOf::Right(WorkspaceSymbolOptions {
+            work_done_progress_options: WorkDoneProgressOptions::default(),
+            resolve_provider: Some(true),
+        })),
+        inlay_hint_provider: Some(OneOf::Right(InlayHintServerCapabilities::Options(
+            InlayHintOptions {
+                resolve_provider: Some(true),
+                ..InlayHintOptions::default()
+            },
+        ))),
+        completion_provider: Some(CompletionOptions {
+            resolve_provider: Some(true),
+            ..CompletionOptions::default()
+        }),
+        code_action_provider: Some(CodeActionProviderCapability::Options(CodeActionOptions {
+            resolve_provider: Some(true),
+            ..CodeActionOptions::default()
+        })),
+        ..ServerCapabilities::default()
+    }
+}
+
+/// The richest semantic-tokens shape: it serves the full, range, and
+/// full-delta rows at once.
+fn semantic_tokens_full_delta_provider() -> async_lsp::lsp_types::SemanticTokensServerCapabilities {
+    use async_lsp::lsp_types::{
+        SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+        SemanticTokensServerCapabilities,
+    };
+
+    SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
+        legend: SemanticTokensLegend {
+            token_types: Vec::new(),
+            token_modifiers: Vec::new(),
+        },
+        full: Some(SemanticTokensFullOptions::Delta { delta: Some(true) }),
+        range: Some(true),
+        ..SemanticTokensOptions::default()
+    })
+}
+
+/// Test-only: opens the dispatch gate entirely (every method allowed).
+pub(crate) fn allow_all_methods(state: &mut ServerState) {
+    state.set_advertised_methods_all();
+}

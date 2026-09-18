@@ -283,6 +283,24 @@ impl ServerState {
         self.advertised_methods.warn_once_default(method, error)
     }
 
+    /// Whether the dispatch gate lets `method` run (see
+    /// [`MethodInventory::dispatch_allowed`]).
+    pub(crate) fn dispatch_allowed(&self, method: &'static str) -> bool {
+        self.advertised_methods.dispatch_allowed(method)
+    }
+
+    /// Warns once per method rejected by the dispatch gate (see
+    /// [`MethodInventory::warn_once_unadvertised`]).
+    pub(crate) fn warn_once_unadvertised(&self, method: &'static str) {
+        self.advertised_methods.warn_once_unadvertised(method);
+    }
+
+    /// Test-only: opens the dispatch gate for every method.
+    #[cfg(test)]
+    pub(crate) fn set_advertised_methods_all(&mut self) {
+        self.advertised_methods = MethodInventory::allow_all();
+    }
+
     /// A disk snapshot for a file URL the server does not track, used by
     /// request conversions. Cache-only: filled by
     /// [`ServerState::prime_conversion_fallback`].

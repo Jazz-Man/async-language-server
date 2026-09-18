@@ -1,14 +1,41 @@
-//! Method dispatch over the wire. Three producers answer `-32601`: the
+//! Method dispatch over the wire. Four producers answer `-32601`: the
 //! router for a name nothing registered under it ("No such method ..."),
 //! the async-lsp trait default for a registered `lsp_types` method the
-//! impl does not override ("No such method: ...", with a colon), and the
-//! dispatch engine's trait default for a wired method without a `Server`
-//! implementation ("LSP method '...' has not been implemented"). The tests
-//! below pin the producers, not just the code.
+//! impl does not override ("No such method: ...", with a colon), the
+//! dispatch engine's trait default for a wired method without a [`Server`]
+//! implementation ("LSP method '...' has not been implemented"), and the
+//! capability gate for an implemented method the capabilities do not
+//! advertise ("... is not advertised in the server capabilities"). The
+//! tests below pin the producers, not just the code.
 
+use async_lsp::lsp_types::{ClientCapabilities, Hover, HoverParams, ServerCapabilities};
 use serde_json::{Value, json};
+use std::future::Future;
 
 use crate::server::testing::{EchoServer, bounded, spawn_wire_server};
+use crate::server::{Server, ServerResult, ServerState};
+
+/// Advertises the full all-request fixture so [`wired_methods_dispatch`]
+/// drives every row through an open gate: each method reaches the engine
+/// and answers a result or the engine's trait default — never the
+/// capability gate. Serves `hover` so the one implemented-and-advertised
+/// pin stays positive (`Ok(None)`; `result: null` is still a result).
+#[derive(Clone)]
+struct AllMethodsServer;
+
+impl Server for AllMethodsServer {
+    fn server_capabilities(_client: ClientCapabilities) -> Option<ServerCapabilities> {
+        Some(crate::testing::all_request_capabilities())
+    }
+
+    fn hover(
+        &self,
+        _state: ServerState,
+        _params: HoverParams,
+    ) -> impl Future<Output = ServerResult<Option<Hover>>> + Send {
+        std::future::ready(Ok(None))
+    }
+}
 
 #[tokio::test]
 async fn unknown_methods_answer_method_not_found() {
@@ -41,7 +68,7 @@ async fn unknown_methods_answer_method_not_found() {
 
 #[tokio::test]
 async fn wired_methods_dispatch() {
-    let (mut client, server) = spawn_wire_server(EchoServer);
+    let (mut client, server) = spawn_wire_server(AllMethodsServer);
     client.initialize_client(&["utf-16"]).await;
 
     // All 48 `lsp_dispatch!` rows (see `with_state`), by wire name. A
@@ -139,23 +166,17 @@ fn wired_requests() -> impl Iterator<Item = (&'static str, &'static str, Value)>
 }
 
 #[test]
-fn inventory_covers_exactly_the_non_resolve_dispatch_rows() {
+fn inventory_covers_every_dispatch_row() {
     use crate::server::inventory::METHOD_NAMES;
 
-    let resolve = [
-        "completion_resolve",
-        "code_action_resolve",
-        "link_resolve",
-        "code_lens_resolve",
-        "inlay_hint_resolve",
-        "workspace_symbol_resolve",
-    ];
+    // The inventory spans the whole table since the resolve family joined
+    // it (it gates dispatch on its provider's resolve option): every wired
+    // request must have its inventory row, or the dispatch gate and the
+    // default-warning have no opinion about it.
     for (_, trait_method, _) in wired_requests() {
-        let present = METHOD_NAMES.contains(&trait_method);
-        assert_eq!(
-            present,
-            !resolve.contains(&trait_method),
-            "{trait_method}: exactly the non-resolve rows are inventoried",
+        assert!(
+            METHOD_NAMES.contains(&trait_method),
+            "{trait_method}: every dispatch row is inventoried",
         );
     }
 }

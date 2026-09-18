@@ -2,21 +2,24 @@ use crate::error::ServerError;
 use async_lsp::lsp_types::{
     CallHierarchyServerCapability, CodeActionProviderCapability, ColorProviderCapability,
     DeclarationCapability, FoldingRangeProviderCapability, HoverProviderCapability,
-    ImplementationProviderCapability, LinkedEditingRangeServerCapabilities, OneOf,
-    SelectionRangeProviderCapability, SemanticTokensFullOptions, SemanticTokensOptions,
-    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability,
-    TypeDefinitionProviderCapability, WorkspaceFileOperationsServerCapabilities,
+    ImplementationProviderCapability, InlayHintOptions, InlayHintServerCapabilities,
+    LinkedEditingRangeServerCapabilities, OneOf, SelectionRangeProviderCapability,
+    SemanticTokensFullOptions, SemanticTokensOptions, SemanticTokensServerCapabilities,
+    ServerCapabilities, TextDocumentSyncCapability, TypeDefinitionProviderCapability,
+    WorkspaceFileOperationsServerCapabilities,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// The `lsp_dispatch!` table's non-resolve trait methods, in table order.
+/// The `lsp_dispatch!` table's trait methods, in table order.
 ///
-/// The resolve family is absent on purpose: its defaults resolve the item
-/// unchanged and never produce `method_not_implemented`. The two type
-/// hierarchy *calls* (`supertypes`, `subtypes`) and `prepare_type_hierarchy`
-/// are present but can never be advertised — lsp-types 0.95.1 carries no
-/// type-hierarchy capability field — so their predicates are `false`.
+/// The resolve family is present and gates dispatch on its provider's
+/// resolve option; its defaults still resolve the item unchanged and never
+/// produce `method_not_implemented`, so `warn_once_default` is never
+/// triggered for them. The two type hierarchy *calls* (`supertypes`,
+/// `subtypes`) and `prepare_type_hierarchy` can never be advertised —
+/// lsp-types 0.95.1 carries no type-hierarchy capability field — so their
+/// predicates are `false` and the dispatch gate exempts them.
 pub(crate) const METHOD_NAMES: &[&str] = &[
     "hover",
     "declaration",
@@ -60,6 +63,12 @@ pub(crate) const METHOD_NAMES: &[&str] = &[
     "subtypes",
     "symbol",
     "signature_help",
+    "completion_resolve",
+    "code_action_resolve",
+    "link_resolve",
+    "code_lens_resolve",
+    "inlay_hint_resolve",
+    "workspace_symbol_resolve",
 ];
 
 /// Which `Server` methods the final `InitializeResult` advertised, and
@@ -72,6 +81,7 @@ pub(crate) struct MethodInventory {
 #[derive(Debug)]
 struct InventoryInner {
     advertised: Box<[bool]>,
+    gateable: Box<[bool]>,
     warned: Box<[AtomicBool]>,
 }
 
@@ -85,6 +95,7 @@ impl MethodInventory {
     /// An inventory advertising nothing; the state before `initialize`.
     pub(crate) fn new() -> Self {
         let empty = vec![false; METHOD_NAMES.len()].into_boxed_slice();
+        let gateable = METHOD_NAMES.iter().map(|name| gateable(name)).collect();
         let unwarned = METHOD_NAMES
             .iter()
             .map(|_| AtomicBool::new(false))
@@ -92,6 +103,7 @@ impl MethodInventory {
         Self {
             inner: Arc::new(InventoryInner {
                 advertised: empty,
+                gateable,
                 warned: unwarned,
             }),
         }
@@ -105,17 +117,65 @@ impl MethodInventory {
             .iter()
             .map(|name| advertised(name, caps))
             .collect();
+        let gateable = METHOD_NAMES.iter().map(|name| gateable(name)).collect();
         let warned = METHOD_NAMES
             .iter()
             .map(|_| AtomicBool::new(false))
             .collect();
         Self {
-            inner: Arc::new(InventoryInner { advertised, warned }),
+            inner: Arc::new(InventoryInner {
+                advertised,
+                gateable,
+                warned,
+            }),
         }
     }
 
     fn advertised(&self, method: &str) -> bool {
         index_of(method).is_some_and(|index| self.inner.advertised[index])
+    }
+
+    /// Whether the dispatch gate lets `method` run: gateable methods
+    /// must be advertised; the type-hierarchy trio (no capability field
+    /// upstream) is always allowed. Before `initialize` nothing is
+    /// advertised, so only the exempt methods dispatch — requests are
+    /// not allowed before `initialize` anyway.
+    pub(crate) fn dispatch_allowed(&self, method: &str) -> bool {
+        index_of(method)
+            .is_none_or(|index| !self.inner.gateable[index] || self.inner.advertised[index])
+    }
+
+    /// Warns once per method blocked by the dispatch gate: implemented
+    /// but not advertised is an implementor bug, and it must be loud.
+    /// Returns whether this call emitted the warning.
+    pub(crate) fn warn_once_unadvertised(&self, method: &str) -> bool {
+        let Some(index) = index_of(method) else {
+            return false;
+        };
+        if self.inner.warned[index].swap(true, Ordering::Relaxed) {
+            return false;
+        }
+        tracing::warn!(
+            "LSP method '{method}' is implemented but not advertised in the \
+             server capabilities; the request was rejected — advertise the \
+             capability or remove the override",
+        );
+        true
+    }
+
+    /// Test-only: every method allowed through the dispatch gate.
+    #[cfg(test)]
+    pub(crate) fn allow_all() -> Self {
+        Self {
+            inner: Arc::new(InventoryInner {
+                advertised: vec![true; METHOD_NAMES.len()].into_boxed_slice(),
+                gateable: METHOD_NAMES.iter().map(|name| gateable(name)).collect(),
+                warned: METHOD_NAMES
+                    .iter()
+                    .map(|_| AtomicBool::new(false))
+                    .collect(),
+            }),
+        }
     }
 
     /// Warns once per method when a trait default ran for an advertised
@@ -145,6 +205,13 @@ fn index_of(method: &str) -> Option<usize> {
     METHOD_NAMES.iter().position(|name| *name == method)
 }
 
+/// Methods the dispatch gate never blocks: `lsp_types` 0.95.1 carries
+/// no capability field for them, so "not advertised" is not decidable —
+/// always-allowed (spec D7).
+fn gateable(method: &str) -> bool {
+    !matches!(method, "prepare_type_hierarchy" | "supertypes" | "subtypes")
+}
+
 /// Presence semantics for `Option<OneOf<bool, Options>>` capabilities:
 /// `Left(false)` is an explicit no, everything else present advertises.
 fn advertised_bool<T>(provider: Option<&OneOf<bool, T>>) -> bool {
@@ -157,6 +224,19 @@ fn semantic_tokens_options(caps: &ServerCapabilities) -> Option<&SemanticTokensO
         SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(registration) => {
             Some(&registration.semantic_tokens_options)
         }
+    }
+}
+
+/// The inlay-hint options block behind the provider capability, in either
+/// representable shape — the resolve gate reads its `resolve_provider`
+/// through both.
+fn inlay_hint_options(caps: &ServerCapabilities) -> Option<&InlayHintOptions> {
+    match caps.inlay_hint_provider.as_ref()? {
+        OneOf::Right(InlayHintServerCapabilities::Options(options)) => Some(options),
+        OneOf::Right(InlayHintServerCapabilities::RegistrationOptions(options)) => {
+            Some(&options.inlay_hint_options)
+        }
+        OneOf::Left(_) => None,
     }
 }
 
@@ -254,7 +334,8 @@ fn advertised(name: &str, caps: &ServerCapabilities) -> bool {
 
 /// The advertised-method predicates for the remaining
 /// [`METHOD_NAMES`](METHOD_NAMES) span (workspace operations, tokens, and
-/// the hierarchy calls), ending in the alignment escape: the table and
+/// the hierarchy calls); names past the span continue in
+/// [`advertised_resolve`], ending in the alignment escape: the table and
 /// these matches must stay in step.
 fn advertised_continued(name: &str, caps: &ServerCapabilities) -> bool {
     match name {
@@ -305,6 +386,48 @@ fn advertised_continued(name: &str, caps: &ServerCapabilities) -> bool {
         "inline_value" => advertised_bool(caps.inline_value_provider.as_ref()),
         "symbol" => advertised_bool(caps.workspace_symbol_provider.as_ref()),
         "signature_help" => caps.signature_help_provider.is_some(),
+        other => advertised_resolve(other, caps),
+    }
+}
+
+/// The resolve-family predicates: each resolve row advertises when its
+/// provider carries the `resolve_provider` option (spec §4.2 — only the
+/// resolve rows gate on it, never the base methods), ending in the same
+/// alignment escape as the spans above.
+fn advertised_resolve(name: &str, caps: &ServerCapabilities) -> bool {
+    match name {
+        "completion_resolve" => caps
+            .completion_provider
+            .as_ref()
+            .is_some_and(|options| options.resolve_provider == Some(true)),
+        "code_action_resolve" => caps.code_action_provider.as_ref().is_some_and(|provider| {
+            matches!(
+                provider,
+                CodeActionProviderCapability::Options(options)
+                    if options.resolve_provider == Some(true),
+            )
+        }),
+        "link_resolve" => caps
+            .document_link_provider
+            .as_ref()
+            .is_some_and(|options| options.resolve_provider == Some(true)),
+        "code_lens_resolve" => caps
+            .code_lens_provider
+            .as_ref()
+            .is_some_and(|options| options.resolve_provider == Some(true)),
+        "inlay_hint_resolve" => {
+            inlay_hint_options(caps).is_some_and(|options| options.resolve_provider == Some(true))
+        }
+        "workspace_symbol_resolve" => {
+            caps.workspace_symbol_provider
+                .as_ref()
+                .is_some_and(|provider| {
+                    matches!(
+                        provider,
+                        OneOf::Right(options) if options.resolve_provider == Some(true),
+                    )
+                })
+        }
         other => unreachable!(
             "'{other}' is not a dispatch-table method; METHOD_NAMES and this match must stay aligned",
         ),
@@ -314,18 +437,19 @@ fn advertised_continued(name: &str, caps: &ServerCapabilities) -> bool {
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
-        CallHierarchyServerCapability, CodeActionProviderCapability, CodeLensOptions,
-        ColorProviderCapability, CompletionOptions, DeclarationCapability, DiagnosticOptions,
-        DiagnosticServerCapabilities, DocumentLinkOptions, DocumentOnTypeFormattingOptions,
-        ExecuteCommandOptions, FileOperationRegistrationOptions, FoldingRangeProviderCapability,
-        HoverProviderCapability, ImplementationProviderCapability,
-        LinkedEditingRangeServerCapabilities, OneOf, RenameOptions,
-        SelectionRangeProviderCapability, SemanticTokenType, SemanticTokensFullOptions,
-        SemanticTokensLegend, SemanticTokensOptions, SemanticTokensRegistrationOptions,
-        SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelpOptions,
-        StaticRegistrationOptions, TextDocumentRegistrationOptions, TextDocumentSyncCapability,
-        TextDocumentSyncOptions, TypeDefinitionProviderCapability, WorkDoneProgressOptions,
-        WorkspaceFileOperationsServerCapabilities, WorkspaceServerCapabilities,
+        CallHierarchyServerCapability, CodeActionOptions, CodeActionProviderCapability,
+        CodeLensOptions, ColorProviderCapability, CompletionOptions, DeclarationCapability,
+        DiagnosticOptions, DiagnosticServerCapabilities, DocumentLinkOptions,
+        DocumentOnTypeFormattingOptions, ExecuteCommandOptions, FileOperationRegistrationOptions,
+        FoldingRangeProviderCapability, HoverProviderCapability, ImplementationProviderCapability,
+        InlayHintOptions, InlayHintServerCapabilities, LinkedEditingRangeServerCapabilities, OneOf,
+        RenameOptions, SelectionRangeProviderCapability, SemanticTokenType,
+        SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+        SemanticTokensRegistrationOptions, SemanticTokensServerCapabilities, ServerCapabilities,
+        SignatureHelpOptions, StaticRegistrationOptions, TextDocumentRegistrationOptions,
+        TextDocumentSyncCapability, TextDocumentSyncOptions, TypeDefinitionProviderCapability,
+        WorkDoneProgressOptions, WorkspaceFileOperationsServerCapabilities,
+        WorkspaceServerCapabilities, WorkspaceSymbolOptions,
     };
 
     use super::{METHOD_NAMES, MethodInventory};
@@ -341,11 +465,16 @@ mod tests {
 
     #[test]
     fn method_names_pin_the_dispatch_table_surface() {
-        assert_eq!(METHOD_NAMES.len(), 42);
+        assert_eq!(METHOD_NAMES.len(), 48);
         assert_eq!(METHOD_NAMES[0], "hover");
-        assert_eq!(METHOD_NAMES.last().copied(), Some("signature_help"));
-        // The resolve family never warns and never appears.
-        assert!(!METHOD_NAMES.contains(&"completion_resolve"));
+        assert_eq!(
+            METHOD_NAMES.last().copied(),
+            Some("workspace_symbol_resolve"),
+        );
+        // The resolve family is present: it gates dispatch on its
+        // provider's resolve option, and its defaults never produce
+        // `method_not_implemented`, so it never draws a default warning.
+        assert!(METHOD_NAMES.contains(&"completion_resolve"));
         // A default error for a method outside the table is a no-op.
         let inventory = MethodInventory::new();
         assert!(!inventory.warn_once_default("hover", &error("hover")));
@@ -521,7 +650,8 @@ mod tests {
     }
 
     /// The all-advertised text-document span: navigation, sync, formatting,
-    /// and color providers at their advertised shapes.
+    /// and color providers at their advertised shapes — with the resolve
+    /// options on where the family gates on them.
     fn all_advertised_text_document_caps() -> ServerCapabilities {
         ServerCapabilities {
             hover_provider: Some(HoverProviderCapability::Simple(true)),
@@ -529,7 +659,7 @@ mod tests {
             definition_provider: Some(OneOf::Left(true)),
             references_provider: Some(OneOf::Left(true)),
             document_link_provider: Some(DocumentLinkOptions {
-                resolve_provider: None,
+                resolve_provider: Some(true),
                 work_done_progress_options: WorkDoneProgressOptions::default(),
             }),
             rename_provider: Some(OneOf::Right(RenameOptions {
@@ -548,7 +678,7 @@ mod tests {
             folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
             linked_editing_range_provider: Some(LinkedEditingRangeServerCapabilities::Simple(true)),
             code_lens_provider: Some(CodeLensOptions {
-                resolve_provider: None,
+                resolve_provider: Some(true),
             }),
             text_document_sync: Some(TextDocumentSyncCapability::Options(
                 TextDocumentSyncOptions {
@@ -578,7 +708,12 @@ mod tests {
                     will_delete: Some(FileOperationRegistrationOptions::default()),
                 }),
             }),
-            inlay_hint_provider: Some(OneOf::Left(true)),
+            inlay_hint_provider: Some(OneOf::Right(InlayHintServerCapabilities::Options(
+                InlayHintOptions {
+                    resolve_provider: Some(true),
+                    ..InlayHintOptions::default()
+                },
+            ))),
             document_symbol_provider: Some(OneOf::Left(true)),
             execute_command_provider: Some(ExecuteCommandOptions::default()),
             semantic_tokens_provider: Some(
@@ -588,14 +723,23 @@ mod tests {
                     Some(true),
                 )),
             ),
-            completion_provider: Some(CompletionOptions::default()),
-            code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+            completion_provider: Some(CompletionOptions {
+                resolve_provider: Some(true),
+                ..CompletionOptions::default()
+            }),
+            code_action_provider: Some(CodeActionProviderCapability::Options(CodeActionOptions {
+                resolve_provider: Some(true),
+                ..CodeActionOptions::default()
+            })),
             diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
                 DiagnosticOptions::default(),
             )),
             selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
             inline_value_provider: Some(OneOf::Left(true)),
-            workspace_symbol_provider: Some(OneOf::Left(true)),
+            workspace_symbol_provider: Some(OneOf::Right(WorkspaceSymbolOptions {
+                work_done_progress_options: WorkDoneProgressOptions::default(),
+                resolve_provider: Some(true),
+            })),
             signature_help_provider: Some(SignatureHelpOptions::default()),
             ..all_advertised_text_document_caps()
         }
@@ -622,6 +766,21 @@ mod tests {
             assert!(
                 !inventory.advertised(name),
                 "'{name}' is never advertisable",
+            );
+        }
+    }
+
+    // The all-request fixture is complete: every gateable dispatch
+    // method comes out advertised, so the dispatch-row wire test drives
+    // the whole table through an open gate.
+    #[test]
+    fn all_request_capabilities_advertise_every_gateable_method() {
+        let caps = crate::testing::all_request_capabilities();
+        let inventory = MethodInventory::from_capabilities(&caps);
+        for method in super::METHOD_NAMES {
+            assert!(
+                inventory.dispatch_allowed(method),
+                "{method} must dispatch under the all-request fixture",
             );
         }
     }
@@ -726,6 +885,55 @@ mod tests {
         assert!(only_create.advertised("will_create_files"));
         assert!(!only_create.advertised("will_rename_files"));
         assert!(!only_create.advertised("will_delete_files"));
+    }
+
+    // The dispatch gate: a gateable method absent from the capabilities
+    // is not dispatchable; the type-hierarchy trio (no capability field
+    // in lsp-types 0.95.1) is exempt; resolve methods gate on their
+    // provider's resolve_provider option.
+    #[test]
+    fn dispatch_allowed_follows_advertisement_except_the_type_hierarchy_trio() {
+        let none = MethodInventory::from_capabilities(&ServerCapabilities::default());
+        assert!(!none.dispatch_allowed("hover"));
+        assert!(none.dispatch_allowed("prepare_type_hierarchy"));
+        assert!(none.dispatch_allowed("supertypes"));
+        assert!(none.dispatch_allowed("subtypes"));
+
+        let hover = MethodInventory::from_capabilities(&ServerCapabilities {
+            hover_provider: Some(HoverProviderCapability::Simple(true)),
+            ..ServerCapabilities::default()
+        });
+        assert!(hover.dispatch_allowed("hover"));
+        assert!(!hover.dispatch_allowed("definition"));
+    }
+
+    #[test]
+    fn resolve_methods_gate_on_their_providers_resolve_option() {
+        let no_resolve = MethodInventory::from_capabilities(&ServerCapabilities {
+            completion_provider: Some(CompletionOptions::default()),
+            ..ServerCapabilities::default()
+        });
+        // Presence alone advertises the base method — only the resolve row
+        // gates on the resolve option (spec §4.2).
+        assert!(no_resolve.dispatch_allowed("completion"));
+        assert!(!no_resolve.dispatch_allowed("completion_resolve"));
+
+        let with_resolve = MethodInventory::from_capabilities(&ServerCapabilities {
+            completion_provider: Some(CompletionOptions {
+                resolve_provider: Some(true),
+                ..CompletionOptions::default()
+            }),
+            ..ServerCapabilities::default()
+        });
+        assert!(with_resolve.dispatch_allowed("completion"));
+        assert!(with_resolve.dispatch_allowed("completion_resolve"));
+    }
+
+    #[test]
+    fn warn_once_unadvertised_fires_once_per_method() {
+        let none = MethodInventory::from_capabilities(&ServerCapabilities::default());
+        assert!(none.warn_once_unadvertised("hover"));
+        assert!(!none.warn_once_unadvertised("hover"), "once per method");
     }
 
     #[test]

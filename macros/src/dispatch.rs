@@ -102,8 +102,8 @@ fn is_resolve_row(input: ParseStream<'_>) -> bool {
     kw == "resolve" && fork.peek(syn::token::Paren)
 }
 
-/// The engine for one row: the row kind's core in the shared dispatch
-/// wrapper.
+/// The engine for one row: the capability gate prepended to the row
+/// kind's core, all in the shared dispatch wrapper.
 fn engine(row: &DispatchRow) -> TokenStream {
     let DispatchRow {
         trait_method,
@@ -111,12 +111,30 @@ fn engine(row: &DispatchRow) -> TokenStream {
         request,
         resolve,
     } = row;
+    let gate = quote! {
+        // 0. Capability gate: a method absent from the final
+        //    ServerCapabilities never activates — reject before any
+        //    conversion or handler runs (spec W4). The type-hierarchy
+        //    trio is exempt upstream; lifecycle methods never pass
+        //    through here.
+        if !state.dispatch_allowed(stringify!(#trait_method)) {
+            state.warn_once_unadvertised(stringify!(#trait_method));
+            return Err(ResponseError::new(
+                ErrorCode::METHOD_NOT_FOUND,
+                concat!(
+                    stringify!(#trait_method),
+                    " is not advertised in the server capabilities",
+                ),
+            ));
+        }
+    };
     let core = if *resolve {
         sole_document_core(trait_method, request)
     } else {
         url_anchored_core(trait_method, request)
     };
-    wrapped(alsp, request, &core)
+    let gated = quote! { #gate #core };
+    wrapped(alsp, request, &gated)
 }
 
 /// Which conversion a [`blocking_arm`] hop wraps: the standalone hooks run
@@ -465,6 +483,8 @@ mod tests {
         let text = engine(&r).to_string();
         for needle in [
             "fn hover",
+            "dispatch_allowed",
+            "METHOD_NOT_FOUND",
             "extract_url",
             "document_version",
             "CONTENT_MODIFIED",
@@ -492,6 +512,7 @@ mod tests {
             syn::parse2(quote! { completion_resolve: completion_resolve @ R }).expect("row parses");
         r.resolve = true;
         let text = engine(&r).to_string();
+        assert!(text.contains("dispatch_allowed"));
         assert!(text.contains("convert_resolve_item"));
         assert!(text.contains("Direction :: Incoming"));
         assert!(text.contains("sole_document"));

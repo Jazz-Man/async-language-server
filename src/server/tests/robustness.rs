@@ -4,7 +4,9 @@
 
 use std::time::Duration;
 
-use async_lsp::lsp_types::{Hover, HoverParams};
+use async_lsp::lsp_types::{
+    ClientCapabilities, Hover, HoverParams, HoverProviderCapability, ServerCapabilities,
+};
 use serde_json::json;
 use tokio::io::AsyncWriteExt as _;
 use tokio::sync::{mpsc, watch};
@@ -15,6 +17,15 @@ use crate::server::testing::{
     EchoServer, WIRE_TIMEOUT, bounded, did_open, echo_hover, hover_params, spawn_wire_server,
 };
 
+/// The hover advertisement every fixture that serves `hover` needs: the
+/// dispatch gate rejects unadvertised methods before the handler runs.
+fn hover_capabilities() -> Option<ServerCapabilities> {
+    Some(ServerCapabilities {
+        hover_provider: Some(HoverProviderCapability::Simple(true)),
+        ..ServerCapabilities::default()
+    })
+}
+
 #[derive(Clone)]
 pub(crate) struct GatedServer {
     pub(crate) entered: mpsc::UnboundedSender<()>,
@@ -22,6 +33,10 @@ pub(crate) struct GatedServer {
 }
 
 impl Server for GatedServer {
+    fn server_capabilities(_client: ClientCapabilities) -> Option<ServerCapabilities> {
+        hover_capabilities()
+    }
+
     fn hover(
         &self,
         _state: crate::server::ServerState,
@@ -52,6 +67,10 @@ fn no_hover() -> Option<Hover> {
 }
 
 impl Server for PanickingServer {
+    fn server_capabilities(_client: ClientCapabilities) -> Option<ServerCapabilities> {
+        hover_capabilities()
+    }
+
     fn hover(
         &self,
         _state: crate::server::ServerState,

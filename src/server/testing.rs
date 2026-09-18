@@ -12,7 +12,10 @@
 use crate::error::ServerResult;
 use crate::server::Server;
 use crate::server::serve::run_over_streams;
-use async_lsp::lsp_types::{Hover, HoverContents, HoverParams, MarkedString, Position, Range};
+use async_lsp::lsp_types::{
+    ClientCapabilities, Hover, HoverContents, HoverParams, HoverProviderCapability, MarkedString,
+    Position, Range, ServerCapabilities,
+};
 use futures::AsyncReadExt as _;
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -177,6 +180,15 @@ pub(crate) fn echo_hover(position: Position) -> Option<Hover> {
 }
 
 impl Server for EchoServer {
+    // EchoServer serves `hover`, so the dispatch gate needs the matching
+    // advertisement for any wire test driving it after `initialize`.
+    fn server_capabilities(_client: ClientCapabilities) -> Option<ServerCapabilities> {
+        Some(ServerCapabilities {
+            hover_provider: Some(HoverProviderCapability::Simple(true)),
+            ..ServerCapabilities::default()
+        })
+    }
+
     fn hover(
         &self,
         _state: crate::server::ServerState,

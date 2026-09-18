@@ -153,9 +153,10 @@ impl DocumentDiagnostics {
 ///
 /// ```
 /// use async_lsp::lsp_types::{
-///     Diagnostic, DocumentDiagnosticParams, DocumentDiagnosticReport,
-///     DocumentDiagnosticReportResult, FullDocumentDiagnosticReport, Position, Range,
-///     RelatedFullDocumentDiagnosticReport,
+///     ClientCapabilities, Diagnostic, DiagnosticOptions, DiagnosticServerCapabilities,
+///     DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+///     FullDocumentDiagnosticReport, Position, Range, RelatedFullDocumentDiagnosticReport,
+///     ServerCapabilities,
 /// };
 /// use async_language_server::oneshot::WorkspaceDiagnosticConfig;
 /// use async_language_server::server::{
@@ -167,6 +168,17 @@ impl DocumentDiagnostics {
 /// impl Server for LongLineServer {
 ///     fn server_document_matchers() -> Vec<DocumentMatcher> {
 ///         vec![DocumentMatcher::new("demo").with_url_globs(["**/*.demo", "*.demo"])]
+///     }
+///
+///     // The dispatch gate rejects unadvertised methods, so a server that
+///     // serves diagnostics must also advertise the provider.
+///     fn server_capabilities(_: ClientCapabilities) -> Option<ServerCapabilities> {
+///         Some(ServerCapabilities {
+///             diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
+///                 DiagnosticOptions::default(),
+///             )),
+///             ..ServerCapabilities::default()
+///         })
 ///     }
 ///
 ///     async fn document_diagnostics(
@@ -317,7 +329,7 @@ mod tests {
         workspace_diagnostics,
     };
     use crate::server::{DocumentMatcher, Server, ServerOptions, ServerResult, ServerState};
-    use crate::testing::{diagnostic, temp_workspace, url};
+    use crate::testing::{diagnostic, diagnostic_provider_capabilities, temp_workspace, url};
     use async_lsp::lsp_types::{
         Diagnostic, DocumentDiagnosticParams, DocumentDiagnosticReport,
         DocumentDiagnosticReportKind, DocumentDiagnosticReportResult, FullDocumentDiagnosticReport,
@@ -332,9 +344,22 @@ mod tests {
 
     struct TestServer;
 
+    // Serves `document_diagnostics`, so the dispatch gate needs the
+    // provider advertised — oneshot drives the same wrapper as the
+    // transport path. Shared by every fixture here.
+    fn diagnostics_advertised() -> Option<async_lsp::lsp_types::ServerCapabilities> {
+        Some(diagnostic_provider_capabilities(true, false))
+    }
+
     impl Server for TestServer {
         fn server_document_matchers() -> Vec<DocumentMatcher> {
             crate::testing::test_document_matchers()
+        }
+
+        fn server_capabilities(
+            _: async_lsp::lsp_types::ClientCapabilities,
+        ) -> Option<async_lsp::lsp_types::ServerCapabilities> {
+            diagnostics_advertised()
         }
 
         // Serialized: this fixture's documents report how many documents
@@ -501,6 +526,12 @@ mod tests {
             vec![DocumentMatcher::new("Gated").with_url_globs(["**/*.gated", "*.gated"])]
         }
 
+        fn server_capabilities(
+            _: async_lsp::lsp_types::ClientCapabilities,
+        ) -> Option<async_lsp::lsp_types::ServerCapabilities> {
+            diagnostics_advertised()
+        }
+
         fn server_options(&self) -> ServerOptions {
             ServerOptions::default()
                 .with_diagnostics_parallelism(NonZeroUsize::new(3).expect("constant is nonzero"))
@@ -641,6 +672,12 @@ mod tests {
     impl Server for Utf8ColumnServer {
         fn server_document_matchers() -> Vec<DocumentMatcher> {
             vec![DocumentMatcher::new("Utf8Column").with_url_globs(["**/*.utf8", "*.utf8"])]
+        }
+
+        fn server_capabilities(
+            _: async_lsp::lsp_types::ClientCapabilities,
+        ) -> Option<async_lsp::lsp_types::ServerCapabilities> {
+            diagnostics_advertised()
         }
 
         fn document_diagnostics(
