@@ -78,7 +78,12 @@ the encoding negotiated with the client — conversions are handled internally.
   scanning; exposure configured through `ServerOptions`. Batch work runs
   through a parallel engine defaulting to the CPU core count
   (`ServerOptions::with_diagnostics_parallelism` narrows it), with an
-  incremental refresh that skips unchanged files.
+  incremental refresh that skips unchanged files. Walk exclusions extend
+  beyond the built-in `.gitignore` through
+  `ServerOptions::default().with_ignore_filenames([".mylspignore"])`
+  (custom ignore-file names, cascading per directory) and
+  `.with_global_ignore_file(path)` (one gitignore-syntax file applied to
+  every root regardless of git presence).
 - **`oneshot`** — run a `Server` over files on disk with no LSP client:
   CLI-style batch diagnostics. `server` is the capability layer (implement
   `Server`); `oneshot` is a clientless runner driving the same engine.

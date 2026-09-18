@@ -43,7 +43,7 @@ The `lsp_dispatch!` table glues each async-lsp method to a `Server` method throu
 
 ### Matching & workspace scanning
 
-`DocumentMatcher` (`src/documents/matcher.rs`) associates documents with a named matcher via URL globs and/or language-id strings, optionally carrying a tree-sitter grammar (language-per-document architecture). `WorkspaceWalker` (`src/workspace/walker.rs`) scans roots with the `ignore` crate in parallel (`build_parallel`, entries sorted after collection so output stays deterministic) — respects `.gitignore` by default, skips hidden files.
+`DocumentMatcher` (`src/documents/matcher.rs`) associates documents with a named matcher via URL globs and/or language-id strings, optionally carrying a tree-sitter grammar (language-per-document architecture). `WorkspaceWalker` (`src/workspace/walker.rs`) scans roots with the `ignore` crate in parallel (`build_parallel`, entries sorted after collection so output stays deterministic) — respects `.gitignore` by default, skips hidden files. Custom ignore file names (`ServerOptions::with_ignore_filenames`) and a global ignore file (`with_global_ignore_file`) feed the walker's exclusions, and events on the configured names or `.gitignore` invalidate the walk cache.
 
 ### Workspace diagnostics
 

@@ -241,14 +241,11 @@ impl ServerState {
 
     /// Watcher glob patterns: the matchers' url globs plus the ignore
     /// file names the walk honors — the configured names and the
-    /// built-in `.gitignore`, whose edits change walk membership.
+    /// built-in `.gitignore`, whose edits change walk membership —
+    /// filtered by the same `Glob::new` validity rule the matcher globs
+    /// use: one invalid configured name must not poison the whole
+    /// registration (a strict client could reject it wholesale).
     /// Sorted, deduplicated.
-    /// Watcher glob patterns: the matchers' url globs plus the ignore
-    /// file names the walk honors — the configured names and the
-    /// built-in `.gitignore` — filtered by the same `Glob::new`
-    /// validity rule the matcher globs use: one invalid configured name
-    /// must not poison the whole registration (a strict client could
-    /// reject it wholesale). Sorted, deduplicated.
     pub(crate) fn watcher_globs(&self) -> Vec<String> {
         let mut globs: Vec<_> = self.matchers.watcher_globs();
         globs.push(String::from("**/.gitignore"));

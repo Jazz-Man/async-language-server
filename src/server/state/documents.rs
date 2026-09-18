@@ -82,6 +82,9 @@ impl ServerState {
         &mut self,
         params: DidOpenTextDocumentParams,
     ) -> ControlFlow<Result<()>> {
+        // Notification handlers must stay synchronous per the LSP spec and
+        // async-lsp, so the insert and its parse run on the calling thread
+        // (spec §5).
         self.insert_document(
             &params.text_document.uri,
             params.text_document.text,
@@ -201,6 +204,9 @@ impl ServerState {
             }
         }
 
+        // Notification handlers must stay synchronous per the LSP spec and
+        // async-lsp, so the reparse below runs on the calling thread
+        // (spec §5).
         // If the incremental update was successful, and we applied edits to the syntax
         // tree, we must finalize those changes by parsing using tree-sitter once again
         #[cfg(feature = "tree-sitter")]

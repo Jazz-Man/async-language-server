@@ -245,6 +245,8 @@ where
     S: Server + Send + Sync + 'static,
 {
     let width = server.server_options().diagnostics_parallelism();
+    // No tokio runtime is current in CLI batch use, so the walk and the
+    // file reads run inline on the calling thread (spec §5).
     let walker = WorkspaceWalker::new(&config.roots, config.walk)?;
     let matchers = DocumentMatchers::new(S::server_document_matchers());
 

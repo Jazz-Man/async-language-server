@@ -87,7 +87,10 @@ URL isn't tracked.
 The `lsp_dispatch!` table glues everything together and adds staleness
 detection: it snapshots the document version before the handler and returns
 `CONTENT_MODIFIED` if the version changed by response time (clients retry).
-Do not duplicate that logic in handlers.
+Do not duplicate that logic in handlers. A method absent from the final
+`ServerCapabilities` answers `METHOD_NOT_FOUND` before conversions or the
+handler run, with a once-per-method warning — implemented-but-unadvertised
+is the implementor's bug, made loud.
 
 ## State and documents
 
@@ -128,6 +131,13 @@ compiles once per source string and runs over the rope through a
 crate in parallel (`build_parallel`), collecting entries over an mpsc
 channel and sorting after collection, so output stays deterministic;
 `.gitignore` respected by default, hidden files skipped.
+`ServerOptions::with_ignore_filenames` and `with_global_ignore_file` feed
+the walker: custom names prune during traversal, and the global file
+compiles per root inside the walk's blocking hop, filtering the collected
+entries. `watcher_globs` includes the configured ignore names and the
+built-in `.gitignore`, whose events invalidate the walk cache. Under
+overlapping roots an entry survives if it survives any root's exclusions
+(union); nested roots emit their files once per root.
 
 ## Diagnostics surfaces
 
@@ -148,7 +158,9 @@ channel and sorting after collection, so output stays deterministic;
   core count.
 - `oneshot::workspace_diagnostics()` runs a `Server` over files on disk with
   no LSP client or transport — it drives `LanguageServerWithState` directly
-  with a closed `ClientSocket`. CLI-style batch diagnostics.
+  with a closed `ClientSocket`. CLI-style batch diagnostics. Oneshot drives
+  the dispatch engine, so a oneshot server must advertise what it serves —
+  at minimum `diagnostic_provider`; the module doctest models this.
 
 Handlers report failures by returning `Err(ServerError)` (`src/error.rs`);
 the wrapper converts them to LSP error responses.

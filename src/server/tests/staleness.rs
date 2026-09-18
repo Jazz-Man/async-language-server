@@ -57,6 +57,9 @@ async fn stale_document_answers_content_modified_then_succeeds_on_retry() {
     // hover could finish against the old version. A follow-up request's
     // response is the wire-native proof the change landed — the loop reads
     // messages in order, so once this responds, the version bump is applied.
+    // The probe's `-32601` may come from the dispatch gate or the trait
+    // default — both satisfy the sequencing barrier, so its producer is
+    // not pinned.
     let _probe = client
         .request(3, "workspace/symbol", json!({ "query": "" }))
         .await;
