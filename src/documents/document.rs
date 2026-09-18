@@ -1,7 +1,9 @@
 use async_lsp::lsp_types::Url;
 use ropey::Rope;
+use std::any::{Any, TypeId};
+use std::collections::HashMap;
 use std::io::{Read, Result};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 #[cfg(feature = "tree-sitter")]
 use async_lsp::lsp_types::{Position, Range};
@@ -45,6 +47,10 @@ pub(crate) struct DocumentInner {
     pub(crate) matcher: Option<Arc<DocumentMatcher>>,
     pub(crate) version: i32,
     pub(crate) text: Rope,
+    // Per-generation derived data, keyed by the value's type. Lives on the
+    // inner so every copy-on-write write (edit, save, disk refresh) drops
+    // it for free — a fresh generation starts from an empty map.
+    derived: Mutex<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
     #[cfg(feature = "tree-sitter")]
     pub(crate) tree_sitter_lang: Option<Language>,
     #[cfg(feature = "tree-sitter")]
@@ -108,6 +114,7 @@ impl Document {
                 matcher,
                 version,
                 text,
+                derived: Mutex::new(HashMap::new()),
                 #[cfg(feature = "tree-sitter")]
                 tree_sitter_lang,
                 #[cfg(feature = "tree-sitter")]
@@ -189,6 +196,46 @@ impl Document {
     #[must_use]
     pub fn matched_name(&self) -> Option<&str> {
         self.inner.matcher.as_ref().map(|matcher| matcher.name())
+    }
+
+    /// Returns the derived value for this document's current content,
+    /// computing it through `compute` on first access and memoizing it for
+    /// every later access until the document changes.
+    ///
+    /// The value is keyed by its type and lives for the document's current
+    /// generation: any write to the document (edit, save, disk refresh)
+    /// starts a fresh generation and fresh derived data. Infallible — a
+    /// fallible derive expresses itself through `T`
+    /// (`Option<Foo>` / `Result<Foo, E>`).
+    ///
+    /// `compute` must not call `derived` again for the same `T` on this
+    /// document: the lock is released before it runs, but the value it
+    /// derives is not yet memoized, so the re-entrant call would recurse
+    /// forever.
+    #[must_use = "the derived value is the point of the call; dropping it only burns the compute"]
+    pub fn derived<T>(&self, compute: impl FnOnce(&Document) -> T) -> Arc<T>
+    where
+        T: Send + Sync + 'static,
+    {
+        let key = TypeId::of::<T>();
+        if let Some(value) = self
+            .inner
+            .derived
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&key)
+            && let Ok(value) = Arc::clone(value).downcast::<T>()
+        {
+            return value;
+        }
+
+        let value = Arc::new(compute(self));
+        self.inner
+            .derived
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(key, Arc::clone(&value) as Arc<dyn Any + Send + Sync>);
+        value
     }
 }
 
@@ -389,11 +436,21 @@ pub struct DocumentQueryCapture {
 #[cfg(test)]
 mod tests {
     use std::io::Read as _;
+    use std::sync::Arc;
     use std::time::Duration;
 
     use ropey::Rope;
 
-    use super::{Document, DocumentReader};
+    use super::{Document, DocumentReader, DocumentSyntax};
+
+    /// The grammarless syntax payload, one signature across the feature gate.
+    fn syntax() -> DocumentSyntax {
+        #[cfg(feature = "tree-sitter")]
+        let syntax = (None, None);
+        #[cfg(not(feature = "tree-sitter"))]
+        let syntax = ();
+        syntax
+    }
 
     /// Ceiling for [`read_to_end_bounded`]: a correct reader drains any text
     /// in microseconds, so a full wait means the read loop is livelocked —
@@ -462,11 +519,6 @@ mod tests {
 
     #[test]
     fn text_bytes_returns_the_document_bytes() {
-        #[cfg(feature = "tree-sitter")]
-        let syntax = (None, None);
-        #[cfg(not(feature = "tree-sitter"))]
-        let syntax = ();
-
         let text = "🙂abc";
         let document = Document::from_parts(
             crate::testing::url("text-bytes.json"),
@@ -474,11 +526,99 @@ mod tests {
             None,
             1,
             Rope::from_str(text),
-            syntax,
+            syntax(),
         );
 
         assert_eq!(document.text_bytes(), text.as_bytes());
     }
+
+    // The derived slot memoizes per TypeId inside one generation and
+    // recomputes across generations: a new generation starts from an empty
+    // map, so the didSave trap (fresh text, old version) is structurally
+    // closed.
+    #[test]
+    fn derived_memoizes_per_type_within_a_generation() {
+        let doc = Document::from_parts(
+            crate::testing::url("derived.json"),
+            "json".into(),
+            None,
+            1,
+            Rope::from_str("🙂abc"),
+            syntax(),
+        );
+
+        let first = doc.derived(|_doc| String::from("one"));
+        assert_eq!(&*first, "one");
+
+        // A second call for the same type must hand back the memoized value,
+        // not run its (differently-computing) closure again.
+        let again = doc.derived(|_doc| String::from("two"));
+        assert_eq!(&*again, "one");
+        assert!(Arc::ptr_eq(&first, &again));
+
+        // A second type derives independently on the same document — and
+        // does not evict the first type's memo.
+        let flagged = doc.derived(|_doc| std::sync::atomic::AtomicBool::new(true));
+        assert!(flagged.load(std::sync::atomic::Ordering::Relaxed));
+        let third = doc.derived(|_doc| String::from("unused"));
+        assert!(Arc::ptr_eq(&first, &third));
+    }
+
+    #[test]
+    fn a_new_generation_recomputes_derived_data() {
+        let seed = Document::from_parts(
+            crate::testing::url("derived-generations.json"),
+            "json".into(),
+            None,
+            1,
+            Rope::from_str("v1"),
+            syntax(),
+        );
+        let meta = Arc::clone(&seed.inner_arc().meta);
+
+        let doc =
+            Document::from_shared_meta(Arc::clone(&meta), None, 1, Rope::from_str("v1"), syntax());
+        let seen = doc.derived(|_doc| String::from("first"));
+        assert_eq!(&*seen, "first");
+
+        // The next generation: same identity, fresh derived map.
+        let next = Document::from_shared_meta(meta, None, 2, Rope::from_str("v2"), syntax());
+        let recomputed = next.derived(|_doc| String::from("second"));
+        assert_eq!(&*recomputed, "second");
+    }
+
+    // The didSave trap from the research: fresh text can arrive under an old
+    // version — derived must key on the generation, never the version.
+    #[test]
+    fn derived_keys_on_the_generation_not_the_version() {
+        let seed = Document::from_parts(
+            crate::testing::url("derived-didsave.json"),
+            "json".into(),
+            None,
+            1,
+            Rope::from_str("old"),
+            syntax(),
+        );
+        let meta = Arc::clone(&seed.inner_arc().meta);
+
+        let stale =
+            Document::from_shared_meta(Arc::clone(&meta), None, 1, Rope::from_str("old"), syntax());
+        assert_eq!(&*stale.derived(|_doc| String::from("old")), "old");
+
+        // A didSave-style reinstall: fresh text re-enters under the SAME
+        // version. The fresh generation must recompute, and its compute must
+        // see the fresh text — not the stale generation's memoized value.
+        let fresh = Document::from_shared_meta(meta, None, 1, Rope::from_str("new"), syntax());
+        let recomputed = fresh.derived(Document::text_contents);
+        assert_eq!(&*recomputed, "new");
+    }
+
+    // The compile-only auto-trait pin (api-auto-trait-contract): a private
+    // field change that silently drops Send or Sync must stop compiling.
+    const _: () = {
+        const fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Document>();
+    };
 
     /// Opens `json_text` as a JSON document plus a grammarless `plain.txt`
     /// neighbor against the shared json matchers, returning both document
