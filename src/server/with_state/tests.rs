@@ -30,7 +30,7 @@ use async_lsp::lsp_types::{
 use async_lsp::{ClientSocket, ErrorCode, LanguageServer};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 struct TestServer;
@@ -1568,7 +1568,7 @@ async fn notification_hooks_run_after_the_internal_handlers() {
     fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-fn initialize_params(root: &PathBuf) -> InitializeParams {
+fn initialize_params(root: &Path) -> InitializeParams {
     InitializeParams {
         process_id: Some(std::process::id()),
         capabilities: ClientCapabilities::default(),

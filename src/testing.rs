@@ -33,8 +33,10 @@ use async_lsp::lsp_types::{
     SemanticToken, ServerCapabilities, TextDocumentItem, Url, WorkDoneProgressParams,
     WorkspaceDiagnosticParams, WorkspaceFolder,
 };
+use rstest::fixture;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Builds an LSP [`Position`] with the given line and character.
@@ -139,12 +141,146 @@ pub(crate) fn temp_workspace(prefix: &str, name: &str) -> PathBuf {
 }
 
 /// Wraps a workspace root path as a named `WorkspaceFolder`.
-pub(crate) fn workspace_folder(path: &PathBuf) -> WorkspaceFolder {
+pub(crate) fn workspace_folder(path: &Path) -> WorkspaceFolder {
     let uri = Url::from_file_path(path).expect("path can be converted to a URL");
     WorkspaceFolder {
         uri,
         name: "test".into(),
     }
+}
+
+/// A temporary workspace directory removed on drop — including on
+/// unwind, which today's manual `fs::remove_dir_all` tails cannot do.
+/// The prefix names the owning test module so a directory that outlives
+/// a run (best-effort drop: a directory left with restricted
+/// permissions is leaked, attributed by prefix) can be traced back.
+pub(crate) struct TempWorkspace {
+    root: PathBuf,
+}
+
+impl TempWorkspace {
+    fn new(prefix: &str) -> Self {
+        // Uniqueness rides three axes: the process id separates the
+        // sibling processes nextest runs tests in, the per-process
+        // counter separates back-to-back constructions (the role `name`
+        // plays for `temp_workspace`), and the millisecond stamp keeps a
+        // leaked directory time-attributable.
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let pid = std::process::id();
+        let millis = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time is after epoch")
+            .as_millis();
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!("als-{prefix}-{pid}-{millis}-{seq}"));
+        fs::create_dir_all(&root).expect("temp workspace can be created");
+        Self { root }
+    }
+
+    /// Writes `text` under the root (creating parent directories) and
+    /// returns the file's canonical URL — write + canonicalize +
+    /// `Url::from_file_path` in one call.
+    pub(crate) fn write(&self, rel: impl AsRef<Path>, text: &str) -> Url {
+        let file = self.root.join(&rel);
+        if let Some(parent) = file.parent() {
+            fs::create_dir_all(parent).expect("nested dirs can be created");
+        }
+        fs::write(&file, text).expect("file can be written");
+        self.url(rel)
+    }
+
+    /// Returns the canonical URL of an existing file under the root.
+    pub(crate) fn url(&self, rel: impl AsRef<Path>) -> Url {
+        let canonical = fs::canonicalize(self.root.join(rel)).expect("file can be canonicalized");
+        Url::from_file_path(canonical).expect("path can be converted to a URL")
+    }
+
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
+    }
+}
+
+impl std::ops::Deref for TempWorkspace {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        &self.root
+    }
+}
+
+impl Drop for TempWorkspace {
+    fn drop(&mut self) {
+        // Best-effort by design: drop must not panic, and a failed
+        // cleanup only leaks a prefixed temp directory.
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
+/// Default workspace; tests override the attribution prefix:
+/// `#[with("walker")] workspace: TempWorkspace`.
+#[fixture]
+pub(crate) fn workspace(#[default("als")] prefix: &str) -> TempWorkspace {
+    TempWorkspace::new(prefix)
+}
+
+#[fixture]
+pub(crate) fn state() -> ServerState {
+    ServerState::with_options::<TestServer>(ClientSocket::new_closed(), &ServerOptions::default())
+}
+
+/// The canonical UTF-16 conversion fixture (`"🙂abc"` document). Wraps
+/// [`state_with_documents`], which stays: the `conversion_tests!` macro's
+/// emitted code calls it (spec D5).
+#[fixture]
+pub(crate) fn utf16_state() -> (ServerState, Url, Url) {
+    state_with_documents()
+}
+
+#[fixture]
+pub(crate) fn gated_state() -> ServerState {
+    let state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    advertise_workspace_diagnostics(&state);
+    state
+}
+
+/// The state-setup triplet (folders + advertise + refresh) collapsed.
+/// A plain async helper, not a fixture: fixtures resolve before the
+/// test body, and the refresh must run after the test's writes.
+///
+/// The seeded state matches only the plain-text suite (`*.test` globs,
+/// language id `test` — see [`SeedingServer`]): seeding a file of any
+/// other extension yields an empty `urls`.
+pub(crate) struct SeededWorkspace {
+    pub(crate) state: ServerState,
+    pub(crate) urls: Vec<Url>,
+}
+
+/// Seeds [`seed_workspace`]'s state with the plain-text matchers: the
+/// bare shared [`TestServer`] advertises none, and the refresh walk
+/// skips files no matcher claims.
+struct SeedingServer;
+
+impl Server for SeedingServer {
+    fn server_document_matchers() -> Vec<DocumentMatcher> {
+        test_document_matchers()
+    }
+}
+
+pub(crate) async fn seed_workspace(ws: &TempWorkspace) -> SeededWorkspace {
+    let state = ServerState::with_options::<SeedingServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    state.set_workspace_folders([workspace_folder(ws)]);
+    advertise_workspace_diagnostics(&state);
+    let urls = state
+        .refresh_workspace_documents()
+        .await
+        .expect("workspace documents can be refreshed");
+    SeededWorkspace { state, urls }
 }
 
 /// Builds empty `workspace/diagnostic` params: no identifier, no previous
@@ -359,4 +495,55 @@ fn semantic_tokens_full_delta_provider() -> async_lsp::lsp_types::SemanticTokens
 /// Test-only: opens the dispatch gate entirely (every method allowed).
 pub(crate) fn allow_all_methods(state: &mut ServerState) {
     state.set_advertised_methods_all();
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+    use std::fs;
+
+    use super::{TempWorkspace, seed_workspace, workspace};
+
+    #[rstest]
+    fn write_returns_canonical_urls_and_creates_nested_parents(
+        #[with("testing")] workspace: TempWorkspace,
+    ) {
+        let url = workspace.write("nested/deep/a.test", "body");
+        let path = url.to_file_path().expect("file URL converts to a path");
+        assert!(path.is_file());
+        assert_eq!(fs::read_to_string(&path).expect("file can be read"), "body");
+    }
+
+    #[rstest]
+    fn drop_removes_the_tree(#[with("testing")] workspace: TempWorkspace) {
+        let _url = workspace.write("a.test", "a");
+        let root = workspace.root().to_path_buf();
+        drop(workspace);
+        assert!(!root.exists());
+    }
+
+    #[rstest]
+    fn guards_with_the_same_prefix_get_distinct_roots() {
+        let first = TempWorkspace::new("testing");
+        let second = TempWorkspace::new("testing");
+        assert_ne!(first.root(), second.root());
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn seed_workspace_refreshes_written_documents_into_state(
+        #[with("testing")] workspace: TempWorkspace,
+    ) {
+        let url = workspace.write("seeded.test", "seeded");
+        let seeded = seed_workspace(&workspace).await;
+        assert_eq!(seeded.urls, vec![url.clone()]);
+        assert_eq!(
+            seeded
+                .state
+                .document(&url)
+                .expect("refreshed document is in state")
+                .text_contents(),
+            "seeded",
+        );
+    }
 }
