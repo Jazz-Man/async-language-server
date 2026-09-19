@@ -15,12 +15,14 @@ pub(crate) struct DocumentSymbolRequest;
 mod tests {
     use async_lsp::lsp_types::{
         DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, PartialResultParams,
-        SymbolKind, TextDocumentIdentifier, WorkDoneProgressParams,
+        SymbolKind, TextDocumentIdentifier, Url, WorkDoneProgressParams,
     };
     use lsp_macros::conversion_tests;
+    use rstest::rstest;
 
     use crate::lsp_requests::{DocumentSymbolRequest, Request};
-    use crate::testing::{line_position, same_line, state_with_documents};
+    use crate::server::ServerState;
+    use crate::testing::{line_position, same_line, utf16_state};
 
     conversion_tests! {
         document_symbol_nested_outgoing_utf8_becomes_utf16: DocumentSymbolRequest {
@@ -49,9 +51,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn document_symbol_nested_children_convert_recursively() {
-        let (state, _plain, emoji) = state_with_documents();
+    #[rstest]
+    fn document_symbol_nested_children_convert_recursively(utf16_state: (ServerState, Url, Url)) {
+        let (state, _plain, emoji) = utf16_state;
         let document = state.document(&emoji).expect("emoji document is tracked");
         let mut response = Some(DocumentSymbolResponse::Nested(vec![DocumentSymbol {
             name: "f".into(),

@@ -11,16 +11,20 @@ pub(crate) struct DefinitionRequest;
 mod tests {
     use async_lsp::lsp_types::{
         GotoDefinitionParams, GotoDefinitionResponse, Location, PartialResultParams,
-        TextDocumentIdentifier, TextDocumentPositionParams, WorkDoneProgressParams,
+        TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
     };
     use lsp_macros::conversion_tests;
+    use rstest::rstest;
 
     use crate::lsp_requests::{DefinitionRequest, Request};
-    use crate::testing::{line_position, same_line, state_with_documents};
+    use crate::server::ServerState;
+    use crate::testing::{line_position, same_line, utf16_state};
 
-    #[test]
-    fn definition_locations_are_converted_using_their_own_document() {
-        let (state, source, target) = state_with_documents();
+    #[rstest]
+    fn definition_locations_are_converted_using_their_own_document(
+        utf16_state: (ServerState, Url, Url),
+    ) {
+        let (state, source, target) = utf16_state;
         let document = state.document(&source).unwrap();
         let mut response = Some(GotoDefinitionResponse::Scalar(Location::new(
             target,

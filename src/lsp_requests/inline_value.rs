@@ -45,15 +45,17 @@ fn convert_response(
 mod tests {
     use async_lsp::lsp_types::{
         InlineValue, InlineValueContext, InlineValueParams, InlineValueText,
-        TextDocumentIdentifier, WorkDoneProgressParams,
+        TextDocumentIdentifier, Url, WorkDoneProgressParams,
     };
+    use rstest::rstest;
 
     use crate::lsp_requests::{InlineValueRequest, Request};
-    use crate::testing::{same_line, state_with_documents};
+    use crate::server::ServerState;
+    use crate::testing::{same_line, utf16_state};
 
-    #[test]
-    fn inline_value_ranges_convert_both_directions() {
-        let (state, _plain, emoji) = state_with_documents();
+    #[rstest]
+    fn inline_value_ranges_convert_both_directions(utf16_state: (ServerState, Url, Url)) {
+        let (state, _plain, emoji) = utf16_state;
         let document = state.document(&emoji).expect("emoji document is tracked");
         let mut params = InlineValueParams {
             text_document: TextDocumentIdentifier::new(emoji),

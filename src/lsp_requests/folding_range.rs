@@ -8,14 +8,16 @@ pub(crate) struct FoldingRangeRequest;
 
 #[cfg(test)]
 mod tests {
-    use async_lsp::lsp_types::FoldingRange;
+    use async_lsp::lsp_types::{FoldingRange, Url};
+    use rstest::rstest;
 
     use crate::lsp_requests::{FoldingRangeRequest, Request};
-    use crate::testing::state_with_documents;
+    use crate::server::ServerState;
+    use crate::testing::utf16_state;
 
-    #[test]
-    fn folding_range_characters_convert_outgoing() {
-        let (state, _plain, emoji) = state_with_documents();
+    #[rstest]
+    fn folding_range_characters_convert_outgoing(utf16_state: (ServerState, Url, Url)) {
+        let (state, _plain, emoji) = utf16_state;
         let document = state.document(&emoji).expect("emoji document is tracked");
         let mut response = Some(vec![FoldingRange {
             start_line: 0,

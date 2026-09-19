@@ -17,6 +17,7 @@ mod tests {
         SemanticTokens, SemanticTokensDelta, SemanticTokensEdit, SemanticTokensFullDeltaResult,
         SemanticTokensResult, Url,
     };
+    use rstest::rstest;
 
     /// The two-line multibyte fixture: line 0 = "🙂abc" (the emoji spans
     /// bytes 0..4), line 1 = "x🙂z" ("z" sits at document byte 5, UTF-16
@@ -70,7 +71,7 @@ mod tests {
         (state, uri, response)
     }
 
-    #[test]
+    #[rstest]
     fn delta_edits_convert_seeded_from_cache() {
         let (_state, _uri, response) = seeded_delta_response();
         let Some(SemanticTokensFullDeltaResult::TokensDelta(delta)) = response else {
@@ -86,7 +87,7 @@ mod tests {
         assert_eq!(inserted[0].length, 1);
     }
 
-    #[test]
+    #[rstest]
     fn delta_cache_miss_passes_through() {
         let (state, uri) = state_with_delta_document();
         let document = state.document(&uri).expect("delta document is tracked");
@@ -102,7 +103,7 @@ mod tests {
         assert_eq!(response, expected);
     }
 
-    #[test]
+    #[rstest]
     fn delta_splice_keeps_original_utf8_values() {
         let (state, uri, _response) = seeded_delta_response();
 

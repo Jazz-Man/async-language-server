@@ -11,12 +11,14 @@ pub(crate) struct InlayHintRequest;
 mod tests {
     use async_lsp::lsp_types::{
         InlayHint, InlayHintLabel, InlayHintLabelPart, InlayHintParams, Location,
-        TextDocumentIdentifier, TextEdit, WorkDoneProgressParams,
+        TextDocumentIdentifier, TextEdit, Url, WorkDoneProgressParams,
     };
     use lsp_macros::conversion_tests;
+    use rstest::rstest;
 
     use crate::lsp_requests::{InlayHintRequest, Request};
-    use crate::testing::{line_position, same_line, state_with_documents};
+    use crate::server::ServerState;
+    use crate::testing::{line_position, same_line, utf16_state};
 
     conversion_tests! {
         inlay_hint_round_trips_both_directions: InlayHintRequest {
@@ -42,9 +44,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn inlay_hint_edits_and_label_part_locations_convert_outgoing() {
-        let (state, plain, emoji) = state_with_documents();
+    #[rstest]
+    fn inlay_hint_edits_and_label_part_locations_convert_outgoing(
+        utf16_state: (ServerState, Url, Url),
+    ) {
+        let (state, plain, emoji) = utf16_state;
         let document = state.document(&emoji).expect("emoji document is tracked");
         let mut response = Some(vec![InlayHint {
             position: line_position(0, 4),

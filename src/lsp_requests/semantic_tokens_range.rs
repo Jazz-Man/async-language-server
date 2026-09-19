@@ -11,16 +11,18 @@ pub(crate) struct SemanticTokensRangeRequest;
 mod tests {
     use async_lsp::lsp_types::{
         PartialResultParams, SemanticTokens, SemanticTokensPartialResult,
-        SemanticTokensRangeParams, SemanticTokensRangeResult, TextDocumentIdentifier,
+        SemanticTokensRangeParams, SemanticTokensRangeResult, TextDocumentIdentifier, Url,
         WorkDoneProgressParams,
     };
+    use rstest::rstest;
 
     use crate::lsp_requests::{Request, SemanticTokensRangeRequest};
-    use crate::testing::{same_line, state_with_documents, token};
+    use crate::server::ServerState;
+    use crate::testing::{same_line, token, utf16_state};
 
-    #[test]
-    fn range_converts_incoming_range_and_outgoing_columns() {
-        let (state, _plain, emoji) = state_with_documents();
+    #[rstest]
+    fn range_converts_incoming_range_and_outgoing_columns(utf16_state: (ServerState, Url, Url)) {
+        let (state, _plain, emoji) = utf16_state;
         let document = state.document(&emoji).expect("emoji document is tracked");
 
         let mut params = SemanticTokensRangeParams {

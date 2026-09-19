@@ -35,12 +35,14 @@ mod tests {
     use async_lsp::lsp_types::{
         ParameterInformation, ParameterLabel, SignatureHelp, SignatureHelpContext,
         SignatureHelpParams, SignatureHelpTriggerKind, SignatureInformation,
-        TextDocumentIdentifier, TextDocumentPositionParams, WorkDoneProgressParams,
+        TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
     };
     use lsp_macros::conversion_tests;
+    use rstest::rstest;
 
     use crate::lsp_requests::{Request, SignatureHelpRequest};
-    use crate::testing::{line_position, state_with_documents};
+    use crate::server::ServerState;
+    use crate::testing::{line_position, utf16_state};
 
     conversion_tests! {
         signature_help_position_converts_incoming: SignatureHelpRequest {
@@ -57,9 +59,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn signature_help_label_offsets_recount_against_the_label_string() {
-        let (state, _plain, emoji) = state_with_documents();
+    #[rstest]
+    fn signature_help_label_offsets_recount_against_the_label_string(
+        utf16_state: (ServerState, Url, Url),
+    ) {
+        let (state, _plain, emoji) = utf16_state;
         let document = state.document(&emoji).expect("emoji document is tracked");
         let mut response = Some(SignatureHelp {
             signatures: vec![SignatureInformation {
@@ -97,9 +101,9 @@ mod tests {
         assert_eq!(parameters[1].label, ParameterLabel::Simple("a".into()));
     }
 
-    #[test]
-    fn signature_help_context_label_offsets_convert_incoming() {
-        let (state, _plain, emoji) = state_with_documents();
+    #[rstest]
+    fn signature_help_context_label_offsets_convert_incoming(utf16_state: (ServerState, Url, Url)) {
+        let (state, _plain, emoji) = utf16_state;
         let document = state.document(&emoji).expect("emoji document is tracked");
         let mut params = SignatureHelpParams {
             context: Some(SignatureHelpContext {

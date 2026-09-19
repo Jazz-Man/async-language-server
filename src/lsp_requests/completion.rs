@@ -42,17 +42,19 @@ fn convert_response(
 mod tests {
     use async_lsp::lsp_types::{
         CompletionItem, CompletionParams, CompletionResponse, PartialResultParams,
-        TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, WorkDoneProgressParams,
+        TextDocumentIdentifier, TextDocumentPositionParams, TextEdit, Url, WorkDoneProgressParams,
     };
     use lsp_macros::conversion_tests;
+    use rstest::rstest;
 
-    use crate::testing::{line_position, same_line, state_with_documents};
+    use crate::server::ServerState;
+    use crate::testing::{line_position, same_line, utf16_state};
 
     use crate::lsp_requests::{CompletionRequest, Request};
 
-    #[test]
-    fn completion_additional_text_edits_are_converted() {
-        let (state, _, target) = state_with_documents();
+    #[rstest]
+    fn completion_additional_text_edits_are_converted(utf16_state: (ServerState, Url, Url)) {
+        let (state, _, target) = utf16_state;
         let document = state.document(&target).unwrap();
         let mut response = Some(CompletionResponse::Array(vec![CompletionItem {
             label: "item".into(),

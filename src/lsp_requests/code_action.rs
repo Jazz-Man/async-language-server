@@ -50,17 +50,19 @@ mod tests {
 
     use async_lsp::lsp_types::{
         CodeAction, CodeActionContext, CodeActionOrCommand, CodeActionParams, Diagnostic,
-        PartialResultParams, TextDocumentIdentifier, TextEdit, WorkDoneProgressParams,
+        PartialResultParams, TextDocumentIdentifier, TextEdit, Url, WorkDoneProgressParams,
         WorkspaceEdit,
     };
+    use rstest::rstest;
 
-    use crate::testing::{same_line, state_with_documents};
+    use crate::server::ServerState;
+    use crate::testing::{same_line, utf16_state};
 
     use crate::lsp_requests::{CodeActionRequest, Request};
 
-    #[test]
-    fn code_action_context_diagnostics_are_converted() {
-        let (state, _, target) = state_with_documents();
+    #[rstest]
+    fn code_action_context_diagnostics_are_converted(utf16_state: (ServerState, Url, Url)) {
+        let (state, _, target) = utf16_state;
         let document = state.document(&target).unwrap();
         let mut params = CodeActionParams {
             text_document: TextDocumentIdentifier::new(target),
@@ -83,9 +85,11 @@ mod tests {
         assert_eq!(params.context.diagnostics[0].range, same_line(0, 4, 4));
     }
 
-    #[test]
-    fn code_action_outgoing_hook_converts_diagnostics_and_edits() {
-        let (state, _, target) = state_with_documents();
+    #[rstest]
+    fn code_action_outgoing_hook_converts_diagnostics_and_edits(
+        utf16_state: (ServerState, Url, Url),
+    ) {
+        let (state, _, target) = utf16_state;
         let document = state.document(&target).unwrap();
         let mut response = Some(vec![CodeActionOrCommand::CodeAction(CodeAction {
             title: "action".into(),

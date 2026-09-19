@@ -56,16 +56,20 @@ mod tests {
     use async_lsp::lsp_types::{
         Diagnostic, DocumentDiagnosticReport, DocumentDiagnosticReportKind,
         DocumentDiagnosticReportResult, FullDocumentDiagnosticReport,
-        RelatedFullDocumentDiagnosticReport,
+        RelatedFullDocumentDiagnosticReport, Url,
     };
+    use rstest::rstest;
 
-    use crate::testing::{same_line, state_with_documents};
+    use crate::server::ServerState;
+    use crate::testing::{same_line, utf16_state};
 
     use crate::lsp_requests::{DocumentDiagnosticsRequest, Request};
 
-    #[test]
-    fn document_diagnostic_related_documents_are_converted_using_their_own_document() {
-        let (state, source, target) = state_with_documents();
+    #[rstest]
+    fn document_diagnostic_related_documents_are_converted_using_their_own_document(
+        utf16_state: (ServerState, Url, Url),
+    ) {
+        let (state, source, target) = utf16_state;
         let document = state.document(&source).unwrap();
         let mut response = DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(
             RelatedFullDocumentDiagnosticReport {

@@ -11,15 +11,17 @@ pub(crate) struct ColorPresentationRequest;
 mod tests {
     use async_lsp::lsp_types::{
         Color, ColorPresentation, ColorPresentationParams, PartialResultParams,
-        TextDocumentIdentifier, TextEdit, WorkDoneProgressParams,
+        TextDocumentIdentifier, TextEdit, Url, WorkDoneProgressParams,
     };
+    use rstest::rstest;
 
     use crate::lsp_requests::{ColorPresentationRequest, Request};
-    use crate::testing::{same_line, state_with_documents};
+    use crate::server::ServerState;
+    use crate::testing::{same_line, utf16_state};
 
-    #[test]
-    fn color_presentation_round_trips_both_directions() {
-        let (state, _plain, emoji) = state_with_documents();
+    #[rstest]
+    fn color_presentation_round_trips_both_directions(utf16_state: (ServerState, Url, Url)) {
+        let (state, _plain, emoji) = utf16_state;
         let document = state.document(&emoji).expect("emoji document is tracked");
 
         let mut params = ColorPresentationParams {

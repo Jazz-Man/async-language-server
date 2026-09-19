@@ -83,13 +83,15 @@ mod tests {
         Location, OneOf, SymbolInformation, SymbolKind, Url, WorkspaceLocation, WorkspaceSymbol,
         WorkspaceSymbolResponse,
     };
+    use rstest::rstest;
 
     use crate::lsp_requests::Request;
-    use crate::testing::{same_line, state_with_documents, temp_workspace};
+    use crate::server::ServerState;
+    use crate::testing::{same_line, state_with_documents, temp_workspace, utf16_state};
 
     use super::SymbolRequest;
 
-    #[test]
+    #[rstest]
     fn symbol_flat_locations_convert_tracked_from_disk_or_pass_through() {
         let (state, _plain, emoji) = state_with_documents();
 
@@ -159,9 +161,9 @@ mod tests {
         fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 
-    #[test]
-    fn symbol_nested_left_converts_and_right_passes_through() {
-        let (state, _plain, emoji) = state_with_documents();
+    #[rstest]
+    fn symbol_nested_left_converts_and_right_passes_through(utf16_state: (ServerState, Url, Url)) {
+        let (state, _plain, emoji) = utf16_state;
         let mut response = Some(WorkspaceSymbolResponse::Nested(vec![
             WorkspaceSymbol {
                 name: "l".into(),

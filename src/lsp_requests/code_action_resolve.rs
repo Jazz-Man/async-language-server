@@ -49,14 +49,16 @@ fn convert_code_action(
 mod tests {
     use std::collections::HashMap;
 
-    use async_lsp::lsp_types::{CodeAction, Diagnostic, Range, TextEdit, WorkspaceEdit};
+    use async_lsp::lsp_types::{CodeAction, Diagnostic, Range, TextEdit, Url, WorkspaceEdit};
+    use rstest::rstest;
 
     use crate::lsp_requests::{CodeActionResolveRequest, Request};
-    use crate::testing::{same_line, state_with_documents};
+    use crate::server::ServerState;
+    use crate::testing::{same_line, utf16_state};
 
-    #[test]
-    fn code_action_resolve_hooks_convert_in_both_directions() {
-        let (state, _, target) = state_with_documents();
+    #[rstest]
+    fn code_action_resolve_hooks_convert_in_both_directions(utf16_state: (ServerState, Url, Url)) {
+        let (state, _, target) = utf16_state;
         let document = state.document(&target).unwrap();
         let action = |range: Range| CodeAction {
             title: "action".into(),

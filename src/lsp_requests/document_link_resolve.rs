@@ -28,11 +28,12 @@ fn convert_response(state: &ServerState, document: &Document, response: &mut Doc
 #[cfg(test)]
 mod tests {
     use async_lsp::ClientSocket;
-    use async_lsp::lsp_types::{DocumentLink, Range};
+    use async_lsp::lsp_types::{DocumentLink, Range, Url};
+    use rstest::rstest;
 
     use crate::lsp_requests::{Direction, DocumentLinkResolveRequest, convert_resolve_item};
     use crate::server::{ServerOptions, ServerState};
-    use crate::testing::{TestServer, open_document, same_line, state_with_documents, url};
+    use crate::testing::{TestServer, open_document, same_line, url, utf16_state};
     use crate::text_utils::Encoding;
 
     fn link(range: Range) -> DocumentLink {
@@ -44,7 +45,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[rstest]
     fn resolve_range_converts_against_the_sole_tracked_document() {
         // Exactly one tracked document ("🙂abc"), UTF-16 negotiated.
         let mut state = ServerState::with_options::<TestServer>(
@@ -69,10 +70,10 @@ mod tests {
         assert_eq!(item.range, same_line(0, 2, 2));
     }
 
-    #[test]
-    fn resolve_range_passes_through_without_a_document() {
+    #[rstest]
+    fn resolve_range_passes_through_without_a_document(utf16_state: (ServerState, Url, Url)) {
         // No document snapshot: the range passes through unchanged.
-        let (state, _, _) = state_with_documents();
+        let (state, _, _) = utf16_state;
 
         let mut item = link(same_line(0, 4, 4));
 
@@ -86,7 +87,7 @@ mod tests {
         assert_eq!(item.range, same_line(0, 4, 4));
     }
 
-    #[test]
+    #[rstest]
     fn resolve_echo_round_trip_is_identity() {
         // Sole doc "🙂abc", UTF-16 negotiated. The client echoes the link at
         // the UTF-16 position it was delivered: the incoming converter must

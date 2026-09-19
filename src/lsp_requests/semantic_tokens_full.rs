@@ -8,14 +8,16 @@ pub(crate) struct SemanticTokensFullRequest;
 
 #[cfg(test)]
 mod tests {
-    use async_lsp::lsp_types::{SemanticTokens, SemanticTokensResult};
+    use async_lsp::lsp_types::{SemanticTokens, SemanticTokensResult, Url};
+    use rstest::rstest;
 
     use crate::lsp_requests::{Request, SemanticTokensFullRequest};
-    use crate::testing::{state_with_documents, token};
+    use crate::server::ServerState;
+    use crate::testing::{token, utf16_state};
 
-    #[test]
-    fn full_tokens_convert_columns_and_lengths_and_cache() {
-        let (state, _plain, emoji) = state_with_documents();
+    #[rstest]
+    fn full_tokens_convert_columns_and_lengths_and_cache(utf16_state: (ServerState, Url, Url)) {
+        let (state, _plain, emoji) = utf16_state;
         let document = state.document(&emoji).expect("emoji document is tracked");
         // "🙂abc": UTF-8 bytes — token at byte 0 length 4 (the emoji),
         // token at byte 4 length 3 ("abc"). UTF-16: columns 0 and 2,

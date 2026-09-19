@@ -40,17 +40,19 @@ fn convert_response(
 #[cfg(test)]
 mod tests {
     use async_lsp::lsp_types::{
-        PartialResultParams, SelectionRange, SelectionRangeParams, TextDocumentIdentifier,
+        PartialResultParams, SelectionRange, SelectionRangeParams, TextDocumentIdentifier, Url,
         WorkDoneProgressParams,
     };
+    use rstest::rstest;
 
-    use crate::testing::{line_position, same_line, state_with_documents};
+    use crate::server::ServerState;
+    use crate::testing::{line_position, same_line, utf16_state};
 
     use crate::lsp_requests::{Request, SelectionRangeRequest};
 
-    #[test]
-    fn selection_range_positions_and_chains_convert() {
-        let (state, _plain, emoji) = state_with_documents();
+    #[rstest]
+    fn selection_range_positions_and_chains_convert(utf16_state: (ServerState, Url, Url)) {
+        let (state, _plain, emoji) = utf16_state;
         let document = state.document(&emoji).expect("emoji document is tracked");
         let mut params = SelectionRangeParams {
             text_document: TextDocumentIdentifier::new(emoji),

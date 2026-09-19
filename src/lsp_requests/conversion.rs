@@ -1132,19 +1132,22 @@ mod tests {
         splice_semantic_tokens_cache,
     };
     use async_lsp::lsp_types::{
-        DocumentChanges, LocationLink, OneOf, OptionalVersionedTextDocumentIdentifier,
-        SemanticToken, SemanticTokensEdit, TextDocumentEdit, TextEdit, WorkspaceEdit,
+        DocumentChanges, LocationLink, OneOf, OptionalVersionedTextDocumentIdentifier, Position,
+        SemanticToken, SemanticTokensEdit, TextDocumentEdit, TextEdit, Url, WorkspaceEdit,
     };
+    use rstest::rstest;
 
     use crate::lsp_requests::{Request, WillCreateFilesRequest};
-    use crate::server::CachedSemanticTokens;
+    use crate::server::{CachedSemanticTokens, ServerState};
     use crate::testing::{
-        line_position, open_document, same_line, state_with_documents, token, url,
+        line_position, open_document, same_line, state_with_documents, token, url, utf16_state,
     };
 
-    #[test]
-    fn workspace_edit_document_changes_edits_convert_outgoing() {
-        let (state, _plain, emoji) = state_with_documents();
+    #[rstest]
+    fn workspace_edit_document_changes_edits_convert_outgoing(
+        utf16_state: (ServerState, Url, Url),
+    ) {
+        let (state, _plain, emoji) = utf16_state;
         let document = state.document(&emoji).expect("emoji document is tracked");
         let mut response = Some(WorkspaceEdit {
             document_changes: Some(DocumentChanges::Edits(vec![TextDocumentEdit {
@@ -1176,9 +1179,11 @@ mod tests {
         assert_eq!(edit.range, same_line(0, 2, 2));
     }
 
-    #[test]
-    fn location_link_outgoing_converts_origin_and_target_ranges() {
-        let (state, _plain, emoji) = state_with_documents();
+    #[rstest]
+    fn location_link_outgoing_converts_origin_and_target_ranges(
+        utf16_state: (ServerState, Url, Url),
+    ) {
+        let (state, _plain, emoji) = utf16_state;
         let document = state.document(&emoji).expect("emoji document is tracked");
         let mut link = LocationLink {
             origin_selection_range: Some(same_line(0, 4, 4)),
@@ -1195,7 +1200,7 @@ mod tests {
         assert_eq!(link.target_selection_range, same_line(0, 2, 2));
     }
 
-    #[test]
+    #[rstest]
     fn seeded_token_stream_recomputes_deltas_across_lines() {
         let (mut state, _, _) = state_with_documents();
         let seeded = url("seeded.txt");
@@ -1220,20 +1225,25 @@ mod tests {
         assert_eq!(data, vec![token(0, 1, 1), token(1, 2, 1)]);
     }
 
-    #[test]
-    fn absolute_position_folds_deltas() {
-        // Empty prefix: the fold starts from the document origin.
-        assert_eq!(absolute_position(&[]), line_position(0, 0));
-
-        // A line-crossing token restarts the column; the next same-line
-        // token accumulates onto it: (0,0) -> (1,3) -> (1,8).
-        let folded = absolute_position(&[token(1, 3, 1), token(0, 5, 1)]);
-        assert_eq!(folded, line_position(1, 8));
+    #[rstest]
+    // Empty prefix: the fold starts from the document origin.
+    #[case::empty_prefix_folds_from_the_document_origin(vec![], line_position(0, 0))]
+    // A line-crossing token restarts the column; the next same-line token
+    // accumulates onto it: (0,0) -> (1,3) -> (1,8).
+    #[case::line_crossing_token_restarts_then_accumulates(
+        vec![token(1, 3, 1), token(0, 5, 1)],
+        line_position(1, 8),
+    )]
+    fn absolute_position_folds_deltas(
+        #[case] data: Vec<SemanticToken>,
+        #[case] expected: Position,
+    ) {
+        assert_eq!(absolute_position(&data), expected);
     }
 
-    #[test]
-    fn splice_applies_edit_delete_counts_at_nonzero_offsets() {
-        let (state, plain, _) = state_with_documents();
+    #[rstest]
+    fn splice_applies_edit_delete_counts_at_nonzero_offsets(utf16_state: (ServerState, Url, Url)) {
+        let (state, plain, _) = utf16_state;
         let cached = CachedSemanticTokens {
             result_id: "cached".into(),
             data: vec![

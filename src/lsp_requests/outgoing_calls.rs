@@ -44,11 +44,13 @@ fn convert_response(
 mod tests {
     use async_lsp::lsp_types::{
         CallHierarchyItem, CallHierarchyOutgoingCall, CallHierarchyOutgoingCallsParams,
-        PartialResultParams, SymbolKind, WorkDoneProgressParams,
+        PartialResultParams, SymbolKind, Url, WorkDoneProgressParams,
     };
+    use rstest::rstest;
 
     use crate::lsp_requests::{OutgoingCallsRequest, Request};
-    use crate::testing::{same_line, state_with_documents};
+    use crate::server::ServerState;
+    use crate::testing::{same_line, utf16_state};
 
     fn item(
         uri: async_lsp::lsp_types::Url,
@@ -67,9 +69,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn outgoing_calls_convert_from_ranges_against_the_request_document() {
-        let (state, plain, emoji) = state_with_documents();
+    #[rstest]
+    fn outgoing_calls_convert_from_ranges_against_the_request_document(
+        utf16_state: (ServerState, Url, Url),
+    ) {
+        let (state, plain, emoji) = utf16_state;
         let document = state.document(&emoji).expect("emoji document is tracked");
         let mut params = CallHierarchyOutgoingCallsParams {
             item: item(emoji.clone(), 2, 3),
