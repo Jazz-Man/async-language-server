@@ -46,6 +46,10 @@ tree-sitter = "0.27.0"
 arch-lint = "=0.5.0"
 tree-sitter-json = "0.24.8"
 
+# Fixture-based test framework
+rstest = "0.27.0"
+
+
 [dependencies]
 async-lsp = { workspace = true }
 dashmap = { workspace = true }
@@ -78,6 +82,7 @@ criterion = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "time", "sync", "fs", "io-util"] }
 tokio-util = { workspace = true, features = ["compat"] }
 tree-sitter-json = { workspace = true }
+rstest = { workspace = true }
 
 [[example]]
 name = "tree_sitter"
