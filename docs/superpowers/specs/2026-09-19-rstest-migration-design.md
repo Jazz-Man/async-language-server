@@ -167,7 +167,12 @@ conversion task's report includes its old→new test-name map (D8).
 
 - Doctests (D6).
 - `conversion_tests!` emission (D5) — exemption recorded in testing.md
-  at cycle end.
+  at cycle end. **Revisit intent (owner, 2026-09-19):** after this
+  cycle, migrating the 29 tables becomes a candidate follow-up — the
+  macro can stamp typed closure wrappers itself (dissolving the
+  inference blocker), and the D8 name-map discipline covers the rename
+  churn. Decision deferred to post-cycle results; the exemption stands
+  for this cycle.
 - Wire fixture (D3) — wire setup stays explicit calls + local helpers.
 
 ## 9. Verification
