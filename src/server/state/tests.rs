@@ -224,23 +224,15 @@ fn closing_workspace_documents_removes_them_when_workspace_diagnostics_are_disab
     assert!(state.document(&uri).is_none());
 }
 
-#[rstest]
-fn closing_non_workspace_documents_removes_them(#[with("state")] workspace: TempWorkspace) {
-    let uri = workspace.write("a.test", "disk");
-
-    let mut state = ServerState::with_options::<TestServer>(
-        ClientSocket::new_closed(),
-        &ServerOptions::default(),
-    );
-    open_document(&mut state, uri.clone(), "open");
-
-    let _ = state.handle_document_close(DidCloseTextDocumentParams {
-        text_document: TextDocumentIdentifier::new(uri.clone()),
-    });
-
-    assert!(state.document(&uri).is_none());
-}
-
+/// Close-removal together with the token-cache eviction, on an
+/// unadvertised state: no folders and no advertisement, so `enabled()`
+/// is false and removal rides that conjunct — the keep branch's other
+/// conjuncts (matcher, in-roots) are masked here. The keep-branch
+/// mutants themselves (a flipped `!keep_as_workspace` or a deleted
+/// early-remove) are killed by
+/// `closing_workspace_documents_removes_them_when_workspace_diagnostics_are_disabled`,
+/// which reaches the keep branch with a matching, in-roots disk file
+/// under the same disabled flag.
 #[rstest]
 fn did_close_evicts_cached_semantic_tokens(mut state: ServerState) {
     let uri = url("tokens-close.txt");
