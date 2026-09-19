@@ -1,3 +1,6 @@
+use async_lsp::lsp_types::{Position, Range};
+use rstest::rstest;
+
 use crate::testing::{line_position, line_range};
 use crate::text_utils::RangeError;
 
@@ -8,29 +11,49 @@ const LF: char = '\n';
 const D1: char = '/';
 const D2: char = '@';
 
-// Basic happy path tests
-
-#[test]
-fn split_at_divides_the_range_at_a_relative_position() {
-    // The position becomes the shared boundary of the two halves.
-    let (left, right) = line_range(line_position(0, 0), line_position(0, 10))
-        .split_at(TEXT, line_position(0, 5))
-        .expect("valid range");
-    assert_eq!(left, line_range(line_position(0, 0), line_position(0, 5)));
-    assert_eq!(right, line_range(line_position(0, 5), line_position(0, 10)));
-
-    // Multiline: the boundary lands mid-row on a later row.
-    let (left, right) = line_range(line_position(0, 0), line_position(2, 5))
-        .split_at(TEXT, line_position(1, 3))
-        .expect("valid range");
-    assert_eq!(left, line_range(line_position(0, 0), line_position(1, 3)));
-    assert_eq!(right, line_range(line_position(1, 3), line_position(2, 5)));
+/// `split_at` divides the range at a relative position: the position becomes
+/// the shared boundary of the two halves, and the degenerate boundaries
+/// yield an empty half.
+#[rstest]
+#[case::shared_boundary(
+    line_range(line_position(0, 0), line_position(0, 10)),
+    line_position(0, 5),
+    line_range(line_position(0, 0), line_position(0, 5)),
+    line_range(line_position(0, 5), line_position(0, 10))
+)]
+#[case::multiline_boundary(
+    line_range(line_position(0, 0), line_position(2, 5)),
+    line_position(1, 3),
+    line_range(line_position(0, 0), line_position(1, 3)),
+    line_range(line_position(1, 3), line_position(2, 5))
+)]
+#[case::at_range_start(
+    line_range(line_position(1, 5), line_position(1, 15)),
+    line_position(0, 0),
+    line_range(line_position(1, 5), line_position(1, 5)),
+    line_range(line_position(1, 5), line_position(1, 15))
+)]
+#[case::at_range_end(
+    line_range(line_position(1, 5), line_position(1, 15)),
+    line_position(0, 10),
+    line_range(line_position(1, 5), line_position(1, 15)),
+    line_range(line_position(1, 15), line_position(1, 15))
+)]
+fn split_at_divides_the_range_at_a_relative_position(
+    #[case] range: Range,
+    #[case] at: Position,
+    #[case] expected_left: Range,
+    #[case] expected_right: Range,
+) {
+    let (left, right) = range.split_at(TEXT, at).expect("valid range");
+    assert_eq!(left, expected_left);
+    assert_eq!(right, expected_right);
 }
 
-#[test]
+/// Mirror rows: `split_off_left` keeps the left of the position,
+/// `split_off_right` the right.
+#[rstest]
 fn split_off_returns_the_kept_side() {
-    // Mirror rows: split_off_left keeps the left of the position,
-    // split_off_right the right.
     let left = line_range(line_position(0, 0), line_position(0, 10))
         .split_off_left(TEXT, line_position(0, 3))
         .expect("valid range");
@@ -42,220 +65,178 @@ fn split_off_returns_the_kept_side() {
     assert_eq!(right, line_range(line_position(0, 7), line_position(0, 10)));
 }
 
-#[test]
-fn basic_shrink() {
-    let shrunk = line_range(line_position(0, 0), line_position(0, 5))
-        .shrink(1, 2)
-        .expect("valid range");
-    assert_eq!(shrunk, line_range(line_position(0, 1), line_position(0, 3)));
+/// shrink narrows a single-line range by the given character counts on
+/// each edge; a multiline range has no single-line edge to shrink from and
+/// is rejected.
+#[rstest]
+#[case::single_line(
+    line_range(line_position(0, 0), line_position(0, 5)),
+    Ok(line_range(line_position(0, 1), line_position(0, 3)))
+)]
+#[case::multiline_rejected(
+    line_range(line_position(0, 0), line_position(1, 0)), // spans "a\nb"
+    Err(RangeError::NotSingleLine),
+)]
+fn shrink(#[case] range: Range, #[case] expected: Result<Range, RangeError>) {
+    assert_eq!(range.shrink(1, 2), expected);
 }
 
-#[test]
-fn sub_resolves_relative_positions() {
-    // Positions relative to the range start resolve to their absolute spots.
-    let sub_range = line_range(line_position(0, 0), line_position(0, 10))
-        .sub(TEXT, line_position(0, 2), line_position(0, 8))
-        .expect("valid range");
-    assert_eq!(
-        sub_range,
-        line_range(line_position(0, 2), line_position(0, 8)),
-    );
-
-    // An empty sub-range collapses to a point offset by the range's own
-    // start.
-    let sub_range = line_range(line_position(1, 5), line_position(1, 15))
-        .sub(TEXT, line_position(0, 3), line_position(0, 3))
-        .expect("valid range");
-    assert_eq!(
-        sub_range,
-        line_range(line_position(1, 8), line_position(1, 8)),
-    );
-
-    // Multiline: the end lands on a later row.
-    let sub_range = line_range(line_position(0, 0), line_position(2, 10))
-        .sub(TEXT, line_position(0, 5), line_position(1, 3))
-        .expect("valid range");
-    assert_eq!(
-        sub_range,
-        line_range(line_position(0, 5), line_position(1, 3)),
-    );
-
-    // Relative positions are offset by the range start across lines: line 2
-    // past a (5, 0) start lands on line 7.
-    let sub_range = line_range(line_position(5, 0), line_position(7, 10))
-        .sub(TEXT, line_position(2, 3), line_position(2, 8))
-        .expect("valid range");
-    assert_eq!(
-        sub_range,
-        line_range(line_position(7, 3), line_position(7, 8)),
-    );
+/// `sub` resolves positions relative to the range start: interior bounds
+/// map to their absolute spots, an empty sub-range collapses to a point
+/// offset by the range's own start, and the offsets carry across lines.
+#[rstest]
+#[case::interior(
+    line_range(line_position(0, 0), line_position(0, 10)),
+    line_position(0, 2),
+    line_position(0, 8),
+    line_range(line_position(0, 2), line_position(0, 8))
+)]
+#[case::empty_collapses_to_offset_point(
+    line_range(line_position(1, 5), line_position(1, 15)),
+    line_position(0, 3),
+    line_position(0, 3),
+    line_range(line_position(1, 8), line_position(1, 8))
+)]
+#[case::multiline_end(
+    line_range(line_position(0, 0), line_position(2, 10)),
+    line_position(0, 5),
+    line_position(1, 3),
+    line_range(line_position(0, 5), line_position(1, 3))
+)]
+// Relative positions are offset by the range start across lines: line 2
+// past a (5, 0) start lands on line 7.
+#[case::offset_by_range_start_across_lines(
+    line_range(line_position(5, 0), line_position(7, 10)),
+    line_position(2, 3),
+    line_position(2, 8),
+    line_range(line_position(7, 3), line_position(7, 8))
+)]
+fn sub_resolves_relative_positions(
+    #[case] range: Range,
+    #[case] from: Position,
+    #[case] to: Position,
+    #[case] expected: Range,
+) {
+    let sub_range = range.sub(TEXT, from, to).expect("valid range");
+    assert_eq!(sub_range, expected);
 }
 
-#[test]
-fn sub_delimited_splits_around_the_delimiter() {
-    // Both sides are Some around a single-byte delimiter.
-    let (left, right) = line_range(line_position(0, 0), line_position(0, 7))
-        .sub_delimited("one/two", D1)
-        .expect("valid range");
-    assert_eq!(
-        left,
-        Some(line_range(line_position(0, 0), line_position(0, 3))),
-    );
-    assert_eq!(
-        right,
-        Some(line_range(line_position(0, 4), line_position(0, 7))),
-    );
-
-    // Multiline: the delimiter is the newline.
-    let (left, right) = line_range(line_position(0, 0), line_position(1, 3))
-        .sub_delimited("abc\ndef", LF)
-        .expect("valid range");
-    assert_eq!(
-        left,
-        Some(line_range(line_position(0, 0), line_position(0, 3))),
-    );
-    assert_eq!(
-        right,
-        Some(line_range(line_position(1, 0), line_position(1, 3))),
-    );
+/// `sub_delimited` splits around the delimiter: both sides are Some when
+/// the delimiter is interior, an absent side is None — a delimiter at the
+/// start leaves no left side, at the end no right side, an absent delimiter
+/// leaves the whole range on the left, and empty text has neither.
+#[rstest]
+#[case::single_byte_delimiter(
+    line_range(line_position(0, 0), line_position(0, 7)),
+    "one/two",
+    D1,
+    Some(line_range(line_position(0, 0), line_position(0, 3))),
+    Some(line_range(line_position(0, 4), line_position(0, 7)))
+)]
+#[case::newline_delimiter(
+    line_range(line_position(0, 0), line_position(1, 3)),
+    "abc\ndef",
+    LF,
+    Some(line_range(line_position(0, 0), line_position(0, 3))),
+    Some(line_range(line_position(1, 0), line_position(1, 3)))
+)]
+#[case::delimiter_at_start(
+    line_range(line_position(0, 0), line_position(0, 4)),
+    "/abc",
+    D1,
+    None,
+    Some(line_range(line_position(0, 1), line_position(0, 4)))
+)]
+// Delimiter at the end: no right side.
+#[case::delimiter_at_end(
+    line_range(line_position(0, 0), line_position(0, 4)),
+    "abc/",
+    D1,
+    Some(line_range(line_position(0, 0), line_position(0, 3))),
+    None
+)]
+// No delimiter at all: the whole range is the left side.
+#[case::no_delimiter(
+    line_range(line_position(0, 0), line_position(0, 3)),
+    "abc",
+    D1,
+    Some(line_range(line_position(0, 0), line_position(0, 3))),
+    None
+)]
+#[case::empty_text(
+    line_range(line_position(0, 0), line_position(0, 0)),
+    TEXT,
+    D1,
+    None,
+    None
+)]
+fn sub_delimited_splits_around_the_delimiter(
+    #[case] range: Range,
+    #[case] text: &str,
+    #[case] delimiter: char,
+    #[case] expected_left: Option<Range>,
+    #[case] expected_right: Option<Range>,
+) {
+    let (left, right) = range.sub_delimited(text, delimiter).expect("valid range");
+    assert_eq!(left, expected_left);
+    assert_eq!(right, expected_right);
 }
 
-#[test]
-fn basic_sub_delimited_tri() {
-    let text = "one/two@three";
-    let end = u32::try_from(text.len()).expect("fixture length fits in u32");
-    let (first, second, third) = line_range(line_position(0, 0), line_position(0, end))
-        .sub_delimited_tri(text, D1, D2)
+/// `sub_delimited_tri` slices three consecutive segments around the two
+/// delimiters (the second fixed at `@`): a missing delimiter leaves the
+/// remaining segments None.
+#[rstest]
+#[case::all_delimiters(
+    line_range(line_position(0, 0), line_position(0, 13)),
+    "one/two@three",
+    D1,
+    Some(line_range(line_position(0, 0), line_position(0, 3))),
+    Some(line_range(line_position(0, 4), line_position(0, 7))),
+    Some(line_range(line_position(0, 8), line_position(0, 13)))
+)]
+#[case::third_missing(
+    line_range(line_position(0, 0), line_position(0, 7)),
+    "one/two",
+    D1,
+    Some(line_range(line_position(0, 0), line_position(0, 3))),
+    Some(line_range(line_position(0, 4), line_position(0, 7))),
+    None
+)]
+#[case::second_and_third_missing(
+    line_range(line_position(0, 0), line_position(0, 3)),
+    "abc",
+    D1,
+    Some(line_range(line_position(0, 0), line_position(0, 3))),
+    None,
+    None
+)]
+#[case::multiline_delimiters(
+    line_range(line_position(0, 0), line_position(2, 3)),
+    "one\ntwo\n@@@",
+    LF,
+    Some(line_range(line_position(0, 0), line_position(0, 3))),
+    Some(line_range(line_position(1, 0), line_position(2, 0))),
+    Some(line_range(line_position(2, 1), line_position(2, 3)))
+)]
+fn sub_delimited_tri_slices_three_segments(
+    #[case] range: Range,
+    #[case] text: &str,
+    #[case] delim0: char,
+    #[case] expected_first: Option<Range>,
+    #[case] expected_second: Option<Range>,
+    #[case] expected_third: Option<Range>,
+) {
+    let (first, second, third) = range
+        .sub_delimited_tri(text, delim0, D2)
         .expect("valid range");
-    assert_eq!(
-        first,
-        Some(line_range(line_position(0, 0), line_position(0, 3))),
-    );
-    assert_eq!(
-        second,
-        Some(line_range(line_position(0, 4), line_position(0, 7))),
-    );
-    assert_eq!(
-        third,
-        Some(line_range(line_position(0, 8), line_position(0, 13))),
-    );
+    assert_eq!(first, expected_first);
+    assert_eq!(second, expected_second);
+    assert_eq!(third, expected_third);
 }
 
-// Edge case tests
-
-#[test]
-fn split_at_boundaries() {
-    let (left, right) = line_range(line_position(1, 5), line_position(1, 15))
-        .split_at(TEXT, line_position(0, 0))
-        .expect("valid range");
-    assert_eq!(left, line_range(line_position(1, 5), line_position(1, 5)));
-    assert_eq!(right, line_range(line_position(1, 5), line_position(1, 15)));
-
-    let (left, right) = line_range(line_position(1, 5), line_position(1, 15))
-        .split_at(TEXT, line_position(0, 10))
-        .expect("valid range");
-    assert_eq!(left, line_range(line_position(1, 5), line_position(1, 15)));
-    assert_eq!(
-        right,
-        line_range(line_position(1, 15), line_position(1, 15)),
-    );
-}
-
-#[test]
-fn sub_delimited_delimiter_at_start() {
-    let (left, right) = line_range(line_position(0, 0), line_position(0, 4))
-        .sub_delimited("/abc", D1)
-        .expect("valid range");
-    assert_eq!(left, None);
-    assert_eq!(
-        right,
-        Some(line_range(line_position(0, 1), line_position(0, 4))),
-    );
-}
-
-#[test]
-fn sub_delimited_without_a_right_side() {
-    // Delimiter at the end: no right side.
-    let (left, right) = line_range(line_position(0, 0), line_position(0, 4))
-        .sub_delimited("abc/", D1)
-        .expect("valid range");
-    assert_eq!(
-        left,
-        Some(line_range(line_position(0, 0), line_position(0, 3))),
-    );
-    assert_eq!(right, None);
-
-    // No delimiter at all: the whole range is the left side.
-    let (left, right) = line_range(line_position(0, 0), line_position(0, 3))
-        .sub_delimited("abc", D1)
-        .expect("valid range");
-    assert_eq!(
-        left,
-        Some(line_range(line_position(0, 0), line_position(0, 3))),
-    );
-    assert_eq!(right, None);
-}
-
-#[test]
-fn sub_delimited_empty_text() {
-    let (left, right) = line_range(line_position(0, 0), line_position(0, 0))
-        .sub_delimited(TEXT, D1)
-        .expect("valid range");
-    assert_eq!(left, None);
-    assert_eq!(right, None);
-}
-
-#[test]
-fn sub_delimited_tri_partial() {
-    let (first, second, third) = line_range(line_position(0, 0), line_position(0, 7))
-        .sub_delimited_tri("one/two", D1, D2)
-        .expect("valid range");
-    assert_eq!(
-        first,
-        Some(line_range(line_position(0, 0), line_position(0, 3))),
-    );
-    assert_eq!(
-        second,
-        Some(line_range(line_position(0, 4), line_position(0, 7))),
-    );
-    assert_eq!(third, None);
-}
-
-#[test]
-fn sub_delimited_tri_no_delimiters() {
-    let (first, second, third) = line_range(line_position(0, 0), line_position(0, 3))
-        .sub_delimited_tri("abc", D1, D2)
-        .expect("valid range");
-    assert_eq!(
-        first,
-        Some(line_range(line_position(0, 0), line_position(0, 3))),
-    );
-    assert_eq!(second, None);
-    assert_eq!(third, None);
-}
-
-#[test]
-fn sub_delimited_tri_multiline() {
-    let (first, second, third) = line_range(line_position(0, 0), line_position(2, 3))
-        .sub_delimited_tri("one\ntwo\n@@@", LF, D2)
-        .expect("valid range");
-    assert_eq!(
-        first,
-        Some(line_range(line_position(0, 0), line_position(0, 3))),
-    );
-    assert_eq!(
-        second,
-        Some(line_range(line_position(1, 0), line_position(2, 0))),
-    );
-    assert_eq!(
-        third,
-        Some(line_range(line_position(2, 1), line_position(2, 3))),
-    );
-}
-
-// Boundary and error path tests
-
-#[test]
+/// Mirror rows: `split_off_left` at the relative start yields the empty left
+/// half, `split_off_right` at the relative end the empty right half.
+#[rstest]
 fn split_off_boundaries() {
     let range = line_range(line_position(1, 5), line_position(1, 15));
     assert_eq!(
@@ -272,7 +253,8 @@ fn split_off_boundaries() {
     );
 }
 
-#[test]
+/// Out-of-range positions are rejected on both splitting paths.
+#[rstest]
 fn out_of_range_positions_return_position_out_of_range() {
     assert_eq!(
         line_range(line_position(0, 0), line_position(0, 10))
@@ -288,7 +270,7 @@ fn out_of_range_positions_return_position_out_of_range() {
     );
 }
 
-#[test]
+#[rstest]
 fn reversed_sub_positions_return_start_after_end() {
     assert_eq!(
         line_range(line_position(0, 0), line_position(0, 10))
@@ -298,21 +280,12 @@ fn reversed_sub_positions_return_start_after_end() {
     );
 }
 
-#[test]
+#[rstest]
 fn multi_byte_delimiters_return_delimiter_not_single_byte() {
     assert_eq!(
         line_range(line_position(0, 0), line_position(0, 7))
             .sub_delimited("one—two", '—')
             .unwrap_err(),
         RangeError::DelimiterNotSingleByte { delimiter: '—' },
-    );
-}
-
-#[test]
-fn shrink_requires_a_single_line_range() {
-    let multiline = line_range(line_position(0, 0), line_position(1, 0)); // spans "a\nb"
-    assert_eq!(
-        multiline.shrink(1, 1).unwrap_err(),
-        RangeError::NotSingleLine,
     );
 }

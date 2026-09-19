@@ -39,10 +39,6 @@ fingerprint = "f9b5a480a3cae9d6"
 reason = "test-support position/range builders in src/testing.rs and the tree_sitter_utils test module (both #[cfg(test)]): two-line constructors of a fixed position or range"
 
 [[ignore]]
-fingerprint = "257658785e4bc44d"
-reason = "two-case split_at spec fns in lsp_tests.rs (split_at_divides_the_range_at_a_relative_position after Batch A2's merge, split_at_boundaries): the lsp flavor builds positions inline with no per-case bindings — unlike the tree-sitter flavor whose let text lines keep its twins apart — so any two two-case split_at fns normalize to one AST; avoidance analysis: dropping the merged multiline case loses a row-offset mutation pin, and tuple asserts or spurious range bindings are code contorted to please the tool; the real fix folds the boundary rows into the merged fn but deletes the ungrouped split_at_boundaries, which Batch A2's surgical scope forbids — that fold-in is the owner's dissolution path"
-
-[[ignore]]
 fingerprint = "390d3562637a1839"
 reason = "outgoing vec converters (conversion.rs helpers for locations, text-edits, call/type-hierarchy items; incoming/outgoing calls' per-file convert_response hooks): each a one-line delegation to convert_optional_vec with only the item converter differing; the lsp_request outgoing hook must name one fn per response shape, so the per-call wrappers exist only to bind their per-call item converter (family of e0894e2bcf1c1930)"
 
@@ -115,13 +111,33 @@ fingerprint = "d53443b60a97499b"
 reason = "two-assert error pins in bytes_tests.rs (out_of_range_positions_return_position_out_of_range, sub_and_split_at_reject_invalid_positions after Batch A3's merge): the byte flavor's compact integer-arg shape makes any two two-assert unwrap_err fns normalize >=90% (257658785e4bc44d's lsp-flavor finding, here in bytes); each assert kills a distinct mutant (59fae27ce2e23bed's dissolved members), so dropping or reshaping either loses a kill; avoidance analysis — folding into the out-of-range fn would delete an ungrouped fn's identity and misname the StartAfterEnd pin (257658785e4bc44d's owner-dissolution precedent)"
 
 [[ignore]]
-fingerprint = "fc821d768b7bc965"
-reason = "Batch A3's merged spec fns in bytes_tests.rs (split_off_returns_the_kept_side vs sub_resolves_relative_positions): two different methods' specs, each two cases over the same r(usize, usize)/TEXT vocabulary; the byte flavor has no shape-breaker (lsp builds inline nested positions, tree-sitter binds let text lines), so any two two-case fns normalize at the near threshold; the parallelism is the spec-matrix structure the file deliberately maintains (95df29debdfb5f1d/ab90a750f1ab7d48's dissolved reasons)"
-
-[[ignore]]
 fingerprint = "175d41788ff043bf"
 reason = "ServerState session-flag setters (set_file_watching, set_watchers_registered): two distinct per-session booleans — the client's didChangeWatchedFiles capability and the watchers-registered idempotence guard — whose one-line Relaxed stores normalize identically; avoidance analysis — a Flag newtype with get/set only relocates the twin (the delegating accessors re-normalize as a pair), merging the flags erases the capability/idempotence distinction the walk cache gates on, and pub(crate) fields would spread the atomic-ordering policy out of state (family of e2c7af90d4455197's atomic load-and-return accessors)"
 
 [[ignore]]
 fingerprint = "45fca6ff97a3c948"
 reason = "builder setters on unrelated types (ServerOptions::with_ignore_filenames, WorkspaceWalkConfig::with_ignore_filenames): each collects into its own type's field and the config setter is the pub(crate) plumbing twin the public one feeds; avoidance analysis — a builder macro for two members is barred by macro-prefer-functions (the macros cycle dismantled exactly this class), a shared setter trait is premature abstraction whose only value is dedup, and reshaping either body to differ syntactically would be code contorted to please the tool (family of 8f2f2ab783a0dc96's builder mirror pair)"
+
+[[ignore]]
+fingerprint = "1d3d6c62501812d5"
+reason = "case-table bodies of sub_delimited_splits_around_the_delimiter in lsp_tests.rs and tree_sitter_tests.rs: the rows carry lsp Position/Range vs tree-sitter point types a single table cannot take, and each flavor's rows are its impl's only oracle; the twin is the rstest attribute-exclusion artifact over f9b5a480a3cae9d6's three-flavor builders parallelism"
+
+[[ignore]]
+fingerprint = "3be8779abf0156a4"
+reason = "case-table bodies of sub_delimited_tri_slices_three_segments in lsp_tests.rs and tree_sitter_tests.rs: heterogeneous row types bar one table, both flavors pin their own impl's tri-slicing oracle, and the historical shape-breaker (ts let text bindings) lived in content rstest moved into attributes (1d3d6c62501812d5 family)"
+
+[[ignore]]
+fingerprint = "7d9d5917aa52b14a"
+reason = "case-table bodies of split_at_divides_the_range_at_a_relative_position in lsp_tests.rs and bytes_tests.rs: lsp's line/character positions vs bytes' usize integers cannot share a table; the boundary fold-in 257658785e4bc44d itself prescribed left these bodies as the minimal harness (1d3d6c62501812d5 family)"
+
+[[ignore]]
+fingerprint = "f68a628d5b231ad0"
+reason = "case-table bodies of the shrink Result tables in lsp_tests.rs and tree_sitter_tests.rs: single_line/multiline_rejected rows over characters vs bytes — distinct flavors of one method contract, each row-attr content invisible to the tool (1d3d6c62501812d5 family)"
+
+[[ignore]]
+fingerprint = "009263e51a4db332"
+reason = "near-twin (96%) unwrap_err case tables in tree_sitter_tests.rs (sub vs split_at beyond-the-text): different methods with different arity (from+to vs at) — merging needs a method selector, i.e. test-local orchestration the conversion rules reject; the same near class d53443b60a97499b documents for bytes, re-manifested at table granularity under attribute exclusion"
+
+[[ignore]]
+fingerprint = "c755499b3f8c5a93"
+reason = "near-twin (90%) encoding tables (try_from_lsp_accepts_only_supported_kinds vs from_lsp_maps_each_supported_kind): different fns with different return types (Option vs Encoding) whose rows cannot merge; each pins its own oracle (filtering unknowns vs mapping each kind); body divergence would be contortion (009263e51a4db332 family)"

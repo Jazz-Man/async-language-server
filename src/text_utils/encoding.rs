@@ -123,51 +123,48 @@ impl From<Encoding> for PositionEncodingKind {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::{Encoding, PositionEncodingKind};
 
-    #[test]
-    fn try_from_lsp_returns_none_for_unknown_kinds() {
-        assert_eq!(
-            Encoding::try_from_lsp(&PositionEncodingKind::new("utf-7")),
-            None,
-        );
-        assert_eq!(
-            Encoding::try_from_lsp(&PositionEncodingKind::UTF8),
-            Some(Encoding::UTF8),
-        );
-        assert_eq!(
-            Encoding::try_from_lsp(&PositionEncodingKind::UTF16),
-            Some(Encoding::UTF16),
-        );
-        assert_eq!(
-            Encoding::try_from_lsp(&PositionEncodingKind::UTF32),
-            Some(Encoding::UTF32),
-        );
+    /// `try_from_lsp` accepts exactly the three supported kinds; any other
+    /// client-provided kind is `None` for negotiation to ignore, not a
+    /// failure.
+    #[rstest]
+    #[case::unknown_kind(PositionEncodingKind::new("utf-7"), None)]
+    #[case::utf8(PositionEncodingKind::UTF8, Some(Encoding::UTF8))]
+    #[case::utf16(PositionEncodingKind::UTF16, Some(Encoding::UTF16))]
+    #[case::utf32(PositionEncodingKind::UTF32, Some(Encoding::UTF32))]
+    fn try_from_lsp_accepts_only_supported_kinds(
+        #[case] kind: PositionEncodingKind,
+        #[case] expected: Option<Encoding>,
+    ) {
+        assert_eq!(Encoding::try_from_lsp(&kind), expected);
     }
 
-    #[test]
-    fn from_lsp_round_trips_all_supported_kinds() {
-        assert_eq!(
-            Encoding::from_lsp(&PositionEncodingKind::UTF8),
-            Encoding::UTF8,
-        );
-        assert_eq!(
-            Encoding::from_lsp(&PositionEncodingKind::UTF16),
-            Encoding::UTF16,
-        );
-        assert_eq!(
-            Encoding::from_lsp(&PositionEncodingKind::UTF32),
-            Encoding::UTF32,
-        );
+    /// `from_lsp` maps each supported kind to its encoding — the panicking
+    /// strict counterpart of `try_from_lsp`.
+    #[rstest]
+    #[case::utf8(PositionEncodingKind::UTF8, Encoding::UTF8)]
+    #[case::utf16(PositionEncodingKind::UTF16, Encoding::UTF16)]
+    #[case::utf32(PositionEncodingKind::UTF32, Encoding::UTF32)]
+    fn from_lsp_maps_each_supported_kind(
+        #[case] kind: PositionEncodingKind,
+        #[case] expected: Encoding,
+    ) {
+        assert_eq!(Encoding::from_lsp(&kind), expected);
+    }
 
-        // The `From` impls delegate to `from_lsp`; each must map its
-        // argument through instead of decaying to the default encoding.
+    /// The `From` impls delegate to `from_lsp`; each must map its argument
+    /// through instead of decaying to the default encoding.
+    #[rstest]
+    fn from_impls_delegate_to_from_lsp() {
         assert_eq!(Encoding::from(&Encoding::UTF8), Encoding::UTF8);
         assert_eq!(Encoding::from(&PositionEncodingKind::UTF8), Encoding::UTF8);
         assert_eq!(Encoding::from(PositionEncodingKind::UTF8), Encoding::UTF8);
     }
 
-    #[test]
+    #[rstest]
     #[should_panic(expected = "unsupported position encoding kind")]
     fn from_lsp_panics_on_unknown_kind() {
         let _ = Encoding::from_lsp(&PositionEncodingKind::new("utf-7"));

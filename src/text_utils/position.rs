@@ -131,9 +131,13 @@ impl From<&Position> for TsPoint {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::{LspPosition, Position};
 
-    #[test]
+    /// Every conversion impl must project its argument, not zero it: the
+    /// asymmetric (3, 7) position round-trips through each direction.
+    #[rstest]
     fn from_impls_round_trip_asymmetric_positions() {
         let position = Position { line: 3, col: 7 };
         let lsp = LspPosition {
@@ -141,7 +145,6 @@ mod tests {
             character: 7,
         };
 
-        // Every conversion impl must project its argument, not zero it.
         assert_eq!(Position::from(&position), position);
         assert_eq!(Position::from(&lsp), position);
         assert_eq!(LspPosition::from(&position), lsp);
