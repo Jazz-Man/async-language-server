@@ -435,6 +435,7 @@ pub struct DocumentQueryCapture {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
     use std::io::Read as _;
     use std::sync::Arc;
     use std::time::Duration;
@@ -442,6 +443,8 @@ mod tests {
     use ropey::Rope;
 
     use super::{Document, DocumentReader, DocumentSyntax};
+    #[cfg(feature = "tree-sitter")]
+    use crate::testing::{TempWorkspace, workspace};
 
     /// The grammarless syntax payload, one signature across the feature gate.
     fn syntax() -> DocumentSyntax {
@@ -485,7 +488,7 @@ mod tests {
         rx.recv_timeout(READ_TIMEOUT).ok()
     }
 
-    #[test]
+    #[rstest]
     fn reader_preserves_unread_chunk_bytes() {
         // A one-byte buffer routes every fill through the chunk-advance
         // path, and the loop must end at EOF (Ok(0)) rather than spin.
@@ -493,7 +496,7 @@ mod tests {
         assert_eq!(actual, b"hello");
     }
 
-    #[test]
+    #[rstest]
     fn read_fills_multi_chunk_buffers_across_chunks() {
         // 400 patterns = 4000 ASCII bytes: several rope chunks at ropey's
         // ~1 KB chunk size.
@@ -517,7 +520,7 @@ mod tests {
         assert_eq!(actual, text.as_bytes());
     }
 
-    #[test]
+    #[rstest]
     fn text_bytes_returns_the_document_bytes() {
         let text = "🙂abc";
         let document = Document::from_parts(
@@ -536,7 +539,7 @@ mod tests {
     // recomputes across generations: a new generation starts from an empty
     // map, so the didSave trap (fresh text, old version) is structurally
     // closed.
-    #[test]
+    #[rstest]
     fn derived_memoizes_per_type_within_a_generation() {
         let doc = Document::from_parts(
             crate::testing::url("derived.json"),
@@ -564,7 +567,7 @@ mod tests {
         assert!(Arc::ptr_eq(&first, &third));
     }
 
-    #[test]
+    #[rstest]
     fn a_new_generation_recomputes_derived_data() {
         let seed = Document::from_parts(
             crate::testing::url("derived-generations.json"),
@@ -589,7 +592,7 @@ mod tests {
 
     // The didSave trap from the research: fresh text can arrive under an old
     // version — derived must key on the generation, never the version.
-    #[test]
+    #[rstest]
     fn derived_keys_on_the_generation_not_the_version() {
         let seed = Document::from_parts(
             crate::testing::url("derived-didsave.json"),
@@ -672,14 +675,13 @@ mod tests {
     }
 
     #[cfg(feature = "tree-sitter")]
-    #[test]
-    fn query_errors_on_invalid_query_and_grammarless_documents() {
-        use std::fs;
-
+    #[rstest]
+    fn query_errors_on_invalid_query_and_grammarless_documents(
+        #[with("documents")] workspace: TempWorkspace,
+    ) {
         use crate::error::QueryError;
 
-        let root = crate::testing::temp_workspace("documents", "query");
-        let (document, plain) = opened_json_fixtures(&root, r#"{"a": 1}"#);
+        let (document, plain) = opened_json_fixtures(&workspace, r#"{"a": 1}"#);
 
         // Malformed query syntax: the typed compile failure, not a bare None.
         assert!(matches!(
@@ -689,19 +691,16 @@ mod tests {
 
         // A document with no grammar/tree answers NoTree, distinctly.
         assert!(matches!(plain.query("(node"), Err(QueryError::NoTree)));
-
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 
     #[cfg(feature = "tree-sitter")]
-    #[test]
-    fn node_accessors_resolve_positions_in_parsed_documents() {
-        use std::fs;
-
+    #[rstest]
+    fn node_accessors_resolve_positions_in_parsed_documents(
+        #[with("documents")] workspace: TempWorkspace,
+    ) {
         use crate::testing::line_position;
 
-        let root = crate::testing::temp_workspace("documents", "node-accessors");
-        let (document, plain) = opened_json_fixtures(&root, r#"{"aa": 1, "b": 2}"#);
+        let (document, plain) = opened_json_fixtures(&workspace, r#"{"aa": 1, "b": 2}"#);
 
         // A parsed document has a root; a grammarless one has nothing.
         let tree_root = document.node_at_root().expect("parsed document has a root");
@@ -734,19 +733,14 @@ mod tests {
             .node_at_position(line_position(5, 0))
             .expect("out-of-tree positions clamp to a node");
         assert_eq!(clamped.kind(), "document");
-
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 
     #[cfg(feature = "tree-sitter")]
-    #[test]
-    fn node_text_returns_the_node_slice() {
-        use std::fs;
-
+    #[rstest]
+    fn node_text_returns_the_node_slice(#[with("documents")] workspace: TempWorkspace) {
         use crate::testing::line_position;
 
-        let root = crate::testing::temp_workspace("documents", "node-text");
-        let (document, _plain) = opened_json_fixtures(&root, r#"{"aa": 1, "b": 2}"#);
+        let (document, _plain) = opened_json_fixtures(&workspace, r#"{"aa": 1, "b": 2}"#);
 
         let tree_root = document.node_at_root().expect("parsed document has a root");
         assert_eq!(document.node_text(tree_root), r#"{"aa": 1, "b": 2}"#);
@@ -760,7 +754,5 @@ mod tests {
             .node_at_position(line_position(0, 7))
             .expect("position inside the tree");
         assert_eq!(document.node_text(value), "1");
-
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 }

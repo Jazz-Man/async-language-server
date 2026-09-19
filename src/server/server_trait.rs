@@ -709,6 +709,8 @@ fn method_not_implemented<T>(name: &'static str) -> std::future::Ready<Result<T,
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::method_not_implemented;
     use crate::error::ServerError;
 
@@ -716,7 +718,7 @@ mod tests {
     // METHOD_NOT_FOUND replies by exactly this variant; a regression to
     // `ServerError::rpc` here would silence the guard without any wire
     // change to catch it.
-    #[test]
+    #[rstest]
     fn trait_defaults_carry_the_method_not_implemented_variant() {
         let Err(error) = method_not_implemented::<()>("hover").into_inner() else {
             panic!("trait defaults must be errors");

@@ -145,26 +145,24 @@ mod tests {
     use std::error::Error as _;
 
     use async_lsp::{ErrorCode, ResponseError};
+    use rstest::rstest;
 
     use super::ServerError;
 
-    #[test]
-    fn io_errors_preserve_their_source() {
-        let error = ServerError::Io(std::io::Error::other("disk gone"));
-
-        assert_eq!(error.to_string(), "disk gone");
-        assert_eq!(error.source().unwrap().to_string(), "disk gone");
+    /// `Io` and `Other` keep their cause visible: the Display is the cause's
+    /// message and the `source()` chain hands the cause back.
+    #[rstest]
+    #[case::io(ServerError::Io(std::io::Error::other("disk gone")), "disk gone")]
+    #[case::other(ServerError::Other(Box::new(std::io::Error::other("boom"))), "boom")]
+    fn cause_carrying_variants_preserve_their_source(
+        #[case] error: ServerError,
+        #[case] cause: &str,
+    ) {
+        assert_eq!(error.to_string(), cause);
+        assert_eq!(error.source().expect("cause preserved").to_string(), cause);
     }
 
-    #[test]
-    fn other_preserves_its_boxed_source() {
-        let error = ServerError::Other(Box::new(std::io::Error::other("boom")));
-
-        assert_eq!(error.to_string(), "boom");
-        assert_eq!(error.source().unwrap().to_string(), "boom");
-    }
-
-    #[test]
+    #[rstest]
     fn rpc_errors_map_to_their_own_code() {
         let response =
             ResponseError::from(ServerError::rpc(ErrorCode::METHOD_NOT_FOUND, "nope".into()));
@@ -173,7 +171,7 @@ mod tests {
         assert_eq!(response.message, "nope");
     }
 
-    #[test]
+    #[rstest]
     fn method_not_implemented_maps_to_method_not_found() {
         let error = ServerError::MethodNotImplemented { method: "hover" };
         assert_eq!(
@@ -189,37 +187,30 @@ mod tests {
         );
     }
 
-    #[test]
-    fn other_errors_map_to_internal_error() {
-        let response =
-            ResponseError::from(ServerError::Other(Box::new(std::io::Error::other("boom"))));
-
-        assert_eq!(response.code, ErrorCode::INTERNAL_ERROR);
-        assert_eq!(response.message, "boom");
-    }
-
-    #[test]
-    fn lsp_errors_map_to_internal_error() {
-        let response = ResponseError::from(ServerError::Lsp(async_lsp::Error::Eof));
-
-        assert_eq!(response.code, ErrorCode::INTERNAL_ERROR);
-    }
-
-    #[test]
-    fn invalid_file_path_maps_to_internal_error() {
-        let response = ResponseError::from(ServerError::InvalidFilePath {
+    /// Every non-Rpc variant maps to `INTERNAL_ERROR`, carrying the error's
+    /// Display as the wire message (`Lsp`'s upstream Display is not pinned).
+    #[rstest]
+    #[case::other(
+        ServerError::Other(Box::new(std::io::Error::other("boom"))),
+        Some("boom")
+    )]
+    #[case::lsp(ServerError::Lsp(async_lsp::Error::Eof), None)]
+    #[case::invalid_file_path(
+        ServerError::InvalidFilePath {
             path: std::path::PathBuf::from("/bad"),
-        });
+        },
+        Some("invalid file path '/bad'"),
+    )]
+    #[case::io(ServerError::Io(std::io::Error::other("disk gone")), Some("disk gone"))]
+    fn non_rpc_variants_map_to_internal_error(
+        #[case] error: ServerError,
+        #[case] message: Option<&str>,
+    ) {
+        let response = ResponseError::from(error);
 
         assert_eq!(response.code, ErrorCode::INTERNAL_ERROR);
-        assert_eq!(response.message, "invalid file path '/bad'");
-    }
-
-    #[test]
-    fn io_errors_map_to_internal_error() {
-        let response = ResponseError::from(ServerError::Io(std::io::Error::other("disk gone")));
-
-        assert_eq!(response.code, ErrorCode::INTERNAL_ERROR);
-        assert_eq!(response.message, "disk gone");
+        if let Some(expected) = message {
+            assert_eq!(response.message, expected);
+        }
     }
 }

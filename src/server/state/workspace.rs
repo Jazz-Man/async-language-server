@@ -271,24 +271,40 @@ fn workspace_folder_path(folder: &WorkspaceFolder) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::stamp_unchanged;
+    use std::time::{Duration, SystemTime};
 
-    #[test]
-    fn stamp_gate_is_conservative() {
-        use std::time::{Duration, SystemTime};
+    use rstest::rstest;
 
-        const SIZE: u64 = 12;
+    use super::{FileStamp, stamp_unchanged};
 
-        let now = SystemTime::now();
-        let stamp = (now, SIZE);
-        assert!(stamp_unchanged(Some(stamp), Some(stamp)));
-        assert!(!stamp_unchanged(
-            Some(stamp),
-            Some((now + Duration::from_secs(1), SIZE))
-        ));
-        assert!(!stamp_unchanged(Some(stamp), Some((now, 13))));
-        assert!(!stamp_unchanged(None, Some(stamp)));
-        assert!(!stamp_unchanged(Some(stamp), None));
-        assert!(!stamp_unchanged(None, None));
+    const SIZE: u64 = 12;
+
+    /// The stamp gate is conservative: only an exact (mtime, size) match on
+    /// both sides skips the re-read; any changed or missing half re-reads.
+    #[rstest]
+    #[case::identical_stamp_is_unchanged(
+        Some((SystemTime::UNIX_EPOCH, SIZE)),
+        Some((SystemTime::UNIX_EPOCH, SIZE)),
+        true,
+    )]
+    #[case::changed_mtime_rereads(
+        Some((SystemTime::UNIX_EPOCH, SIZE)),
+        Some((SystemTime::UNIX_EPOCH + Duration::from_secs(1), SIZE)),
+        false,
+    )]
+    #[case::changed_size_rereads(
+        Some((SystemTime::UNIX_EPOCH, SIZE)),
+        Some((SystemTime::UNIX_EPOCH, SIZE + 1)),
+        false,
+    )]
+    #[case::missing_entry_stamp_rereads(None, Some((SystemTime::UNIX_EPOCH, SIZE)), false)]
+    #[case::missing_disk_stamp_rereads(Some((SystemTime::UNIX_EPOCH, SIZE)), None, false)]
+    #[case::no_stamps_rereads(None, None, false)]
+    fn stamp_gate_is_conservative(
+        #[case] entry: Option<FileStamp>,
+        #[case] disk: Option<FileStamp>,
+        #[case] unchanged: bool,
+    ) {
+        assert_eq!(stamp_unchanged(entry, disk), unchanged);
     }
 }

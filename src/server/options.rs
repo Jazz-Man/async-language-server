@@ -246,56 +246,67 @@ fn value_at(value: &LSPAny, path: impl IntoIterator<Item = impl AsRef<str>>) -> 
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::{ConfigurationKey, ServerOptions};
 
-    #[test]
-    fn configuration_key_reads_dotted_settings() {
-        let key = ConfigurationKey::new("test.workspaceDiagnostics.enabled");
-
-        assert_eq!(
-            key.value(&serde_json::json!({
-                "test": {
-                    "workspaceDiagnostics": {
-                        "enabled": true,
-                    },
-                },
-            })),
-            Some(true),
-        );
-        assert_eq!(
-            key.value(&serde_json::json!({
-                "test.workspaceDiagnostics.enabled": false,
-            })),
-            Some(false),
-        );
-        assert_eq!(key.value(&serde_json::json!(true)), Some(true));
-    }
-
-    #[test]
-    fn configuration_key_reads_section_path_settings() {
-        let key = ConfigurationKey::new("test").with_path(["workspaceDiagnostics", "enabled"]);
-
-        assert_eq!(
-            key.value(&serde_json::json!({
+    /// `ConfigurationKey::value` resolves boolean settings through the
+    /// documented lookup orders: a dotted key reads the nested object, the
+    /// flat literal, or the whole value; a section+path key reads the path,
+    /// then the section-scoped path.
+    #[rstest]
+    #[case::dotted_key_reads_the_nested_object(
+        ConfigurationKey::new("test.workspaceDiagnostics.enabled"),
+        serde_json::json!({
+            "test": {
                 "workspaceDiagnostics": {
                     "enabled": true,
                 },
-            })),
-            Some(true),
-        );
-        assert_eq!(
-            key.value(&serde_json::json!({
-                "test": {
-                    "workspaceDiagnostics": {
-                        "enabled": false,
-                    },
+            },
+        }),
+        Some(true),
+    )]
+    #[case::dotted_key_reads_the_flat_literal(
+        ConfigurationKey::new("test.workspaceDiagnostics.enabled"),
+        serde_json::json!({
+            "test.workspaceDiagnostics.enabled": false,
+        }),
+        Some(false),
+    )]
+    #[case::dotted_key_reads_the_whole_value(
+        ConfigurationKey::new("test.workspaceDiagnostics.enabled"),
+        serde_json::json!(true),
+        Some(true),
+    )]
+    #[case::section_path_reads_the_path(
+        ConfigurationKey::new("test").with_path(["workspaceDiagnostics", "enabled"]),
+        serde_json::json!({
+            "workspaceDiagnostics": {
+                "enabled": true,
+            },
+        }),
+        Some(true),
+    )]
+    #[case::section_path_reads_under_the_section(
+        ConfigurationKey::new("test").with_path(["workspaceDiagnostics", "enabled"]),
+        serde_json::json!({
+            "test": {
+                "workspaceDiagnostics": {
+                    "enabled": false,
                 },
-            })),
-            Some(false),
-        );
+            },
+        }),
+        Some(false),
+    )]
+    fn configuration_key_value_resolves_through_the_documented_orders(
+        #[case] key: ConfigurationKey,
+        #[case] settings: serde_json::Value,
+        #[case] expected: Option<bool>,
+    ) {
+        assert_eq!(key.value(&settings), expected);
     }
 
-    #[test]
+    #[rstest]
     fn diagnostics_parallelism_defaults_to_cores_and_is_narrowable() {
         use std::num::NonZeroUsize;
 
@@ -313,7 +324,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[rstest]
     fn configuration_item_carries_the_section() {
         let key = ConfigurationKey::new("test");
 

@@ -193,6 +193,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
     use tree_sitter::{Point, Range};
 
     use super::ts_range_contains_ts_point;
@@ -210,15 +211,21 @@ mod tests {
         }
     }
 
-    #[test]
-    fn range_contains_multiline_points_lexicographically() {
+    /// Point containment orders lexicographically by (row, column): the
+    /// start corner, an interior row start, and the end corner are inside;
+    /// one column before the start and one past the end are not.
+    #[rstest]
+    #[case::start_corner(p(1, 5), true)]
+    #[case::interior_row_start(p(2, 0), true)]
+    #[case::end_corner(p(3, 2), true)]
+    #[case::one_column_before_the_start(p(1, 4), false)]
+    #[case::one_column_past_the_end(p(3, 3), false)]
+    fn ts_range_contains_ts_point_is_inclusive_at_both_corners(
+        #[case] point: Point,
+        #[case] contained: bool,
+    ) {
         let range = r(p(1, 5), p(3, 2));
-
-        assert!(ts_range_contains_ts_point(range, p(1, 5)));
-        assert!(ts_range_contains_ts_point(range, p(2, 0)));
-        assert!(ts_range_contains_ts_point(range, p(3, 2)));
-        assert!(!ts_range_contains_ts_point(range, p(1, 4)));
-        assert!(!ts_range_contains_ts_point(range, p(3, 3)));
+        assert_eq!(ts_range_contains_ts_point(range, point), contained);
     }
 
     use async_lsp::lsp_types::{Position as LspPosition, Range as LspRange};
@@ -244,7 +251,7 @@ mod tests {
         node.map(|found| found.id())
     }
 
-    #[test]
+    #[rstest]
     fn ts_point_and_range_convert_to_lsp_coordinates() {
         let point = LspPosition {
             line: 1,
@@ -265,46 +272,34 @@ mod tests {
         assert_eq!(ts_range_to_lsp_range(r(p(1, 5), p(3, 2))), expected);
     }
 
-    #[test]
-    fn lsp_position_containment_matches_ts_point_containment() {
+    /// The LSP bridge agrees with point containment on every sample, and
+    /// the bounds are inclusive: the start and end corners are inside, the
+    /// neighboring columns are not.
+    #[rstest]
+    #[case::interior_row_start(LspPosition { line: 2, character: 0 }, true)]
+    #[case::start_corner(LspPosition { line: 1, character: 5 }, true)]
+    #[case::end_corner(LspPosition { line: 3, character: 2 }, true)]
+    #[case::one_column_before_the_start(LspPosition { line: 1, character: 4 }, false)]
+    #[case::one_column_past_the_end(LspPosition { line: 3, character: 3 }, false)]
+    fn lsp_position_containment_matches_ts_point_containment(
+        #[case] pos: LspPosition,
+        #[case] contained: bool,
+    ) {
         let range = r(p(1, 5), p(3, 2));
-        let inside = LspPosition {
-            line: 2,
-            character: 0,
-        };
-        let start = LspPosition {
-            line: 1,
-            character: 5,
-        };
-        let end = LspPosition {
-            line: 3,
-            character: 2,
-        };
-        let before = LspPosition {
-            line: 1,
-            character: 4,
-        };
-        let after = LspPosition {
-            line: 3,
-            character: 3,
-        };
 
-        for pos in [inside, start, before, after] {
-            assert_eq!(
-                ts_range_contains_lsp_position(range, pos),
-                ts_range_contains_ts_point(range, lsp_position_to_ts_point(pos)),
-                "LSP containment must match point containment at {pos:?}",
-            );
-        }
-
-        // Inclusive bounds: the start and end corners are inside.
-        assert!(ts_range_contains_lsp_position(range, start));
-        assert!(ts_range_contains_lsp_position(range, end));
-        assert!(!ts_range_contains_lsp_position(range, before));
-        assert!(!ts_range_contains_lsp_position(range, after));
+        assert_eq!(
+            ts_range_contains_lsp_position(range, pos),
+            ts_range_contains_ts_point(range, lsp_position_to_ts_point(pos)),
+            "LSP containment must match point containment at {pos:?}",
+        );
+        assert_eq!(
+            ts_range_contains_lsp_position(range, pos),
+            contained,
+            "inclusive bounds violated at {pos:?}",
+        );
     }
 
-    #[test]
+    #[rstest]
     fn find_child_ancestor_descendant_traverse_as_documented() {
         let tree = json_tree(r#"{"aa": 1, "b": 2}"#);
         let root = tree.root_node();
@@ -356,7 +351,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[rstest]
     fn find_nearest_prefers_node_then_child_then_descendant_then_ancestor() {
         let tree = json_tree(r#"{"aa": 1, "b": 2}"#);
         let root = tree.root_node();

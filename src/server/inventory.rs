@@ -452,6 +452,8 @@ mod tests {
         WorkspaceServerCapabilities, WorkspaceSymbolOptions,
     };
 
+    use rstest::rstest;
+
     use super::{METHOD_NAMES, MethodInventory};
     use crate::error::ServerError;
 
@@ -463,7 +465,7 @@ mod tests {
         ServerError::rpc(async_lsp::ErrorCode::METHOD_NOT_FOUND, "deliberate".into())
     }
 
-    #[test]
+    #[rstest]
     fn method_names_pin_the_dispatch_table_surface() {
         assert_eq!(METHOD_NAMES.len(), 48);
         assert_eq!(METHOD_NAMES[0], "hover");
@@ -480,7 +482,7 @@ mod tests {
         assert!(!inventory.warn_once_default("hover", &error("hover")));
     }
 
-    #[test]
+    #[rstest]
     fn unadvertised_methods_never_warn() {
         let inventory = MethodInventory::from_capabilities(&ServerCapabilities::default());
         // Default capabilities advertise nothing, in either predicate span.
@@ -490,7 +492,7 @@ mod tests {
         assert!(!inventory.warn_once_default("hover", &error("hover")));
     }
 
-    #[test]
+    #[rstest]
     fn advertised_defaults_warn_exactly_once() {
         let caps = ServerCapabilities {
             hover_provider: Some(HoverProviderCapability::Simple(true)),
@@ -523,7 +525,7 @@ mod tests {
         assert!(!clone.warn_once_default("hover", &error("hover")));
     }
 
-    #[test]
+    #[rstest]
     fn explicit_bool_false_never_advertises() {
         // Every bool-representable provider set to its explicit no: an
         // explicit `false` is a deliberate absence, in any family.
@@ -618,14 +620,6 @@ mod tests {
             semantic_tokens_options: tokens_options(full, range),
             static_registration_options: StaticRegistrationOptions::default(),
         }
-    }
-
-    fn tokens_inventory(provider: SemanticTokensServerCapabilities) -> MethodInventory {
-        let caps = ServerCapabilities {
-            semantic_tokens_provider: Some(provider),
-            ..ServerCapabilities::default()
-        };
-        MethodInventory::from_capabilities(&caps)
     }
 
     fn file_operations(
@@ -745,7 +739,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[rstest]
     fn all_advertised_shapes_advertise_their_methods() {
         // Every representable provider set to its advertised shape: each of
         // the table's methods answers true from its own capability.
@@ -773,7 +767,7 @@ mod tests {
     // The all-request fixture is complete: every gateable dispatch
     // method comes out advertised, so the dispatch-row wire test drives
     // the whole table through an open gate.
-    #[test]
+    #[rstest]
     fn all_request_capabilities_advertise_every_gateable_method() {
         let caps = crate::testing::all_request_capabilities();
         let inventory = MethodInventory::from_capabilities(&caps);
@@ -785,113 +779,119 @@ mod tests {
         }
     }
 
-    fn options_inventory(
-        full: Option<SemanticTokensFullOptions>,
-        range: Option<bool>,
-    ) -> MethodInventory {
-        tokens_inventory(SemanticTokensServerCapabilities::SemanticTokensOptions(
-            tokens_options(full, range),
-        ))
-    }
+    /// The three tokens methods answer from the provider's shape:
+    /// `Bool(true)` fills the full leg only; `Delta { delta: Some(true) }`
+    /// serves both the full and the delta leg; a delta flag off still
+    /// advertises full and an absent range flag stays silent; explicit
+    /// negatives (`Bool(false)`, `range: Some(false)`) are deliberate nos;
+    /// the `RegistrationOptions` variant flows through the same options
+    /// block, so the same shapes answer there.
+    #[rstest]
+    #[case::options_bool_true_serves_full_only(
+        SemanticTokensServerCapabilities::SemanticTokensOptions(tokens_options(
+            Some(SemanticTokensFullOptions::Bool(true)),
+            Some(true),
+        )),
+        true,
+        true,
+        false
+    )]
+    #[case::options_delta_serves_full_and_delta(
+        SemanticTokensServerCapabilities::SemanticTokensOptions(tokens_options(
+            Some(SemanticTokensFullOptions::Delta { delta: Some(true) }),
+            Some(true),
+        )),
+        true,
+        true,
+        true,
+    )]
+    #[case::delta_flag_off_and_absent_range_stay_partial(
+        SemanticTokensServerCapabilities::SemanticTokensOptions(tokens_options(
+            Some(SemanticTokensFullOptions::Delta { delta: Some(false) }),
+            None,
+        )),
+        true,
+        false,
+        false,
+    )]
+    #[case::explicit_negatives_are_deliberate_nos(
+        SemanticTokensServerCapabilities::SemanticTokensOptions(tokens_options(
+            Some(SemanticTokensFullOptions::Bool(false)),
+            Some(false),
+        )),
+        false,
+        false,
+        false
+    )]
+    #[case::registration_options_flows_through_the_options_block(
+        SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(tokens_registration(
+            Some(SemanticTokensFullOptions::Bool(true)),
+            Some(true)
+        ),),
+        true,
+        true,
+        false
+    )]
+    fn semantic_tokens_advertise_full_range_and_delta_by_shape(
+        #[case] provider: SemanticTokensServerCapabilities,
+        #[case] expected_full: bool,
+        #[case] expected_range: bool,
+        #[case] expected_delta: bool,
+    ) {
+        let inventory = MethodInventory::from_capabilities(&ServerCapabilities {
+            semantic_tokens_provider: Some(provider),
+            ..ServerCapabilities::default()
+        });
 
-    /// Asserts the three tokens methods' advertisement in shape order:
-    /// full, range, full-delta.
-    fn assert_tokens(inventory: &MethodInventory, full: bool, range: bool, full_delta: bool) {
-        assert_eq!(inventory.advertised("semantic_tokens_full"), full);
-        assert_eq!(inventory.advertised("semantic_tokens_range"), range);
+        assert_eq!(inventory.advertised("semantic_tokens_full"), expected_full);
+        assert_eq!(
+            inventory.advertised("semantic_tokens_range"),
+            expected_range,
+        );
         assert_eq!(
             inventory.advertised("semantic_tokens_full_delta"),
-            full_delta,
+            expected_delta,
         );
     }
 
-    #[test]
-    fn semantic_tokens_advertise_full_range_and_delta_by_shape() {
-        // The Options variant: Bool(true) fills the full leg only.
-        assert_tokens(
-            &options_inventory(Some(SemanticTokensFullOptions::Bool(true)), Some(true)),
-            true,
-            true,
-            false,
-        );
-
-        // Delta { delta: Some(true) } serves both the full and the delta
-        // leg.
-        assert_tokens(
-            &options_inventory(
-                Some(SemanticTokensFullOptions::Delta { delta: Some(true) }),
-                Some(true),
-            ),
-            true,
-            true,
-            true,
-        );
-
-        // A delta flag off still advertises full, and an absent range flag
-        // stays silent.
-        assert_tokens(
-            &options_inventory(
-                Some(SemanticTokensFullOptions::Delta { delta: Some(false) }),
-                None,
-            ),
-            true,
-            false,
-            false,
-        );
-
-        // Explicit negatives: Bool(false) and range: Some(false) are
-        // deliberate nos.
-        assert_tokens(
-            &options_inventory(Some(SemanticTokensFullOptions::Bool(false)), Some(false)),
-            false,
-            false,
-            false,
-        );
-
-        // The RegistrationOptions variant flows through the same options
-        // block, so the same shapes answer there.
-        assert_tokens(
-            &tokens_inventory(
-                SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(
-                    tokens_registration(Some(SemanticTokensFullOptions::Bool(true)), Some(true)),
-                ),
-            ),
-            true,
-            true,
-            false,
-        );
-    }
-
-    #[test]
-    fn file_operations_advertise_only_their_own_operation() {
-        // The workspace block alone, without its file-operations section,
-        // advertises nothing.
-        let bare = MethodInventory::from_capabilities(&file_operations(None, None, None));
-        for name in [
-            "will_create_files",
-            "will_rename_files",
-            "will_delete_files",
-        ] {
-            assert!(!bare.advertised(name), "'{name}' must stay silent");
-        }
-
-        // Each method answers from its own field: registering will_create
-        // alone must not pull in rename or delete.
-        let only_create = MethodInventory::from_capabilities(&file_operations(
-            Some(FileOperationRegistrationOptions::default()),
-            None,
-            None,
+    /// Each file-operation method answers from its own field: the workspace
+    /// block alone, without its file-operations section, advertises nothing,
+    /// and registering `will_create` alone must not pull in rename or
+    /// delete.
+    #[rstest]
+    #[case::nothing_registered(None, None, None, false, false, false)]
+    #[case::only_create(
+        Some(FileOperationRegistrationOptions::default()),
+        None,
+        None,
+        true,
+        false,
+        false
+    )]
+    fn file_operations_advertise_only_their_own_operation(
+        #[case] will_create: Option<FileOperationRegistrationOptions>,
+        #[case] will_rename: Option<FileOperationRegistrationOptions>,
+        #[case] will_delete: Option<FileOperationRegistrationOptions>,
+        #[case] expected_create: bool,
+        #[case] expected_rename: bool,
+        #[case] expected_delete: bool,
+    ) {
+        let inventory = MethodInventory::from_capabilities(&file_operations(
+            will_create,
+            will_rename,
+            will_delete,
         ));
-        assert!(only_create.advertised("will_create_files"));
-        assert!(!only_create.advertised("will_rename_files"));
-        assert!(!only_create.advertised("will_delete_files"));
+
+        assert_eq!(inventory.advertised("will_create_files"), expected_create);
+        assert_eq!(inventory.advertised("will_rename_files"), expected_rename);
+        assert_eq!(inventory.advertised("will_delete_files"), expected_delete);
     }
 
     // The dispatch gate: a gateable method absent from the capabilities
     // is not dispatchable; the type-hierarchy trio (no capability field
     // in lsp-types 0.95.1) is exempt; resolve methods gate on their
     // provider's resolve_provider option.
-    #[test]
+    #[rstest]
     fn dispatch_allowed_follows_advertisement_except_the_type_hierarchy_trio() {
         let none = MethodInventory::from_capabilities(&ServerCapabilities::default());
         assert!(!none.dispatch_allowed("hover"));
@@ -907,36 +907,43 @@ mod tests {
         assert!(!hover.dispatch_allowed("definition"));
     }
 
-    #[test]
-    fn resolve_methods_gate_on_their_providers_resolve_option() {
-        let no_resolve = MethodInventory::from_capabilities(&ServerCapabilities {
-            completion_provider: Some(CompletionOptions::default()),
-            ..ServerCapabilities::default()
-        });
-        // Presence alone advertises the base method — only the resolve row
-        // gates on the resolve option (spec §4.2).
-        assert!(no_resolve.dispatch_allowed("completion"));
-        assert!(!no_resolve.dispatch_allowed("completion_resolve"));
-
-        let with_resolve = MethodInventory::from_capabilities(&ServerCapabilities {
+    /// A resolve method gates on its provider's `resolve_provider` option,
+    /// while the base method advertises on presence alone (spec §4.2 —
+    /// only the resolve rows gate on the option).
+    #[rstest]
+    #[case::resolve_off_advertises_the_base_method(None, "completion", true)]
+    #[case::resolve_off_blocks_the_resolve_row(None, "completion_resolve", false)]
+    #[case::resolve_on_advertises_the_base_method(Some(true), "completion", true)]
+    #[case::resolve_on_advertises_the_resolve_row(Some(true), "completion_resolve", true)]
+    fn resolve_methods_gate_on_their_providers_resolve_option(
+        #[case] resolve_provider: Option<bool>,
+        #[case] method: &str,
+        #[case] allowed: bool,
+    ) {
+        let inventory = MethodInventory::from_capabilities(&ServerCapabilities {
             completion_provider: Some(CompletionOptions {
-                resolve_provider: Some(true),
+                resolve_provider,
                 ..CompletionOptions::default()
             }),
             ..ServerCapabilities::default()
         });
-        assert!(with_resolve.dispatch_allowed("completion"));
-        assert!(with_resolve.dispatch_allowed("completion_resolve"));
+
+        assert_eq!(
+            inventory.dispatch_allowed(method),
+            allowed,
+            "'{method}' must {} under resolve_provider {resolve_provider:?}",
+            if allowed { "dispatch" } else { "stay blocked" },
+        );
     }
 
-    #[test]
+    #[rstest]
     fn warn_once_unadvertised_fires_once_per_method() {
         let none = MethodInventory::from_capabilities(&ServerCapabilities::default());
         assert!(none.warn_once_unadvertised("hover"));
         assert!(!none.warn_once_unadvertised("hover"), "once per method");
     }
 
-    #[test]
+    #[rstest]
     fn a_predicate_reads_its_own_capability_not_a_neighbors() {
         // Slot 0 (hover) is an explicit no while document_format sits far
         // later in the table: an index bug pinning every lookup to slot 0
