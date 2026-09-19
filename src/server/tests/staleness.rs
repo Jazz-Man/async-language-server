@@ -1,6 +1,8 @@
 //! Staleness over the wire: a document mutated while its request is in
 //! flight answers `CONTENT_MODIFIED` and succeeds on retry.
 
+use std::time::Duration;
+
 use rstest::rstest;
 use serde_json::json;
 use tokio::sync::{mpsc, watch};
@@ -11,6 +13,10 @@ use crate::server::testing::{WIRE_TIMEOUT, bounded, did_open, hover_params, spaw
 
 #[rstest]
 #[tokio::test]
+// Belt-and-suspenders over the per-await `WIRE_TIMEOUT` bounds: those cap
+// each wait, but a wedged gate burns one bound per sequential step before
+// an expect fires. This caps the whole test and names the failure.
+#[timeout(Duration::from_secs(60))]
 async fn stale_document_answers_content_modified_then_succeeds_on_retry() {
     let (entered_tx, mut entered_rx) = mpsc::unbounded_channel();
     let (release_tx, release_rx) = watch::channel(false);

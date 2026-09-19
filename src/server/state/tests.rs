@@ -230,7 +230,7 @@ fn closing_workspace_documents_removes_them_when_workspace_diagnostics_are_disab
 /// conjuncts (matcher, in-roots) are masked here. The keep-branch
 /// mutants themselves (a flipped `!keep_as_workspace` or a deleted
 /// early-remove) are killed by
-/// `closing_workspace_documents_removes_them_when_workspace_diagnostics_are_disabled`,
+/// [`closing_workspace_documents_removes_them_when_workspace_diagnostics_are_disabled`],
 /// which reaches the keep branch with a matching, in-roots disk file
 /// under the same disabled flag.
 #[rstest]

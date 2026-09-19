@@ -117,6 +117,10 @@ async fn panicking_handler_returns_structured_error() {
 
 #[rstest]
 #[tokio::test]
+// Belt-and-suspenders over the per-await `WIRE_TIMEOUT` bounds: those cap
+// each wait, but a wedged gate burns one bound per sequential step before
+// an expect fires. This caps the whole test and names the failure.
+#[timeout(Duration::from_secs(60))]
 async fn at_most_limit_requests_run_concurrently() {
     let (entered_tx, mut entered_rx) = mpsc::unbounded_channel();
     let (release_tx, release_rx) = watch::channel(false);
@@ -188,6 +192,10 @@ async fn at_most_limit_requests_run_concurrently() {
 
 #[rstest]
 #[tokio::test]
+// Belt-and-suspenders over the per-await `WIRE_TIMEOUT` bounds: those cap
+// each wait, but a wedged gate burns one bound per sequential step before
+// an expect fires. This caps the whole test and names the failure.
+#[timeout(Duration::from_secs(60))]
 async fn cancel_request_answers_request_cancelled() {
     let (entered_tx, mut entered_rx) = mpsc::unbounded_channel();
     let (release_tx, release_rx) = watch::channel(false);

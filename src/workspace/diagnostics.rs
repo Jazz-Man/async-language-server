@@ -998,9 +998,7 @@ mod tests {
     }
 
     #[rstest]
-    #[case::without_refresh_support(false)]
-    #[case::with_refresh_support(true)]
-    fn refresh_gate_tracks_client_refresh_support(#[case] refresh_support: bool) {
+    fn refresh_gate_tracks_client_refresh_support(#[values(false, true)] refresh_support: bool) {
         let state = configurable_state();
 
         state.configure(&client_caps(false, false, refresh_support), true);
@@ -1225,9 +1223,7 @@ mod tests {
     // refresh only activate when the final advertisement said supported —
     // client capabilities alone must not wake them.
     #[rstest]
-    #[case::advertised(true)]
-    #[case::unadvertised(false)]
-    fn machinery_gates_on_supported(#[case] advertised: bool) {
+    fn machinery_gates_on_supported(#[values(true, false)] advertised: bool) {
         let mode = WorkspaceDiagnostics::Configurable(
             WorkspaceDiagnostics::setting("test.machinery").with_default_enabled(true),
         );
