@@ -175,9 +175,9 @@ pub(crate) fn path_to_url(path: &Path) -> ServerResult<Url> {
 #[cfg(test)]
 mod tests {
     use super::{WorkspaceWalkConfig, WorkspaceWalker};
-    use crate::testing::temp_workspace;
+    use crate::testing::{TempWorkspace, workspace};
+    use rstest::rstest;
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     // The walk's observable contract is the sorted `Vec`, identical for the
     // same tree no matter which order entries are delivered in: every file
@@ -185,27 +185,24 @@ mod tests {
     // files), hidden entries skipped unless `with_hidden_files`, ignore-file
     // matches skipped unless `with_ignore_files`. The expected `Vec`s are a
     // golden capture of the walk output.
-    #[test]
-    fn files_produce_the_identical_sorted_output_for_the_same_tree() {
-        let root = temp_workspace("walker", "determinism");
-        fs::create_dir_all(root.join("nested/deep")).expect("nested dirs can be created");
-        fs::create_dir_all(root.join("skipped-dir")).expect("skipped dir can be created");
-        fs::create_dir_all(root.join(".hidden-dir")).expect("hidden dir can be created");
-        fs::write(root.join("a.test"), "a").expect("file can be written");
-        fs::write(root.join("z.test"), "z").expect("file can be written");
-        fs::write(root.join("nested/b.test"), "b").expect("file can be written");
-        fs::write(root.join("nested/deep/c.test"), "c").expect("file can be written");
-        fs::write(root.join("skip.test"), "ignored").expect("file can be written");
-        fs::write(root.join("skipped-dir/x.test"), "x").expect("file can be written");
-        fs::write(root.join(".hidden.test"), "hidden").expect("file can be written");
-        fs::write(root.join(".hidden-dir/y.test"), "y").expect("file can be written");
-        fs::write(root.join(".ignore"), "skip.test\nskipped-dir/\n")
-            .expect("ignore file can be written");
+    #[rstest]
+    fn files_produce_the_identical_sorted_output_for_the_same_tree(
+        #[with("walker")] workspace: TempWorkspace,
+    ) {
+        workspace.write("a.test", "a");
+        workspace.write("z.test", "z");
+        workspace.write("nested/b.test", "b");
+        workspace.write("nested/deep/c.test", "c");
+        workspace.write("skip.test", "ignored");
+        workspace.write("skipped-dir/x.test", "x");
+        workspace.write(".hidden.test", "hidden");
+        workspace.write(".hidden-dir/y.test", "y");
+        workspace.write(".ignore", "skip.test\nskipped-dir/\n");
 
         // The second root nests inside the first: a file under both roots is
         // visited once per root, so the sorted output carries duplicates.
         let walker = WorkspaceWalker::new(
-            &[root.clone(), root.join("nested")],
+            &[workspace.root().to_path_buf(), workspace.join("nested")],
             WorkspaceWalkConfig::default(),
         )
         .expect("walker can be created");
@@ -224,7 +221,7 @@ mod tests {
         );
 
         let hidden = WorkspaceWalker::new(
-            std::slice::from_ref(&root),
+            &[workspace.root().to_path_buf()],
             WorkspaceWalkConfig::default().with_hidden_files(true),
         )
         .expect("walker can be created");
@@ -242,7 +239,7 @@ mod tests {
         );
 
         let unfiltered = WorkspaceWalker::new(
-            std::slice::from_ref(&root),
+            &[workspace.root().to_path_buf()],
             WorkspaceWalkConfig::default().with_ignore_files(false),
         )
         .expect("walker can be created");
@@ -257,32 +254,28 @@ mod tests {
                 canonical_root.join("z.test"),
             ],
         );
-
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 
     // Custom ignore names work with no `.git` anywhere (spec §3.3): the
     // mechanism is git-independent, gitignore syntax, cascading per
     // directory, with negation.
-    #[test]
-    fn custom_ignore_filenames_exclude_entries_without_git() {
-        let root = temp_workspace("walker", "custom-ignore");
-        fs::create_dir_all(root.join("nested")).expect("nested dir can be created");
-        fs::create_dir_all(root.join("skipped-dir")).expect("skipped dir can be created");
-        fs::write(root.join("a.test"), "a").expect("file can be written");
-        fs::write(root.join("skip.test"), "skip").expect("file can be written");
-        fs::write(root.join("keep.log"), "keep").expect("file can be written");
-        fs::write(root.join("drop.log"), "drop").expect("file can be written");
-        fs::write(root.join("skipped-dir/x.test"), "x").expect("file can be written");
-        fs::write(root.join("nested/inner.test"), "inner").expect("file can be written");
-        fs::write(
-            root.join(".mylspignore"),
+    #[rstest]
+    fn custom_ignore_filenames_exclude_entries_without_git(
+        #[with("walker")] workspace: TempWorkspace,
+    ) {
+        workspace.write("a.test", "a");
+        workspace.write("skip.test", "skip");
+        workspace.write("keep.log", "keep");
+        workspace.write("drop.log", "drop");
+        workspace.write("skipped-dir/x.test", "x");
+        workspace.write("nested/inner.test", "inner");
+        workspace.write(
+            ".mylspignore",
             "skip.test\nskipped-dir/\n*.log\n!keep.log\n",
-        )
-        .expect("custom ignore file can be written");
+        );
 
         let walker = WorkspaceWalker::new(
-            std::slice::from_ref(&root),
+            &[workspace.root().to_path_buf()],
             WorkspaceWalkConfig::default().with_ignore_filenames([".mylspignore"]),
         )
         .expect("walker can be created");
@@ -297,35 +290,32 @@ mod tests {
         );
 
         // Cascading: a nested .mylspignore drops only what it names.
-        fs::write(root.join("nested/.mylspignore"), "inner.test\n")
-            .expect("nested ignore file can be written");
+        workspace.write("nested/.mylspignore", "inner.test\n");
         assert_eq!(
             walker.files().expect("walk succeeds"),
             vec![canonical.join("a.test"), canonical.join("keep.log")],
         );
-
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 
     // The global ignore file applies to every root regardless of git
     // presence; patterns anchor at each root (git per-repo semantics).
-    #[test]
-    fn global_ignore_file_filters_every_root() {
-        let root = temp_workspace("walker", "global-ignore");
-        let sibling = temp_workspace("walker", "global-ignore-b");
-        fs::create_dir_all(root.join("vendor")).expect("vendor dir can be created");
-        fs::write(root.join("vendor/v.test"), "v").expect("file can be written");
-        fs::write(root.join("top.test"), "t").expect("file can be written");
-        fs::write(root.join("deep.test"), "d").expect("file can be written");
-        let global = root.join("global.ignore");
-        fs::write(&global, "/top.test\nvendor/\ndeep.test\n")
-            .expect("global ignore file can be written");
-        fs::write(sibling.join("s.test"), "s").expect("file can be written");
-        fs::write(sibling.join("deep.test"), "deep").expect("file can be written");
+    // Two independent roots: the second guard comes from the
+    // fixture-as-function call (the plain name is taken by the injected
+    // parameter, so the path form reaches the fixture fn).
+    #[rstest]
+    fn global_ignore_file_filters_every_root(#[with("walker")] workspace: TempWorkspace) {
+        let sibling = crate::testing::workspace("walker");
+        workspace.write("vendor/v.test", "v");
+        workspace.write("top.test", "t");
+        workspace.write("deep.test", "d");
+        let global = workspace.join("global.ignore");
+        workspace.write("global.ignore", "/top.test\nvendor/\ndeep.test\n");
+        sibling.write("s.test", "s");
+        sibling.write("deep.test", "deep");
 
         let walker = WorkspaceWalker::new(
-            &[root.clone(), sibling.clone()],
-            WorkspaceWalkConfig::default().with_global_ignore_file(Some(global.clone())),
+            &[workspace.root().to_path_buf(), sibling.root().to_path_buf()],
+            WorkspaceWalkConfig::default().with_global_ignore_file(Some(global)),
         )
         .expect("walker can be created");
         // The walk reports canonical paths; assertions use the walker's own
@@ -352,43 +342,39 @@ mod tests {
             "unanchored pattern matches in every root",
         );
         assert!(files.contains(&canonical_sibling.join("s.test")));
-
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
-        fs::remove_dir_all(sibling).expect("temp workspace can be removed");
     }
 
     // One unreadable entry must not abort the scan; this test is unix-only
     // because the failure is injected with filesystem permissions.
-    #[test]
+    #[rstest]
     #[cfg(unix)]
-    fn files_skips_unreadable_entries() {
+    fn files_skips_unreadable_entries(#[with("walker")] workspace: TempWorkspace) {
         use std::os::unix::fs::PermissionsExt;
 
-        // The mode is restored so the cleanup below can remove the restricted
-        // directory.
+        // The mode is restored before the test ends so the guard's cleanup
+        // can remove the restricted directory.
         const RESTORED_MODE: u32 = 0o755;
 
-        let millis = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time is after epoch")
-            .as_millis();
-        let root = std::env::temp_dir().join(format!("als-walker-skip-{millis}"));
-        fs::create_dir_all(root.join("bad")).expect("bad dir can be created");
-        fs::write(root.join("good.test"), "good").expect("good file can be written");
-        fs::set_permissions(root.join("bad"), fs::Permissions::from_mode(0o000))
+        fs::create_dir_all(workspace.join("bad")).expect("bad dir can be created");
+        workspace.write("good.test", "good");
+        fs::set_permissions(workspace.join("bad"), fs::Permissions::from_mode(0o000))
             .expect("permissions can be restricted");
 
-        let walker =
-            WorkspaceWalker::new(std::slice::from_ref(&root), WorkspaceWalkConfig::default())
-                .expect("walker can be created");
+        let walker = WorkspaceWalker::new(
+            &[workspace.root().to_path_buf()],
+            WorkspaceWalkConfig::default(),
+        )
+        .expect("walker can be created");
         let files = walker
             .files()
             .expect("walk succeeds despite unreadable entry");
 
         assert!(files.iter().any(|file| file.ends_with("good.test")));
 
-        fs::set_permissions(root.join("bad"), fs::Permissions::from_mode(RESTORED_MODE))
-            .expect("permissions can be restored");
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
+        fs::set_permissions(
+            workspace.join("bad"),
+            fs::Permissions::from_mode(RESTORED_MODE),
+        )
+        .expect("permissions can be restored");
     }
 }

@@ -331,12 +331,15 @@ mod tests {
         workspace_diagnostics,
     };
     use crate::server::{DocumentMatcher, Server, ServerOptions, ServerResult, ServerState};
-    use crate::testing::{diagnostic, diagnostic_provider_capabilities, temp_workspace, url};
+    use crate::testing::{
+        TempWorkspace, diagnostic, diagnostic_provider_capabilities, url, workspace,
+    };
     use async_lsp::lsp_types::{
         Diagnostic, DocumentDiagnosticParams, DocumentDiagnosticReport,
         DocumentDiagnosticReportKind, DocumentDiagnosticReportResult, FullDocumentDiagnosticReport,
         Position, Range, RelatedFullDocumentDiagnosticReport, UnchangedDocumentDiagnosticReport,
     };
+    use rstest::rstest;
     use std::collections::HashMap;
     use std::fs;
     use std::num::NonZeroUsize;
@@ -386,17 +389,17 @@ mod tests {
         }
     }
 
-    #[test]
-    fn workspace_diagnostics_discovers_matching_documents() {
-        let root = temp_workspace("oneshot", "discovers");
-        fs::write(root.join("a.test"), "").expect("test file can be written");
-        fs::write(root.join("b.txt"), "").expect("ignored file can be written");
-        fs::create_dir_all(root.join("nested")).expect("nested dir can be created");
-        fs::write(root.join("nested").join("c.test"), "").expect("nested file can be written");
+    #[rstest]
+    fn workspace_diagnostics_discovers_matching_documents(
+        #[with("oneshot")] workspace: TempWorkspace,
+    ) {
+        workspace.write("a.test", "");
+        workspace.write("b.txt", "");
+        workspace.write("nested/c.test", "");
 
         let report = futures::executor::block_on(workspace_diagnostics(
             TestServer,
-            WorkspaceDiagnosticConfig::new(&root),
+            WorkspaceDiagnosticConfig::new(workspace.root()),
         ))
         .expect("workspace diagnostics succeeds");
 
@@ -413,85 +416,70 @@ mod tests {
                 .iter()
                 .any(|doc| doc.uri.path().ends_with("/nested/c.test")),
         );
-
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 
-    #[test]
-    fn workspace_diagnostics_honors_custom_ignore_names_without_git() {
-        let root = temp_workspace("oneshot", "custom-ignore");
-        fs::write(root.join("a.test"), "").expect("test file can be written");
-        fs::write(root.join("skip.test"), "").expect("ignored file can be written");
-        fs::write(root.join(".mylspignore"), "skip.test\n").expect("ignore file can be written");
+    #[rstest]
+    fn workspace_diagnostics_honors_custom_ignore_names_without_git(
+        #[with("oneshot")] workspace: TempWorkspace,
+    ) {
+        workspace.write("a.test", "");
+        workspace.write("skip.test", "");
+        workspace.write(".mylspignore", "skip.test\n");
 
         let report = futures::executor::block_on(workspace_diagnostics(
             TestServer,
-            WorkspaceDiagnosticConfig::new(&root).with_ignore_filenames([".mylspignore"]),
+            WorkspaceDiagnosticConfig::new(workspace.root())
+                .with_ignore_filenames([".mylspignore"]),
         ))
         .expect("workspace diagnostics succeeds");
 
         assert_eq!(report.documents.len(), 1);
         assert!(report.documents[0].uri.path().ends_with("/a.test"));
-
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 
-    #[test]
-    fn workspace_diagnostics_respects_gitignore_by_default() {
-        let root = temp_workspace("oneshot", "gitignore");
-        fs::create_dir_all(root.join(".git")).expect("git dir can be created");
-        fs::write(root.join(".gitignore"), "ignored/\n").expect("gitignore can be written");
-        fs::write(root.join("a.test"), "").expect("test file can be written");
-        fs::create_dir_all(root.join("ignored")).expect("ignored dir can be created");
-        fs::write(root.join("ignored").join("b.test"), "").expect("ignored file can be written");
+    /// Gitignore filtering follows the config: the same tree (a `.git`
+    /// marker, a `.gitignore` naming `ignored/`) reports only `a.test`
+    /// while ignore files are respected, and both documents once
+    /// `with_ignore_files(false)` turns the respect off.
+    #[rstest]
+    #[case::respects_gitignore_by_default(true, 1, "/a.test")]
+    #[case::can_disable_ignore_files(false, 2, "/ignored/b.test")]
+    fn workspace_diagnostics_gitignore_filtering_follows_the_config(
+        #[with("oneshot")] workspace: TempWorkspace,
+        #[case] respect_ignore_files: bool,
+        #[case] expected_documents: usize,
+        #[case] reported_suffix: &str,
+    ) {
+        fs::create_dir_all(workspace.join(".git")).expect("git dir can be created");
+        workspace.write(".gitignore", "ignored/\n");
+        workspace.write("a.test", "");
+        workspace.write("ignored/b.test", "");
 
-        let report = futures::executor::block_on(workspace_diagnostics(
-            TestServer,
-            WorkspaceDiagnosticConfig::new(&root),
-        ))
-        .expect("workspace diagnostics succeeds");
+        let mut config = WorkspaceDiagnosticConfig::new(workspace.root());
+        if !respect_ignore_files {
+            config = config.with_ignore_files(false);
+        }
 
-        assert_eq!(report.documents.len(), 1);
-        assert!(report.documents[0].uri.path().ends_with("/a.test"));
+        let report = futures::executor::block_on(workspace_diagnostics(TestServer, config))
+            .expect("workspace diagnostics succeeds");
 
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
-    }
-
-    #[test]
-    fn workspace_diagnostics_can_disable_ignore_files() {
-        let root = temp_workspace("oneshot", "ignore-disabled");
-        fs::create_dir_all(root.join(".git")).expect("git dir can be created");
-        fs::write(root.join(".gitignore"), "ignored/\n").expect("gitignore can be written");
-        fs::write(root.join("a.test"), "").expect("test file can be written");
-        fs::create_dir_all(root.join("ignored")).expect("ignored dir can be created");
-        fs::write(root.join("ignored").join("b.test"), "").expect("ignored file can be written");
-
-        let report = futures::executor::block_on(workspace_diagnostics(
-            TestServer,
-            WorkspaceDiagnosticConfig::new(&root).with_ignore_files(false),
-        ))
-        .expect("workspace diagnostics succeeds");
-
-        assert_eq!(report.documents.len(), 2);
+        assert_eq!(report.documents.len(), expected_documents);
         assert!(
             report
                 .documents
                 .iter()
-                .any(|doc| doc.uri.path().ends_with("/ignored/b.test")),
+                .any(|doc| doc.uri.path().ends_with(reported_suffix)),
         );
-
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 
-    #[test]
-    fn workspace_diagnostics_opens_documents_per_item() {
-        let root = temp_workspace("oneshot", "opened");
-        fs::write(root.join("a.test"), "").expect("test file can be written");
-        fs::write(root.join("b.test"), "").expect("test file can be written");
+    #[rstest]
+    fn workspace_diagnostics_opens_documents_per_item(#[with("oneshot")] workspace: TempWorkspace) {
+        workspace.write("a.test", "");
+        workspace.write("b.test", "");
 
         let report = futures::executor::block_on(workspace_diagnostics(
             TestServer,
-            WorkspaceDiagnosticConfig::new(&root),
+            WorkspaceDiagnosticConfig::new(workspace.root()),
         ))
         .expect("workspace diagnostics succeeds");
 
@@ -511,8 +499,6 @@ mod tests {
         };
         assert_eq!(observed("/a.test"), "1 documents");
         assert_eq!(observed("/b.test"), "2 documents");
-
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 
     /// Records each handler entry and releases only once all three are in
@@ -550,11 +536,13 @@ mod tests {
         }
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn workspace_diagnostics_runs_documents_concurrently_up_to_width() {
-        let root = temp_workspace("oneshot", "parallel");
+    async fn workspace_diagnostics_runs_documents_concurrently_up_to_width(
+        #[with("oneshot")] workspace: TempWorkspace,
+    ) {
         for name in ["a.gated", "b.gated", "c.gated"] {
-            fs::write(root.join(name), "").expect("gated file can be written");
+            workspace.write(name, "");
         }
 
         let (entries, mut entry_rx) = mpsc::unbounded_channel();
@@ -565,7 +553,7 @@ mod tests {
 
         let report = tokio::time::timeout(
             Duration::from_secs(5),
-            workspace_diagnostics(server, WorkspaceDiagnosticConfig::new(&root)),
+            workspace_diagnostics(server, WorkspaceDiagnosticConfig::new(workspace.root())),
         )
         .await
         .expect("workspace diagnostics completes - all three documents must run concurrently")
@@ -577,8 +565,6 @@ mod tests {
         }
         assert_eq!(entered, 3);
         assert_eq!(report.documents.len(), 3);
-
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 
     fn full_report(items: Vec<Diagnostic>) -> async_lsp::lsp_types::DocumentDiagnosticReportResult {
@@ -595,7 +581,7 @@ mod tests {
         )
     }
 
-    #[test]
+    #[rstest]
     fn is_empty_reflects_document_and_report_contents() {
         let empty = DocumentDiagnostics {
             uri: url("empty.test"),
@@ -624,7 +610,7 @@ mod tests {
         assert!(!one_reporting.is_empty());
     }
 
-    #[test]
+    #[rstest]
     fn diagnostics_collects_full_and_unchanged_kinds() {
         let document = DocumentDiagnostics {
             uri: url("main.test"),
@@ -705,14 +691,15 @@ mod tests {
         }
     }
 
-    #[test]
-    fn oneshot_reports_byte_offsets_for_non_ascii_documents() {
-        let root = temp_workspace("oneshot", "utf8-columns");
-        fs::write(root.join("emoji.utf8"), "🙂abc\n").expect("emoji file can be written");
+    #[rstest]
+    fn oneshot_reports_byte_offsets_for_non_ascii_documents(
+        #[with("oneshot")] workspace: TempWorkspace,
+    ) {
+        workspace.write("emoji.utf8", "🙂abc\n");
 
         let report = futures::executor::block_on(workspace_diagnostics(
             Utf8ColumnServer,
-            WorkspaceDiagnosticConfig::new(&root),
+            WorkspaceDiagnosticConfig::new(workspace.root()),
         ))
         .expect("workspace diagnostics succeeds");
 
@@ -724,7 +711,5 @@ mod tests {
             report.documents[0].diagnostics()[0].range.start.character,
             4,
         );
-
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 }

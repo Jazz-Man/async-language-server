@@ -711,7 +711,7 @@ mod tests {
         DocumentMatcher, Server, ServerOptions, ServerState, WorkspaceDiagnostics,
     };
     use crate::testing::{
-        diagnostic_provider_capabilities, temp_workspace, workspace_diagnostic_params,
+        TempWorkspace, diagnostic_provider_capabilities, workspace, workspace_diagnostic_params,
         workspace_folder,
     };
     use async_lsp::ClientSocket;
@@ -722,9 +722,8 @@ mod tests {
         RelatedFullDocumentDiagnosticReport, ServerCapabilities, UnchangedDocumentDiagnosticReport,
         WorkspaceClientCapabilities,
     };
-    use std::fs;
+    use rstest::rstest;
     use std::num::NonZeroUsize;
-    use std::path::PathBuf;
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::sync::{Semaphore, mpsc};
@@ -732,7 +731,7 @@ mod tests {
     const ENTRY_TIMEOUT: Duration = Duration::from_secs(5);
     const ABSENCE_TIMEOUT: Duration = Duration::from_millis(250);
 
-    #[test]
+    #[rstest]
     fn push_workspace_report_replaces_by_uri_and_appends_new() {
         let mut sink = WorkspaceReportSink::default();
         let uri = crate::testing::url("file:///tmp/a.txt");
@@ -816,21 +815,15 @@ mod tests {
 
     fn gated_setup(
         width: NonZeroUsize,
-        name: &str,
+        workspace: &TempWorkspace,
     ) -> (
         ServerState,
         mpsc::UnboundedSender<Url>,
         mpsc::UnboundedReceiver<Url>,
         Arc<Semaphore>,
-        PathBuf,
     ) {
-        let root = temp_workspace("workspace_diagnostics", name);
         for file in ["one", "two", "three"] {
-            fs::write(
-                root.join(format!("{file}.diag")),
-                format!("{file} diagnostics\n"),
-            )
-            .expect("test file can be written");
+            workspace.write(format!("{file}.diag"), &format!("{file} diagnostics\n"));
         }
         let options = ServerOptions::default()
             .with_workspace_diagnostics(WorkspaceDiagnostics::Enabled)
@@ -839,26 +832,23 @@ mod tests {
             ClientSocket::new_closed(),
             &options,
         );
-        state.set_workspace_folders([workspace_folder(&root)]);
+        state.set_workspace_folders([workspace_folder(workspace)]);
         // The width engine runs post-initialize: mark the capability as
         // advertised, the way `initialize` would, so the workspace refresh
         // underneath the items request is enabled.
         let mut result = result_with_provider(true);
         configure_capabilities(&state, &mut result, &ClientCapabilities::default());
         let (entered_tx, entered_rx) = mpsc::unbounded_channel();
-        (
-            state,
-            entered_tx,
-            entered_rx,
-            Arc::new(Semaphore::new(0)),
-            root,
-        )
+        (state, entered_tx, entered_rx, Arc::new(Semaphore::new(0)))
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn width_three_documents_enter_before_any_releases() {
-        let (state, entered_tx, mut entered_rx, gate, root) =
-            gated_setup(NonZeroUsize::new(3).expect("nonzero"), "width-three");
+    async fn width_three_documents_enter_before_any_releases(
+        #[with("diagnostics")] workspace: TempWorkspace,
+    ) {
+        let (state, entered_tx, mut entered_rx, gate) =
+            gated_setup(NonZeroUsize::new(3).expect("nonzero"), &workspace);
         let server = Arc::new(GatedDiagnosticsServer {
             entered: entered_tx,
             gate: Arc::clone(&gate),
@@ -895,13 +885,15 @@ mod tests {
             .expect("task succeeds")
             .expect("diagnostics succeed");
         assert_eq!(items.len(), 3);
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn width_one_runs_documents_one_at_a_time() {
-        let (state, entered_tx, mut entered_rx, gate, root) =
-            gated_setup(NonZeroUsize::new(1).expect("nonzero"), "width-one");
+    async fn width_one_runs_documents_one_at_a_time(
+        #[with("diagnostics")] workspace: TempWorkspace,
+    ) {
+        let (state, entered_tx, mut entered_rx, gate) =
+            gated_setup(NonZeroUsize::new(1).expect("nonzero"), &workspace);
         let server = Arc::new(GatedDiagnosticsServer {
             entered: entered_tx,
             gate: Arc::clone(&gate),
@@ -939,7 +931,6 @@ mod tests {
             .expect("task succeeds")
             .expect("diagnostics succeed");
         assert_eq!(items.len(), 3);
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 
     struct PlainServer;
@@ -978,7 +969,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[rstest]
     fn request_configuration_requires_client_capability_and_setting() {
         let state = configurable_state();
 
@@ -995,7 +986,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[rstest]
     fn register_configuration_requires_dynamic_registration_support() {
         let state = configurable_state();
 
@@ -1006,21 +997,21 @@ mod tests {
         );
     }
 
-    #[test]
-    fn refresh_gate_tracks_client_refresh_support() {
+    #[rstest]
+    #[case::without_refresh_support(false)]
+    #[case::with_refresh_support(true)]
+    fn refresh_gate_tracks_client_refresh_support(#[case] refresh_support: bool) {
         let state = configurable_state();
 
-        for (refresh_support, expected) in [(false, false), (true, true)] {
-            state.configure(&client_caps(false, false, refresh_support), true);
-            assert_eq!(
-                state.can_refresh(),
-                expected,
-                "refresh_support = {refresh_support} must gate the refresh request",
-            );
-        }
+        state.configure(&client_caps(false, false, refresh_support), true);
+        assert_eq!(
+            state.can_refresh(),
+            refresh_support,
+            "refresh_support = {refresh_support} must gate the refresh request",
+        );
     }
 
-    #[test]
+    #[rstest]
     fn next_generation_is_monotonic() {
         let state = WorkspaceDiagnosticsState::new(&ServerOptions::default());
 
@@ -1028,7 +1019,7 @@ mod tests {
         assert_eq!(state.next_generation(), 2);
     }
 
-    #[test]
+    #[rstest]
     fn stale_generation_drops_the_response() {
         let state = WorkspaceDiagnosticsState::new(&ServerOptions::default());
 
@@ -1048,7 +1039,7 @@ mod tests {
         assert_eq!(state.current_generation(), superseding);
     }
 
-    #[test]
+    #[rstest]
     fn disabled_options_force_workspace_diagnostics_capability_off() {
         let state = ServerState::with_options::<ProviderServer>(
             ClientSocket::new_closed(),
@@ -1132,7 +1123,7 @@ mod tests {
     // post-merge advertisement. Catches a regression re-deriving `supported`
     // from `ServerOptions` in `WorkspaceDiagnosticsState::new`, which every
     // post-configure assertion would otherwise let pass.
-    #[test]
+    #[rstest]
     fn supported_starts_false_before_configure_capabilities() {
         let state = matrix_state(WorkspaceDiagnostics::enabled());
         assert!(
@@ -1144,120 +1135,122 @@ mod tests {
     // The spec's resolution matrix, one row per case: (ServerOptions mode,
     // advertised flag in the implementor's provider) => expected final
     // advertisement and handler support.
-    #[test]
-    fn resolution_matrix_advertises_verbatim_and_gates_support() {
-        let configurable =
-            || WorkspaceDiagnostics::Configurable(WorkspaceDiagnostics::setting("test.matrix"));
-        let cases: [(WorkspaceDiagnostics, bool, bool, bool); 6] = [
-            // (mode, implementor's flag) => (advertised, supported)
-            (WorkspaceDiagnostics::enabled(), true, true, true),
-            (WorkspaceDiagnostics::enabled(), false, false, false),
-            (WorkspaceDiagnostics::disabled(), true, false, false),
-            (WorkspaceDiagnostics::disabled(), false, false, false),
-            (configurable(), true, true, true),
-            (configurable(), false, false, false),
-        ];
-        for (i, (mode, flag, advertised, supported)) in cases.into_iter().enumerate() {
-            let state = matrix_state(mode);
-            let client = ClientCapabilities::default();
-            let mut result = result_with_provider(flag);
-            configure_capabilities(&state, &mut result, &client);
+    #[rstest]
+    #[case::enabled_advertises(WorkspaceDiagnostics::enabled(), true, true, true)]
+    #[case::enabled_silent(WorkspaceDiagnostics::enabled(), false, false, false)]
+    #[case::disabled_forces_off(WorkspaceDiagnostics::disabled(), true, false, false)]
+    #[case::disabled_silent(WorkspaceDiagnostics::disabled(), false, false, false)]
+    #[case::configurable_advertises(
+        WorkspaceDiagnostics::Configurable(WorkspaceDiagnostics::setting("test.matrix")),
+        true,
+        true,
+        true
+    )]
+    #[case::configurable_silent(
+        WorkspaceDiagnostics::Configurable(WorkspaceDiagnostics::setting("test.matrix")),
+        false,
+        false,
+        false
+    )]
+    fn resolution_matrix_advertises_verbatim_and_gates_support(
+        #[case] mode: WorkspaceDiagnostics,
+        #[case] implementor_flag: bool,
+        #[case] advertised: bool,
+        #[case] supported: bool,
+    ) {
+        let state = matrix_state(mode);
+        let mut result = result_with_provider(implementor_flag);
+        configure_capabilities(&state, &mut result, &ClientCapabilities::default());
 
-            let provider = result
-                .capabilities
-                .diagnostic_provider
-                .as_ref()
-                .expect("provider survives the merge");
-            assert_eq!(
-                advertised_flag(provider),
-                advertised,
-                "case {i}: advertised",
-            );
-            assert_eq!(
-                state.workspace_diagnostics().supported(),
-                supported,
-                "case {i}: supported",
-            );
-        }
+        let provider = result
+            .capabilities
+            .diagnostic_provider
+            .as_ref()
+            .expect("provider survives the merge");
+        assert_eq!(
+            advertised_flag(provider),
+            advertised,
+            "the final advertisement",
+        );
+        assert_eq!(
+            state.workspace_diagnostics().supported(),
+            supported,
+            "handler support",
+        );
     }
 
     // The RegistrationOptions arm follows the same matrix; the Disabled row
     // is the kill-switch cell where an arm-specific regression would hide.
-    #[test]
-    fn registration_options_arm_follows_the_same_matrix() {
-        let client = ClientCapabilities::default();
-
-        let enabled = matrix_state(WorkspaceDiagnostics::enabled());
+    #[rstest]
+    #[case::enabled_advertises(WorkspaceDiagnostics::enabled(), true)]
+    #[case::disabled_forces_off(WorkspaceDiagnostics::disabled(), false)]
+    fn registration_options_arm_follows_the_same_matrix(
+        #[case] mode: WorkspaceDiagnostics,
+        #[case] expected: bool,
+    ) {
+        let state = matrix_state(mode);
         let mut result = result_with_registration_provider(true);
-        configure_capabilities(&enabled, &mut result, &client);
+        configure_capabilities(&state, &mut result, &ClientCapabilities::default());
         let Some(DiagnosticServerCapabilities::RegistrationOptions(options)) =
             result.capabilities.diagnostic_provider.as_ref()
         else {
             panic!("provider survives the merge");
         };
-        assert!(options.diagnostic_options.workspace_diagnostics);
-        assert!(enabled.workspace_diagnostics().supported());
-
-        let disabled = matrix_state(WorkspaceDiagnostics::disabled());
-        let mut result = result_with_registration_provider(true);
-        configure_capabilities(&disabled, &mut result, &client);
-        let Some(DiagnosticServerCapabilities::RegistrationOptions(options)) =
-            result.capabilities.diagnostic_provider.as_ref()
-        else {
-            panic!("provider survives the merge");
-        };
-        assert!(!options.diagnostic_options.workspace_diagnostics);
-        assert!(!disabled.workspace_diagnostics().supported());
+        assert_eq!(
+            options.diagnostic_options.workspace_diagnostics, expected,
+            "the RegistrationOptions arm carries the resolved advertisement",
+        );
+        assert_eq!(
+            state.workspace_diagnostics().supported(),
+            expected,
+            "handler support follows the advertisement",
+        );
     }
 
     // A provider-less implementor stays provider-less: the framework creates
     // nothing, and the handler stays unsupported.
-    #[test]
-    fn provider_none_advertises_nothing_and_stays_unsupported() {
-        for mode in [
-            WorkspaceDiagnostics::enabled(),
-            WorkspaceDiagnostics::disabled(),
-        ] {
-            let state = matrix_state(mode);
-            let mut result = InitializeResult::default();
-            configure_capabilities(&state, &mut result, &ClientCapabilities::default());
+    #[rstest]
+    #[case::enabled(WorkspaceDiagnostics::enabled())]
+    #[case::disabled(WorkspaceDiagnostics::disabled())]
+    fn provider_none_advertises_nothing_and_stays_unsupported(#[case] mode: WorkspaceDiagnostics) {
+        let state = matrix_state(mode);
+        let mut result = InitializeResult::default();
+        configure_capabilities(&state, &mut result, &ClientCapabilities::default());
 
-            assert!(result.capabilities.diagnostic_provider.is_none());
-            assert!(!state.workspace_diagnostics().supported());
-        }
+        assert!(result.capabilities.diagnostic_provider.is_none());
+        assert!(!state.workspace_diagnostics().supported());
     }
 
     // The spec's machinery rule: registration, configuration polling, and
     // refresh only activate when the final advertisement said supported —
     // client capabilities alone must not wake them.
-    #[test]
-    fn machinery_gates_on_supported() {
-        let configurable = || {
-            WorkspaceDiagnostics::Configurable(
-                WorkspaceDiagnostics::setting("test.machinery").with_default_enabled(true),
-            )
-        };
+    #[rstest]
+    #[case::advertised(true)]
+    #[case::unadvertised(false)]
+    fn machinery_gates_on_supported(#[case] advertised: bool) {
+        let mode = WorkspaceDiagnostics::Configurable(
+            WorkspaceDiagnostics::setting("test.machinery").with_default_enabled(true),
+        );
 
-        let unsupported = matrix_state(configurable());
-        let mut result = result_with_provider(false);
-        configure_capabilities(&unsupported, &mut result, &client_caps(true, true, true));
-        let state = unsupported.workspace_diagnostics();
-        assert!(!state.supported());
-        assert!(!state.can_request_configuration());
-        assert!(!state.can_register_configuration());
-        assert!(!state.can_refresh());
-
-        let supported = matrix_state(configurable());
-        let mut result = result_with_provider(true);
-        configure_capabilities(&supported, &mut result, &client_caps(true, true, true));
-        let state = supported.workspace_diagnostics();
-        assert!(state.supported());
-        assert!(state.can_request_configuration());
-        assert!(state.can_register_configuration());
-        assert!(state.can_refresh());
+        let server_state = matrix_state(mode);
+        let mut result = result_with_provider(advertised);
+        configure_capabilities(&server_state, &mut result, &client_caps(true, true, true));
+        let state = server_state.workspace_diagnostics();
+        assert_eq!(state.supported(), advertised, "supported");
+        assert_eq!(
+            state.can_request_configuration(),
+            advertised,
+            "configuration polling",
+        );
+        assert_eq!(
+            state.can_register_configuration(),
+            advertised,
+            "dynamic registration",
+        );
+        assert_eq!(state.can_refresh(), advertised, "refresh");
     }
 
-    #[test]
+    #[rstest]
     fn file_watching_follows_the_client_capability() {
         let state = matrix_state(WorkspaceDiagnostics::enabled());
         let mut result = result_with_provider(true);
@@ -1285,7 +1278,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[rstest]
     fn related_reports_merge_with_replace_false() {
         let state = ServerState::with_options::<PlainServer>(
             ClientSocket::new_closed(),

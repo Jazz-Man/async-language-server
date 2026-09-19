@@ -42,6 +42,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::for_each_bounded;
+    use rstest::rstest;
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::sync::{Semaphore, mpsc};
@@ -51,6 +52,7 @@ mod tests {
         Ok(value)
     }
 
+    #[rstest]
     #[tokio::test]
     async fn results_return_in_input_order_regardless_of_completion() {
         // Later items finish first; order must still follow input.
@@ -65,6 +67,7 @@ mod tests {
         assert_eq!(results, Ok(vec![0, 1, 2, 3]));
     }
 
+    #[rstest]
     #[tokio::test]
     async fn width_bounds_concurrent_items() {
         let permits = Arc::new(Semaphore::new(0));
