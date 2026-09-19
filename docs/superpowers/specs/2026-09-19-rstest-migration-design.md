@@ -59,9 +59,12 @@ code, so no integration-test target may be created.
   `ClientSocket`); the canonical UTF-16 fixture
   (`state_with_documents` shape — the `"🙂abc"` document stays
   load-bearing) as a fixture; capability-seeded variants
-  (`gated_state`) via composition; an async `workspace_state(ws)`
-  fixture absorbing the state-setup triplet (folders + advertise +
-  refresh) that repeats 20 times in `state/tests.rs`.
+  (`gated_state`) via composition; and a plain async
+  `seed_workspace(&TempWorkspace) -> SeededWorkspace` helper absorbing
+  the state-setup triplet (folders + advertise + refresh) that repeats
+  20 times in `state/tests.rs` — a helper, not a fixture: the refresh
+  must run after the test's own writes, and fixtures resolve before the
+  test body (the same sequencing rule that keeps wire spawn explicit).
 - Existing position/token/url helpers pass the §6 audit unchanged as
   plain fns where fixtures cannot express them (`url` is called
   mid-test on arbitrary names, not at injection time).
