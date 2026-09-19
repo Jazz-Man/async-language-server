@@ -4,11 +4,13 @@
 use async_lsp::lsp_types::{
     ClientCapabilities, DiagnosticOptions, DiagnosticServerCapabilities, ServerCapabilities,
 };
+use rstest::rstest;
 use serde_json::{Value, json};
 use tokio::time::timeout;
 
 use crate::server::Server;
 use crate::server::testing::{EchoServer, WIRE_TIMEOUT, bounded, spawn_wire_server};
+use crate::testing::{TempWorkspace, workspace};
 
 #[derive(Clone)]
 struct ConfigurableServer;
@@ -37,6 +39,7 @@ impl Server for ConfigurableServer {
     }
 }
 
+#[rstest]
 #[tokio::test]
 async fn shutdown_exit_terminates_the_server_loop_cleanly() {
     let (mut client, server) = spawn_wire_server(EchoServer);
@@ -60,20 +63,11 @@ async fn shutdown_exit_terminates_the_server_loop_cleanly() {
     assert!(raw.is_empty(), "no trailing bytes after exit");
 }
 
+#[rstest]
 #[tokio::test]
-async fn workspace_configuration_request_is_served_mid_request() {
-    let root = {
-        let millis = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system time is after epoch")
-            .as_millis();
-        let root = std::env::temp_dir().join(format!("als-wire-config-{millis}"));
-        tokio::fs::create_dir_all(&root)
-            .await
-            .expect("temp workspace can be created");
-        root
-    };
-
+async fn workspace_configuration_request_is_served_mid_request(
+    #[with("wire-termination")] workspace: TempWorkspace,
+) {
     let (mut client, server) = spawn_wire_server(ConfigurableServer);
 
     // initialize with configuration capability + a workspace folder
@@ -84,7 +78,7 @@ async fn workspace_configuration_request_is_served_mid_request() {
             json!({
                 "processId": null,
                 "capabilities": { "workspace": { "configuration": true } },
-                "workspaceFolders": [{ "uri": format!("file://{}", root.display()), "name": "root" }]
+                "workspaceFolders": [{ "uri": format!("file://{}", workspace.display()), "name": "root" }]
             }),
         )
         .await;
@@ -131,7 +125,4 @@ async fn workspace_configuration_request_is_served_mid_request() {
 
     drop(client);
     let _ = bounded(server).await;
-    tokio::fs::remove_dir_all(root)
-        .await
-        .expect("temp workspace can be removed");
 }

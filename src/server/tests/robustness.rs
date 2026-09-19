@@ -7,6 +7,7 @@ use std::time::Duration;
 use async_lsp::lsp_types::{
     ClientCapabilities, Hover, HoverParams, HoverProviderCapability, ServerCapabilities,
 };
+use rstest::rstest;
 use serde_json::json;
 use tokio::io::AsyncWriteExt as _;
 use tokio::sync::{mpsc, watch};
@@ -87,6 +88,7 @@ impl Server for PanickingServer {
     }
 }
 
+#[rstest]
 #[tokio::test]
 async fn panicking_handler_returns_structured_error() {
     let (mut client, server) = spawn_wire_server(PanickingServer);
@@ -113,6 +115,7 @@ async fn panicking_handler_returns_structured_error() {
     let _ = bounded(server).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn at_most_limit_requests_run_concurrently() {
     let (entered_tx, mut entered_rx) = mpsc::unbounded_channel();
@@ -183,6 +186,7 @@ async fn at_most_limit_requests_run_concurrently() {
     let _ = bounded(server).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn cancel_request_answers_request_cancelled() {
     let (entered_tx, mut entered_rx) = mpsc::unbounded_channel();
@@ -225,6 +229,7 @@ async fn cancel_request_answers_request_cancelled() {
     let _ = bounded(server).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn malformed_header_closes_the_connection() {
     let (mut client, server) = spawn_wire_server(EchoServer);

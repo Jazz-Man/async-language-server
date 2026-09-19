@@ -6,10 +6,12 @@
 use async_lsp::lsp_types::{
     ClientCapabilities, DiagnosticOptions, DiagnosticServerCapabilities, ServerCapabilities,
 };
+use rstest::rstest;
 use serde_json::{Value, json};
 use std::time::Duration;
 use tokio::time::timeout;
 
+use crate::error::ServerResult;
 use crate::server::testing::{RawClient, WIRE_TIMEOUT, bounded, spawn_wire_server};
 use crate::server::{DocumentMatcher, Server, ServerOptions, WorkspaceDiagnostics};
 use crate::testing::diagnostic_provider_capabilities;
@@ -92,7 +94,18 @@ impl Server for UnadvertisedWatcherServer {
     }
 }
 
-async fn initialize_with_capabilities(client: &mut RawClient, capabilities: Value) {
+/// Spawns one of this file's servers and runs the `initialize` handshake
+/// with the given client `capabilities` — the tail shared by all seven
+/// spawn sites below. A deliberate per-file helper: the shared wire
+/// harness stays free of bespoke handshake wrappers.
+async fn spawn_initialized<S>(
+    server: S,
+    capabilities: Value,
+) -> (RawClient, tokio::task::JoinHandle<ServerResult<()>>)
+where
+    S: Server + Clone + Send + Sync + 'static,
+{
+    let (mut client, server) = spawn_wire_server(server);
     let response = client
         .request(
             1,
@@ -108,6 +121,7 @@ async fn initialize_with_capabilities(client: &mut RawClient, capabilities: Valu
         "initialize succeeds: {response}",
     );
     client.notify("initialized", json!({})).await;
+    (client, server)
 }
 
 /// Reads client-bound messages until a request for `method` arrives;
@@ -149,11 +163,11 @@ async fn reply_result(client: &mut RawClient, request: &Value, result: Value) {
         .await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn initialized_registers_did_change_configuration_when_supported() {
-    let (mut client, server) = spawn_wire_server(RegistrationServer);
-    initialize_with_capabilities(
-        &mut client,
+    let (mut client, server) = spawn_initialized(
+        RegistrationServer,
         json!({
             "workspace": {
                 "didChangeConfiguration": { "dynamicRegistration": true },
@@ -181,11 +195,11 @@ async fn initialized_registers_did_change_configuration_when_supported() {
     let _ = bounded(server).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn initialized_registers_file_watchers_when_supported() {
-    let (mut client, server) = spawn_wire_server(WatcherServer);
-    initialize_with_capabilities(
-        &mut client,
+    let (mut client, server) = spawn_initialized(
+        WatcherServer,
         json!({
             "workspace": {
                 "didChangeWatchedFiles": { "dynamicRegistration": true },
@@ -229,13 +243,13 @@ async fn initialized_registers_file_watchers_when_supported() {
     let _ = bounded(server).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn initialized_skips_watcher_registration_without_support() {
     // Case 1 — the missing client capability holds the registration back:
     // the fixture matcher carries a url glob and its provider is advertised,
     // so only the capability conjunct is off.
-    let (mut client, server) = spawn_wire_server(WatcherServer);
-    initialize_with_capabilities(&mut client, json!({})).await;
+    let (mut client, server) = spawn_initialized(WatcherServer, json!({})).await;
     assert_no_server_request(&mut client, "client/registerCapability").await;
     drop(client);
     let _ = bounded(server).await;
@@ -243,9 +257,8 @@ async fn initialized_skips_watcher_registration_without_support() {
     // Case 2 — the gate's enabled-diagnostics conjunct: the client IS
     // capable, but this fixture advertises no provider, so watched-file
     // events would carry no meaning and no registration may be sent.
-    let (mut client, server) = spawn_wire_server(UnadvertisedWatcherServer);
-    initialize_with_capabilities(
-        &mut client,
+    let (mut client, server) = spawn_initialized(
+        UnadvertisedWatcherServer,
         json!({
             "workspace": {
                 "didChangeWatchedFiles": { "dynamicRegistration": true },
@@ -258,11 +271,11 @@ async fn initialized_skips_watcher_registration_without_support() {
     let _ = bounded(server).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn configuration_reply_applies_only_if_generation_current() {
-    let (mut client, server) = spawn_wire_server(RefreshServer);
-    initialize_with_capabilities(
-        &mut client,
+    let (mut client, server) = spawn_initialized(
+        RefreshServer,
         json!({
             "workspace": {
                 "configuration": true,
@@ -306,13 +319,13 @@ async fn configuration_reply_applies_only_if_generation_current() {
     let _ = bounded(server).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn refresh_fires_only_on_change_and_only_when_supported() {
     // A refresh-supporting client: a same-value push refreshes nothing, a
     // real change does.
-    let (mut client, server) = spawn_wire_server(RefreshServer);
-    initialize_with_capabilities(
-        &mut client,
+    let (mut client, server) = spawn_initialized(
+        RefreshServer,
         json!({
             "workspace": { "diagnostic": { "refreshSupport": true } },
         }),
@@ -339,8 +352,7 @@ async fn refresh_fires_only_on_change_and_only_when_supported() {
     let _ = bounded(server).await;
 
     // A client without refresh support never sees the refresh request.
-    let (mut client, server) = spawn_wire_server(RefreshServer);
-    initialize_with_capabilities(&mut client, json!({})).await;
+    let (mut client, server) = spawn_initialized(RefreshServer, json!({})).await;
 
     client
         .notify(

@@ -2,10 +2,12 @@
 //! exclusivity, and the shutdown wall, all through the real
 //! `LifecycleLayer`.
 
+use rstest::rstest;
 use serde_json::json;
 
 use crate::server::testing::{EchoServer, bounded, spawn_wire_server};
 
+#[rstest]
 #[tokio::test]
 async fn initialize_negotiates_position_encoding_end_to_end() {
     let (mut client, server) = spawn_wire_server(EchoServer);
@@ -20,6 +22,7 @@ async fn initialize_negotiates_position_encoding_end_to_end() {
     let _ = bounded(server).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn requests_before_initialize_are_rejected() {
     let (mut client, server) = spawn_wire_server(EchoServer);
@@ -41,6 +44,7 @@ async fn requests_before_initialize_are_rejected() {
     let _ = bounded(server).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn double_initialize_is_rejected() {
     let (mut client, server) = spawn_wire_server(EchoServer);
@@ -60,6 +64,7 @@ async fn double_initialize_is_rejected() {
     let _ = bounded(server).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn requests_after_shutdown_are_rejected() {
     let (mut client, server) = spawn_wire_server(EchoServer);

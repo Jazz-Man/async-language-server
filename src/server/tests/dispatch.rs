@@ -12,6 +12,7 @@ use async_lsp::lsp_types::{
     ClientCapabilities, Hover, HoverParams, OneOf, ServerCapabilities, WorkDoneProgressOptions,
     WorkspaceSymbol, WorkspaceSymbolOptions, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
+use rstest::rstest;
 use serde_json::{Value, json};
 use std::future::Future;
 use std::sync::Arc;
@@ -44,6 +45,7 @@ impl Server for AllMethodsServer {
     }
 }
 
+#[rstest]
 #[tokio::test]
 async fn unknown_methods_answer_method_not_found() {
     let (mut client, server) = spawn_wire_server(EchoServer);
@@ -73,6 +75,7 @@ async fn unknown_methods_answer_method_not_found() {
     let _ = bounded(server).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn wired_methods_dispatch() {
     let (mut client, server) = spawn_wire_server(AllMethodsServer);
@@ -113,6 +116,7 @@ async fn wired_methods_dispatch() {
 
 // Spec W4 over the real stack: an unadvertised method answers -32601
 // and its handler never runs. The gate message is the discriminator.
+#[rstest]
 #[tokio::test]
 async fn unadvertised_methods_answer_method_not_found_and_never_run_handlers() {
     #[derive(Clone)]
@@ -179,6 +183,7 @@ async fn unadvertised_methods_answer_method_not_found_and_never_run_handlers() {
 
 // The resolve family gates on its provider's resolve option, and an
 // advertised provider dispatches.
+#[rstest]
 #[tokio::test]
 async fn resolve_gates_follow_the_providers_resolve_option() {
     // The polarity rides a const parameter: `server_capabilities` is an
@@ -281,6 +286,7 @@ fn resolve_symbol_params() -> Value {
 // 0.95.1): the gate passes them, and the trait default's own
 // METHOD_NOT_FOUND is the reply — distinguishable from the gate's by
 // message.
+#[rstest]
 #[tokio::test]
 async fn type_hierarchy_trio_passes_the_gate() {
     #[derive(Clone)]
@@ -377,7 +383,7 @@ fn wired_requests() -> impl Iterator<Item = (&'static str, &'static str, Value)>
     })
 }
 
-#[test]
+#[rstest]
 fn inventory_covers_every_dispatch_row() {
     use crate::server::inventory::METHOD_NAMES;
 

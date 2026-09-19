@@ -1,6 +1,7 @@
 //! Staleness over the wire: a document mutated while its request is in
 //! flight answers `CONTENT_MODIFIED` and succeeds on retry.
 
+use rstest::rstest;
 use serde_json::json;
 use tokio::sync::{mpsc, watch};
 use tokio::time::timeout;
@@ -8,6 +9,7 @@ use tokio::time::timeout;
 use super::robustness::GatedServer;
 use crate::server::testing::{WIRE_TIMEOUT, bounded, did_open, hover_params, spawn_wire_server};
 
+#[rstest]
 #[tokio::test]
 async fn stale_document_answers_content_modified_then_succeeds_on_retry() {
     let (entered_tx, mut entered_rx) = mpsc::unbounded_channel();

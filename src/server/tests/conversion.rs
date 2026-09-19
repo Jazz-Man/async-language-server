@@ -2,10 +2,12 @@
 //! real serialization and incremental `didChange` application on the
 //! edited document.
 
+use rstest::rstest;
 use serde_json::json;
 
 use crate::server::testing::{EchoServer, bounded, did_open, spawn_wire_server};
 
+#[rstest]
 #[tokio::test]
 async fn utf16_positions_round_trip_through_real_serialization() {
     let (mut client, server) = spawn_wire_server(EchoServer);
@@ -39,6 +41,7 @@ async fn utf16_positions_round_trip_through_real_serialization() {
     let _ = bounded(server).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn incremental_did_change_applies_over_the_wire() {
     let (mut client, server) = spawn_wire_server(EchoServer);
