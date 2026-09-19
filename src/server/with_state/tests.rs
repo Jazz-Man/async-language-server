@@ -3,9 +3,9 @@ use crate::server::{
     WorkspaceDiagnostics,
 };
 use crate::testing::{
-    advertise_workspace_diagnostics, allow_all_methods, diagnostic,
-    diagnostic_provider_capabilities, line_position, same_line, temp_workspace,
-    test_document_matchers, url, workspace_diagnostic_params, workspace_folder,
+    TempWorkspace, advertise_workspace_diagnostics, allow_all_methods, diagnostic,
+    diagnostic_provider_capabilities, line_position, same_line, test_document_matchers, url,
+    workspace, workspace_diagnostic_params, workspace_folder,
 };
 use crate::text_utils::Encoding;
 use async_lsp::lsp_types::{
@@ -28,6 +28,7 @@ use async_lsp::lsp_types::{
     WorkspaceLocation, WorkspaceSymbol, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 use async_lsp::{ClientSocket, ErrorCode, LanguageServer};
+use rstest::rstest;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -641,12 +642,11 @@ fn test_document_diagnostics(
     ))
 }
 
-#[test]
-fn initialize_enables_workspace_diagnostics() {
-    let root = temp_workspace("workspace", "capabilities");
+#[rstest]
+fn initialize_enables_workspace_diagnostics(#[with("with_state")] workspace: TempWorkspace) {
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
 
-    let init_result = futures::executor::block_on(server.initialize(initialize_params(&root)))
+    let init_result = futures::executor::block_on(server.initialize(initialize_params(&workspace)))
         .expect("server can initialize");
 
     let Some(DiagnosticServerCapabilities::Options(options)) =
@@ -664,16 +664,15 @@ fn initialize_enables_workspace_diagnostics() {
     };
     assert_eq!(folders.supported, Some(true));
     assert_eq!(folders.change_notifications, Some(OneOf::Left(true)));
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn initialize_respects_disabled_workspace_diagnostics() {
-    let root = temp_workspace("workspace", "disabled-capabilities");
+#[rstest]
+fn initialize_respects_disabled_workspace_diagnostics(
+    #[with("with_state")] workspace: TempWorkspace,
+) {
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), DisabledServer);
 
-    let init_result = futures::executor::block_on(server.initialize(initialize_params(&root)))
+    let init_result = futures::executor::block_on(server.initialize(initialize_params(&workspace)))
         .expect("server can initialize");
 
     let Some(DiagnosticServerCapabilities::Options(options)) =
@@ -688,16 +687,13 @@ fn initialize_respects_disabled_workspace_diagnostics() {
         futures::executor::block_on(server.workspace_diagnostic(workspace_diagnostic_params()))
             .expect_err("workspace diagnostics should be disabled");
     assert_eq!(error.code, ErrorCode::METHOD_NOT_FOUND);
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn initialize_ignores_unknown_client_encodings() {
-    let root = temp_workspace("workspace", "unknown-encoding");
+#[rstest]
+fn initialize_ignores_unknown_client_encodings(#[with("with_state")] workspace: TempWorkspace) {
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
 
-    let mut params = initialize_params(&root);
+    let mut params = initialize_params(&workspace);
     params.capabilities.general = Some(GeneralClientCapabilities {
         position_encodings: Some(vec![
             PositionEncodingKind::new("utf-7"),
@@ -718,7 +714,7 @@ fn initialize_ignores_unknown_client_encodings() {
     // protocol default, `Encoding::default()` (UTF-16).
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
 
-    let mut params = initialize_params(&root);
+    let mut params = initialize_params(&workspace);
     params.capabilities.general = Some(GeneralClientCapabilities {
         position_encodings: Some(vec![PositionEncodingKind::new("utf-7")]),
         ..Default::default()
@@ -731,14 +727,12 @@ fn initialize_ignores_unknown_client_encodings() {
         init_result.capabilities.position_encoding,
         Some(PositionEncodingKind::UTF16),
     );
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
 /// The wrapper owns document-sync advertisement: incremental sync with
 /// open/close and save notifications. A compliant client stops sending
 /// `didOpen`/`didChange`/`didSave` if any of the three goes missing.
-#[test]
+#[rstest]
 fn initialize_advertises_incremental_sync_with_open_close_and_save() {
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
 
@@ -771,17 +765,16 @@ fn initialize_advertises_incremental_sync_with_open_close_and_save() {
 }
 
 /// Drives one row of the position-encoding preference negotiation:
-/// initializes a server over `name`'s temp workspace with a client offering
-/// `offered`, asserting the negotiated result is `expected`.
+/// initializes a server over `root` with a client offering `offered`,
+/// asserting the negotiated result is `expected`.
 fn initialize_with_position_encodings(
-    name: &str,
+    root: &Path,
     offered: Vec<PositionEncodingKind>,
     expected: PositionEncodingKind,
 ) {
-    let root = temp_workspace("workspace", name);
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
 
-    let mut params = initialize_params(&root);
+    let mut params = initialize_params(root);
     params.capabilities.general = Some(GeneralClientCapabilities {
         position_encodings: Some(offered),
         ..Default::default()
@@ -791,37 +784,36 @@ fn initialize_with_position_encodings(
         futures::executor::block_on(server.initialize(params)).expect("server can initialize");
 
     assert_eq!(init_result.capabilities.position_encoding, Some(expected));
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn initialize_prefers_encodings_by_the_preference_order() {
+#[rstest]
+fn initialize_prefers_encodings_by_the_preference_order(
+    #[with("with_state")] workspace: TempWorkspace,
+) {
     // UTF-8 outranks UTF-16 when both are offered.
     initialize_with_position_encodings(
-        "prefer-utf8",
+        &workspace,
         vec![PositionEncodingKind::UTF16, PositionEncodingKind::UTF8],
         PositionEncodingKind::UTF8,
     );
 
     // UTF-32 outranks UTF-16 when both are offered.
     initialize_with_position_encodings(
-        "prefer-utf32",
+        &workspace,
         vec![PositionEncodingKind::UTF16, PositionEncodingKind::UTF32],
         PositionEncodingKind::UTF32,
     );
 }
 
+#[rstest]
 #[tokio::test]
-async fn configurable_workspace_diagnostics_can_be_toggled() {
-    let root = temp_workspace("workspace", "configurable-diagnostics");
-    let file = root.join("a.test");
-    fs::write(&file, "disk").expect("test file can be written");
-    let file = fs::canonicalize(file).expect("test file can be canonicalized");
-    let uri = Url::from_file_path(file).expect("path can be converted to a URL");
+async fn configurable_workspace_diagnostics_can_be_toggled(
+    #[with("with_state")] workspace: TempWorkspace,
+) {
+    let uri = workspace.write("a.test", "disk");
 
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), ConfigurableServer);
-    let init_result = futures::executor::block_on(server.initialize(initialize_params(&root)))
+    let init_result = futures::executor::block_on(server.initialize(initialize_params(&workspace)))
         .expect("server can initialize");
 
     let Some(DiagnosticServerCapabilities::Options(options)) =
@@ -895,17 +887,17 @@ async fn configurable_workspace_diagnostics_can_be_toggled() {
         panic!("expected one clearing report");
     };
     assert!(report.full_document_diagnostic_report.items.is_empty());
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
+#[rstest]
 #[tokio::test]
-async fn configurable_workspace_diagnostics_read_initialization_options() {
-    let root = temp_workspace("workspace", "configurable-diagnostics-init");
-    fs::write(root.join("a.test"), "disk").expect("test file can be written");
+async fn configurable_workspace_diagnostics_read_initialization_options(
+    #[with("with_state")] workspace: TempWorkspace,
+) {
+    workspace.write("a.test", "disk");
 
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), ConfigurableServer);
-    let mut params = initialize_params(&root);
+    let mut params = initialize_params(&workspace);
     params.initialization_options = Some(serde_json::json!({
         "test": {
             "workspaceDiagnostics": {
@@ -928,57 +920,35 @@ async fn configurable_workspace_diagnostics_read_initialization_options() {
         report.full_document_diagnostic_report.items[0].message,
         "disk",
     );
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
+/// Workspace diagnostics report each document's version by its origin: an
+/// unopened file reports no version and its disk text; an open document
+/// reports the editor's version and text. The refresh walk runs on the
+/// blocking pool, so the wrapper's workspace diagnostics need a tokio
+/// runtime; a bare executor cannot drive them.
+#[rstest]
+#[case::unopened(None, None, "disk")]
+#[case::open(Some((3, "open")), Some(3), "open")]
 #[tokio::test]
-async fn workspace_diagnostics_report_unopened_documents_without_versions() {
-    let root = temp_workspace("workspace", "workspace-diagnostics");
-    let file = root.join("a.test");
-    fs::write(&file, "disk").expect("test file can be written");
-
-    let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
-    futures::executor::block_on(server.initialize(initialize_params(&root)))
-        .expect("server can initialize");
-
-    let report =
-        futures::executor::block_on(server.workspace_diagnostic(workspace_diagnostic_params()))
-            .expect("workspace diagnostics can be fetched");
-
-    let WorkspaceDiagnosticReportResult::Report(report) = report else {
-        panic!("expected full workspace diagnostic report");
-    };
-    let [WorkspaceDocumentDiagnosticReport::Full(report)] = report.items.as_slice() else {
-        panic!("expected one full document report");
-    };
-    assert_eq!(report.version, None);
-    assert_eq!(
-        report.full_document_diagnostic_report.items[0].message,
-        "disk",
-    );
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
-}
-
-// The refresh walk runs on the blocking pool, so the wrapper's workspace
-// diagnostics need a tokio runtime; a bare executor cannot drive them.
-#[tokio::test]
-async fn workspace_diagnostics_use_open_document_versions() {
-    let root = temp_workspace("workspace", "open-workspace-diagnostics");
-    let file = root.join("a.test");
-    fs::write(&file, "disk").expect("test file can be written");
-    let file = fs::canonicalize(file).expect("test file can be canonicalized");
-    let uri = Url::from_file_path(&file).expect("path can be converted to a URL");
+async fn workspace_diagnostics_report_versions_from_open_and_unopened_documents(
+    #[with("with_state")] workspace: TempWorkspace,
+    #[case] open: Option<(i32, &str)>,
+    #[case] expected_version: Option<i64>,
+    #[case] expected_message: &str,
+) {
+    let uri = workspace.write("a.test", "disk");
 
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
     server
-        .initialize(initialize_params(&root))
+        .initialize(initialize_params(&workspace))
         .await
         .expect("server can initialize");
-    let _ = server.did_open(DidOpenTextDocumentParams {
-        text_document: TextDocumentItem::new(uri, "test".into(), 3, "open".into()),
-    });
+    if let Some((version, text)) = open {
+        let _ = server.did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(uri, "test".into(), version, text.into()),
+        });
+    }
 
     let report = server
         .workspace_diagnostic(workspace_diagnostic_params())
@@ -991,25 +961,22 @@ async fn workspace_diagnostics_use_open_document_versions() {
     let [WorkspaceDocumentDiagnosticReport::Full(report)] = report.items.as_slice() else {
         panic!("expected one full document report");
     };
-    assert_eq!(report.version, Some(3));
+    assert_eq!(report.version, expected_version);
     assert_eq!(
         report.full_document_diagnostic_report.items[0].message,
-        "open",
+        expected_message,
     );
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
+#[rstest]
 #[tokio::test]
-async fn workspace_diagnostics_forward_previous_result_ids() {
-    let root = temp_workspace("workspace", "previous-result-id");
-    let file = root.join("a.test");
-    fs::write(&file, "disk").expect("test file can be written");
-    let file = fs::canonicalize(file).expect("test file can be canonicalized");
-    let uri = Url::from_file_path(file).expect("path can be converted to a URL");
+async fn workspace_diagnostics_forward_previous_result_ids(
+    #[with("with_state")] workspace: TempWorkspace,
+) {
+    let uri = workspace.write("a.test", "disk");
 
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
-    futures::executor::block_on(server.initialize(initialize_params(&root)))
+    futures::executor::block_on(server.initialize(initialize_params(&workspace)))
         .expect("server can initialize");
 
     let report =
@@ -1034,16 +1001,19 @@ async fn workspace_diagnostics_forward_previous_result_ids() {
         report.full_document_diagnostic_report.items[0].message,
         "test:cached",
     );
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
+#[rstest]
 #[tokio::test]
 async fn workspace_folder_changes_are_used_by_workspace_diagnostics() {
-    let first = temp_workspace("workspace", "workspace-folder-change-first");
-    let second = temp_workspace("workspace", "workspace-folder-change-second");
-    fs::write(first.join("a.test"), "first").expect("test file can be written");
-    fs::write(second.join("b.test"), "second").expect("test file can be written");
+    // The `workspace` fixture is needed twice; rstest resolves injections
+    // by the parameter's own name, so both roots come from calling the
+    // fixture as a standard function — the documented rstest mechanism.
+    // Both instances keep the guard's Drop cleanup.
+    let first = workspace("with_state");
+    let second = workspace("with_state");
+    first.write("a.test", "first");
+    second.write("b.test", "second");
 
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
     futures::executor::block_on(server.initialize(initialize_params(&first)))
@@ -1069,19 +1039,18 @@ async fn workspace_folder_changes_are_used_by_workspace_diagnostics() {
         report.full_document_diagnostic_report.items[0].message,
         "second",
     );
-
-    fs::remove_dir_all(first).expect("temp workspace can be removed");
-    fs::remove_dir_all(second).expect("temp workspace can be removed");
 }
 
+#[rstest]
 #[tokio::test]
-async fn workspace_diagnostics_prefer_direct_reports_over_related_reports() {
-    let root = temp_workspace("workspace", "related-reports");
-    fs::write(root.join("a.test"), "source").expect("test file can be written");
-    fs::write(root.join("b.test"), "direct").expect("test file can be written");
+async fn workspace_diagnostics_prefer_direct_reports_over_related_reports(
+    #[with("with_state")] workspace: TempWorkspace,
+) {
+    workspace.write("a.test", "source");
+    workspace.write("b.test", "direct");
 
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
-    futures::executor::block_on(server.initialize(initialize_params(&root)))
+    futures::executor::block_on(server.initialize(initialize_params(&workspace)))
         .expect("server can initialize");
 
     let report =
@@ -1093,17 +1062,16 @@ async fn workspace_diagnostics_prefer_direct_reports_over_related_reports() {
     };
     let messages: Vec<_> = report.items.iter().map(workspace_report_message).collect();
     assert_eq!(messages, ["source", "direct"]);
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn initialize_without_workspace_folders_reports_no_items() {
-    let root = temp_workspace("workspace", "no-folders");
-    fs::write(root.join("a.test"), "disk").expect("test file can be written");
+#[rstest]
+fn initialize_without_workspace_folders_reports_no_items(
+    #[with("with_state")] workspace: TempWorkspace,
+) {
+    workspace.write("a.test", "disk");
 
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
-    let mut params = initialize_params(&root);
+    let mut params = initialize_params(&workspace);
     params.workspace_folders = None; // client sends neither folders nor rootUri
     futures::executor::block_on(server.initialize(params)).expect("server can initialize");
 
@@ -1115,15 +1083,14 @@ fn initialize_without_workspace_folders_reports_no_items() {
         panic!("expected full workspace diagnostic report");
     };
     assert!(report.items.is_empty());
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
-fn resolve_converts_with_sole_document_and_passes_through_with_two() {
-    let root = temp_workspace("workspace", "resolve-pick");
+#[rstest]
+fn resolve_converts_with_sole_document_and_passes_through_with_two(
+    #[with("with_state")] workspace: TempWorkspace,
+) {
     let mut server = LanguageServerWithState::new(ClientSocket::new_closed(), TestServer);
-    let mut params = initialize_params(&root);
+    let mut params = initialize_params(&workspace);
     params.capabilities.general = Some(GeneralClientCapabilities {
         position_encodings: Some(vec![PositionEncodingKind::UTF16]),
         ..Default::default()
@@ -1134,7 +1101,8 @@ fn resolve_converts_with_sole_document_and_passes_through_with_two() {
     // gate open regardless.
     allow_all_methods(&mut server.state);
 
-    let first = Url::from_file_path(root.join("a.test")).expect("path can be converted to a URL");
+    let first =
+        Url::from_file_path(workspace.join("a.test")).expect("path can be converted to a URL");
     let _ = server.did_open(DidOpenTextDocumentParams {
         text_document: TextDocumentItem::new(first, "test".into(), 1, "🙂abc".into()),
     });
@@ -1159,7 +1127,8 @@ fn resolve_converts_with_sole_document_and_passes_through_with_two() {
     assert_eq!(edit.range.start, Position::new(0, 2));
 
     // Second document: no sole document, both converters pass through.
-    let second = Url::from_file_path(root.join("b.test")).expect("path can be converted to a URL");
+    let second =
+        Url::from_file_path(workspace.join("b.test")).expect("path can be converted to a URL");
     let _ = server.did_open(DidOpenTextDocumentParams {
         text_document: TextDocumentItem::new(second, "test".into(), 1, "🙂def".into()),
     });
@@ -1169,11 +1138,9 @@ fn resolve_converts_with_sole_document_and_passes_through_with_two() {
         panic!("expected edit");
     };
     assert_eq!(edit.range.start, Position::new(0, 2));
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
-#[test]
+#[rstest]
 fn link_resolve_conversion_keys_on_the_sole_tracked_document() {
     // One tracked document ("🙂abc": byte 4 == UTF-16 unit 2); the link's
     // target points at an untracked URL. Resolve-side conversion keys on
@@ -1195,7 +1162,7 @@ fn link_resolve_conversion_keys_on_the_sole_tracked_document() {
     assert_eq!(returned, same_line(0, 2, 2));
 }
 
-#[test]
+#[rstest]
 fn code_lens_resolve_round_trips_through_the_sole_document() {
     // One tracked document ("🙂abc": byte 4 == UTF-16 unit 2): the handler
     // sees UTF-8, the client its UTF-16 columns back.
@@ -1218,7 +1185,7 @@ fn code_lens_resolve_round_trips_through_the_sole_document() {
     assert_eq!(resolved.range, same_line(0, 2, 3));
 }
 
-#[test]
+#[rstest]
 fn inlay_hint_resolve_round_trips_through_the_sole_document() {
     // One tracked document ("🙂abc"): position, text edits, and the
     // label-part location (keyed at that same document) all convert — the
@@ -1265,18 +1232,17 @@ fn inlay_hint_resolve_round_trips_through_the_sole_document() {
 
 // The disk-reading resolve path hops to the blocking pool, so the test
 // needs a tokio runtime under the dispatched future.
+#[rstest]
 #[tokio::test]
-async fn workspace_symbol_resolve_converts_per_url_and_passes_right_through() {
+async fn workspace_symbol_resolve_converts_per_url_and_passes_right_through(
+    #[with("with_state")] workspace: TempWorkspace,
+) {
     // Sole tracked document "🙂abc"; the symbol's location resolves against
     // ITS OWN document — the tracked snapshot when the URL is tracked, a
     // disk read when it only exists on disk ("x🙂🙂": byte 1 == UTF-16 unit
     // 1, byte 9 == unit 5; the sole anchor would move these columns
     // differently) — and the range-less Right variant passes through.
-    let root = temp_workspace("with_state", "symbol-resolve");
-    let on_disk = root.join("sym.txt");
-    fs::write(&on_disk, "x🙂🙂").expect("test file can be written");
-    let on_disk = fs::canonicalize(on_disk).expect("test file can be canonicalized");
-    let disk_url = Url::from_file_path(on_disk).expect("path can be converted to a URL");
+    let disk_url = workspace.write("sym.txt", "x🙂🙂");
 
     let (mut server, captures) = resolve_capture_server(&[("only.txt", "🙂abc")]);
 
@@ -1334,12 +1300,11 @@ async fn workspace_symbol_resolve_converts_per_url_and_passes_right_through() {
     .await;
     assert_eq!(received, expected_right);
     assert_eq!(returned, expected_right);
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
 // No sole document resolves, so both standalone arms hop to the blocking
 // pool: the test needs a tokio runtime.
+#[rstest]
 #[tokio::test]
 async fn workspace_symbol_resolve_converts_in_multi_document_states() {
     // Two tracked documents: no sole conversion document, so the engine
@@ -1387,34 +1352,29 @@ async fn workspace_symbol_resolve_converts_in_multi_document_states() {
     assert_eq!(returned_location.range, same_line(0, 1, 5));
 }
 
-#[test]
-fn url_less_response_converts_against_sole_document() {
-    // One tracked document ("🙂abc": byte 4 == UTF-16 unit 2); the edit keys
-    // at that document's URL. A URL-less file-ops request must still run its
-    // outgoing hook, converting against the sole tracked document.
-    assert_eq!(
-        drive_will_create_files(&[("edit.txt", "🙂abc")]),
-        same_line(0, 2, 2),
-    );
-}
-
-#[test]
-fn url_less_passes_through_without_sole_document() {
-    // Zero tracked documents: nothing to convert against.
-    assert_eq!(drive_will_create_files(&[]), same_line(0, 4, 4));
-
-    // Two tracked documents: no sole document, so the response is
-    // returned in the handler's UTF-8 columns, unconverted.
-    assert_eq!(
-        drive_will_create_files(&[("a.txt", "🙂abc"), ("b.txt", "🙂🙂")]),
-        same_line(0, 4, 4),
-    );
+/// A URL-less file-ops request must still run its outgoing hook: with a
+/// sole tracked document the response converts against it ("🙂abc": byte
+/// 4 == UTF-16 unit 2); with zero tracked documents there is nothing to
+/// convert against, and with several there is no sole document — the
+/// response is returned in the handler's UTF-8 columns, unconverted.
+#[rstest]
+#[case::sole_document_converts(&[("edit.txt", "🙂abc")], same_line(0, 2, 2))]
+#[case::zero_tracked_passes_through(&[], same_line(0, 4, 4))]
+#[case::two_tracked_pass_through(&[("a.txt", "🙂abc"), ("b.txt", "🙂🙂")], same_line(0, 4, 4))]
+fn url_less_response_conversion_keys_on_the_sole_document(
+    #[case] documents: &[(&str, &str)],
+    #[case] expected: Range,
+) {
+    assert_eq!(drive_will_create_files(documents), expected);
 }
 
 // The engine's standalone arm hops to the blocking pool for the
 // disk-reading symbol hook, so the test needs a tokio runtime.
+#[rstest]
 #[tokio::test]
-async fn workspace_symbol_converts_in_sole_and_multi_document_states() {
+async fn workspace_symbol_converts_in_sole_and_multi_document_states(
+    #[with("with_state")] workspace: TempWorkspace,
+) {
     // Sole document: the engine resolves a sole conversion document, so
     // dispatch goes through `modify_response` — whose trait default
     // delegates to the standalone hook. The tracked location must still
@@ -1423,8 +1383,7 @@ async fn workspace_symbol_converts_in_sole_and_multi_document_states() {
     // a file that was never created — hermetically missing, so the disk
     // fallback provably passes it through unchanged.
     let missing =
-        Url::from_file_path(temp_workspace("with_state", "symbol-missing").join("missing.txt"))
-            .expect("path converts to a URL");
+        Url::from_file_path(workspace.join("missing.txt")).expect("path converts to a URL");
     let locations = drive_workspace_symbol(&[("a.txt", "🙂abc")], missing.clone()).await;
 
     assert_eq!(locations[0], (url("a.txt"), same_line(0, 2, 3)));
@@ -1445,17 +1404,14 @@ async fn workspace_symbol_converts_in_sole_and_multi_document_states() {
 
 // The engine path hops to the blocking pool (the fallback prime), so the
 // test needs a tokio runtime under the dispatched future.
+#[rstest]
 #[tokio::test]
-async fn untracked_url_converts_against_disk() {
+async fn untracked_url_converts_against_disk(#[with("with_state")] workspace: TempWorkspace) {
     // "🙂abc" on disk, never opened: byte 4 == UTF-16 unit 2. A second,
     // unrelated document is tracked (with ASCII text, so converting against
     // it would NOT move column 2 to byte 4) — the conversion must read the
     // disk text, not fall back to the sole tracked document.
-    let root = temp_workspace("workspace", "untracked-disk");
-    let file = root.join("emoji.txt");
-    fs::write(&file, "🙂abc").expect("test file can be written");
-    let file = fs::canonicalize(file).expect("test file can be canonicalized");
-    let disk_url = Url::from_file_path(file).expect("path can be converted to a URL");
+    let disk_url = workspace.write("emoji.txt", "🙂abc");
 
     let received = Arc::new(Mutex::new(None));
     let mut server = LanguageServerWithState::new(
@@ -1494,20 +1450,17 @@ async fn untracked_url_converts_against_disk() {
     // ...and the response came back in the client's UTF-16 columns.
     let hover = hover.expect("hover present");
     assert_eq!(hover.range.expect("range present"), same_line(0, 2, 2));
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
+#[rstest]
 #[tokio::test]
-async fn notification_hooks_run_after_the_internal_handlers() {
+async fn notification_hooks_run_after_the_internal_handlers(
+    #[with("with_state")] workspace: TempWorkspace,
+) {
     // The watched file loads as a Workspace document through the real
     // workspace path, so the did_change_watched_files hook can observe the
     // already-refreshed snapshot.
-    let root = temp_workspace("with_state", "hooks");
-    let watched = root.join("watched.test");
-    fs::write(&watched, "before").expect("test file can be written");
-    let watched = fs::canonicalize(watched).expect("test file can be canonicalized");
-    let watched_url = Url::from_file_path(&watched).expect("path can be converted to a URL");
+    let watched_url = workspace.write("watched.test", "before");
 
     let hooks = Arc::new(Mutex::new(Vec::new()));
     let watched_text = Arc::new(Mutex::new(None));
@@ -1521,7 +1474,7 @@ async fn notification_hooks_run_after_the_internal_handlers() {
     );
     server
         .state
-        .set_workspace_folders([workspace_folder(&root)]);
+        .set_workspace_folders([workspace_folder(&workspace)]);
     advertise_workspace_diagnostics(&server.state);
     server
         .state
@@ -1539,7 +1492,7 @@ async fn notification_hooks_run_after_the_internal_handlers() {
 
     // Mutate between the snapshot and the event: the hook must see the
     // text the internal handler already refreshed, not the stale one.
-    fs::write(&watched, "after").expect("test file can be written");
+    fs::write(workspace.join("watched.test"), "after").expect("test file can be written");
     drive_notifications(&mut server, watched_url);
 
     assert_eq!(
@@ -1564,8 +1517,6 @@ async fn notification_hooks_run_after_the_internal_handlers() {
         Some("after".into()),
         "the watched-files hook observes the already-refreshed document",
     );
-
-    fs::remove_dir_all(root).expect("temp workspace can be removed");
 }
 
 fn initialize_params(root: &Path) -> InitializeParams {
