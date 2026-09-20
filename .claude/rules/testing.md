@@ -173,9 +173,11 @@ function: `workspace("requests")`.
 the lint — sweep by reference count at cycle ends. Beware the
 macro-emitted-caller trap: `prime_conversion_fallback`,
 `warn_once_default`, `document_version`, `sole_document`,
-`dispatch_allowed`, `state_with_documents`, and
+`dispatch_allowed`, `utf16_state`, and
 `assert_converted_position` have keeping callers in macro-emitted code
-(`macros/src/`); src/-only sweeps misjudge them. `expect`/`unwrap` are
+(`macros/src/` — the stamped tables' `#[from(crate::testing::utf16_state)]`
+is `utf16_state`'s only consumer outside src/); src/-only sweeps misjudge
+them. `expect`/`unwrap` are
 allowed in tests (`clippy.toml`); production `src/` stays clean outside
 the one blessed `expect` in `src/server/state/documents.rs`.
 
@@ -191,7 +193,7 @@ the one blessed `expect` in `src/server/state/documents.rs`.
 | `#[files]` family | rejected — files resolve at compile time against the checkout; this suite builds runtime temp trees |
 | `#[context]` | rejected — no name-dependent logic; elapsed-time measurement is the anti-pattern below |
 | `#[by_ref]` | rejected — no cross-argument lifetimes to tune |
-| `#[from(...)]` | rejected for handwritten tests — the fixture graph is flat; the macro-stamped tables' emission is the one user (row above) |
+| `#[from(...)]` | rejected for handwritten tests — the fixture graph is flat; the macro-stamped tables' emission is the one user (see the macro-stamped tables row) |
 | `#[ignore]` | rejected — `#[tokio::test]` injects no arguments |
 | `#[trace]`/`#[notrace]` | rejected — named rows and assert output carry the semantics; `Debug` bounds on fixtures buy nothing |
 | `#[test_attr(...)]` | rejected — one runtime, nothing to deconflict |

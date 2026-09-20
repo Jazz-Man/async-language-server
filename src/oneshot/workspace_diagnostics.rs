@@ -474,8 +474,9 @@ mod tests {
 
     #[rstest]
     fn workspace_diagnostics_opens_documents_per_item(#[with("oneshot")] workspace: TempWorkspace) {
-        workspace.write("a.test", "");
-        workspace.write("b.test", "");
+        for name in ["a.test", "b.test"] {
+            workspace.write(name, "");
+        }
 
         let report = futures::executor::block_on(workspace_diagnostics(
             TestServer,
