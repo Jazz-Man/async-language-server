@@ -10,11 +10,13 @@ use crate::text_utils::Encoding;
 use async_lsp::ClientSocket;
 use async_lsp::lsp_types::{
     DidChangeTextDocumentParams, DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, FileChangeType, FileDelete, FileEvent,
-    FileRename, HoverProviderCapability, Position, Range, SemanticTokens, SemanticTokensResult,
-    ServerCapabilities, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    Url, VersionedTextDocumentIdentifier, WorkspaceFoldersChangeEvent,
+    DidSaveTextDocumentParams, FileChangeType, FileDelete, FileEvent, FileRename,
+    HoverProviderCapability, Position, Range, SemanticTokens, SemanticTokensResult,
+    ServerCapabilities, TextDocumentContentChangeEvent, TextDocumentIdentifier, Url,
+    VersionedTextDocumentIdentifier, WorkspaceFoldersChangeEvent,
 };
+#[cfg(feature = "tree-sitter")]
+use async_lsp::lsp_types::{DidOpenTextDocumentParams, TextDocumentItem};
 use rstest::rstest;
 use std::fs;
 use std::path::PathBuf;

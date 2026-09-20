@@ -41,13 +41,13 @@ doc:
 
 ## test: all-features leg — nextest binaries, then doctests (gate)
 test:
-	@$(CARGO_BIN) nextest run --workspace --all-features
-	@$(CARGO_BIN) test --doc --workspace --all-features
+	@RUSTFLAGS="-D warnings" $(CARGO_BIN) nextest run --workspace --all-features
+	@RUSTFLAGS="-D warnings" $(CARGO_BIN) test --doc --workspace --all-features
 
 ## test-no-default-features: no-default-features leg — nextest, then doctests (gate)
 test-no-default-features:
-	@$(CARGO_BIN) nextest run --workspace --no-default-features
-	@$(CARGO_BIN) test --doc --workspace --no-default-features
+	@RUSTFLAGS="-D warnings" $(CARGO_BIN) nextest run --workspace --no-default-features
+	@RUSTFLAGS="-D warnings" $(CARGO_BIN) test --doc --workspace --no-default-features
 
 ## dylint: external lint suites via their pinned nightlies, warnings are errors (gate)
 dylint:
