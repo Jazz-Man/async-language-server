@@ -13,3 +13,10 @@ updates:
       commit-message:
         prefix: "cargo: "
         include: "scope"
+    ignore:
+      # tree-sitter stays on 0.26 until tree-sitter-md (the downstream
+      # Markdown grammar) ships a release supporting 0.27; two tree-sitter
+      # majors cannot coexist in one dependency tree. See the hold comment
+      # in Cargo.toml. Drop this entry when the grammar catches up.
+      - dependency-name: "tree-sitter"
+        versions: [">=0.27"]
