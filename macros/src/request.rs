@@ -434,8 +434,9 @@ fn field_path(expr: &Expr) -> syn::Result<Vec<Ident>> {
 mod tests {
     use super::*;
     use quote::quote;
+    use rstest::rstest;
 
-    #[test]
+    #[rstest]
     fn field_path_extracts_dotted_chain() {
         let expr = syn::parse2(quote! { a.b.c }).expect("parses");
         assert_eq!(
@@ -444,20 +445,20 @@ mod tests {
         );
     }
 
-    #[test]
+    #[rstest]
     fn field_path_rejects_calls() {
         let expr = syn::parse2(quote! { a.b(c) }).expect("parses");
         assert!(field_path(&expr).is_err());
     }
 
-    #[test]
+    #[rstest]
     fn field_path_rejects_tuple_index() {
         let expr = syn::parse2(quote! { a.0 }).expect("parses");
         let err = field_path(&expr).expect_err("rejected");
         assert!(err.to_string().contains("named fields"));
     }
 
-    #[test]
+    #[rstest]
     fn minimal_attribute_emits_struct_and_impl() {
         let item = syn::parse2(quote! { pub struct X; }).expect("struct");
         let out = expand(
@@ -482,7 +483,7 @@ mod tests {
         assert!(!text.contains("STANDALONE_READS_DISK"));
     }
 
-    #[test]
+    #[rstest]
     fn full_wiring_emits_every_hook() {
         let item = syn::parse2(quote! { pub struct X; }).expect("struct");
         let out = expand(
@@ -519,7 +520,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[rstest]
     fn incoming_position_only_omits_unused_converters() {
         let item = syn::parse2(quote! { pub struct X; }).expect("struct");
         let out = expand(
@@ -537,35 +538,46 @@ mod tests {
         assert!(!text.contains("convert_range"));
     }
 
-    /// Parses the unit-struct fixture, expands `attr` against it, and
-    /// returns the expected error.
-    fn expansion_error(attr: proc_macro2::TokenStream) -> syn::Error {
-        let item = syn::parse2(quote! { pub struct X; }).expect("struct");
+    /// Parses the fixture struct from `item`, expands `attr` against it,
+    /// and returns the expected error.
+    fn expansion_error(
+        item: proc_macro2::TokenStream,
+        attr: proc_macro2::TokenStream,
+    ) -> syn::Error {
+        let item = syn::parse2(item).expect("struct");
         expand(attr, &item).expect_err("rejected")
     }
 
-    #[test]
-    fn unknown_field_is_spanned_error() {
-        let err = expansion_error(quote! { params = P, response = R, bogus(x) });
-        assert!(err.to_string().contains("unknown or malformed"));
+    /// Malformed invocations reject with a spanned error naming the defect —
+    /// whether the malformation sits in the attribute or on the struct.
+    #[rstest]
+    #[case::unknown_field(
+        "pub struct X;",
+        "params = P, response = R, bogus(x)",
+        // "unknown or malformed" pins the unknown-field rejection.
+        "unknown or malformed",
+    )]
+    #[case::duplicate_field("pub struct X;", "params = P, params = Q, response = R", "duplicate")]
+    #[case::generic_struct(
+        "pub struct X<T>;",
+        "params = P, response = R",
+        // "non-generic" pins the generics rejection.
+        "non-generic",
+    )]
+    fn rejects_malformed_invocations(#[case] item: &str, #[case] attr: &str, #[case] needle: &str) {
+        let err = expansion_error(
+            item.parse().expect("item tokens"),
+            attr.parse().expect("attr tokens"),
+        );
+        assert!(
+            err.to_string().contains(needle),
+            "{needle:?} missing from {err}",
+        );
     }
 
-    #[test]
+    #[rstest]
     fn missing_params_is_error() {
         let item = syn::parse2(quote! { pub struct X; }).expect("struct");
         assert!(expand(quote! { response = R }, &item).is_err());
-    }
-
-    #[test]
-    fn duplicate_field_is_error() {
-        let err = expansion_error(quote! { params = P, params = Q, response = R });
-        assert!(err.to_string().contains("duplicate"));
-    }
-
-    #[test]
-    fn generics_are_rejected() {
-        let item = syn::parse2(quote! { pub struct X<T>; }).expect("struct");
-        let err = expand(quote! { params = P, response = R }, &item).expect_err("rejected");
-        assert!(err.to_string().contains("non-generic"));
     }
 }

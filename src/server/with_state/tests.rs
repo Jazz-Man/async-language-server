@@ -30,7 +30,6 @@ use async_lsp::lsp_types::{
 use async_lsp::{ClientSocket, ErrorCode, LanguageServer};
 use rstest::rstest;
 use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -1492,7 +1491,7 @@ async fn notification_hooks_run_after_the_internal_handlers(
 
     // Mutate between the snapshot and the event: the hook must see the
     // text the internal handler already refreshed, not the stale one.
-    fs::write(workspace.join("watched.test"), "after").expect("test file can be written");
+    workspace.write("watched.test", "after");
     drive_notifications(&mut server, watched_url);
 
     assert_eq!(

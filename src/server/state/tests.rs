@@ -1510,7 +1510,7 @@ async fn conversion_fallback_primes_once_per_stamp_and_rereads_on_change(
         .expect("file exists")
         .modified()
         .expect("mtime is available");
-    fs::write(&file_path, "secon").expect("same-size write keeps the stamp");
+    workspace.write("untracked.test", "secon");
     fs::File::options()
         .write(true)
         .open(&file_path)
@@ -1528,7 +1528,7 @@ async fn conversion_fallback_primes_once_per_stamp_and_rereads_on_change(
     );
 
     // Different size: the stamp changes, the prime re-reads.
-    fs::write(&file_path, "second version").expect("stamp-changing write");
+    workspace.write("untracked.test", "second version");
     state.prime_conversion_fallback(uri.clone()).await;
     assert_eq!(
         state

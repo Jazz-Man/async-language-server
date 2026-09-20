@@ -195,12 +195,17 @@ conversion task's report includes its old→new test-name map (D8).
 
 Verifiable at cycle end:
 
-1. No handwritten plain test attribute remains: `grep -rn '#\[test\]\|#\[tokio::test\]' src macros/src --include='*.rs'` matches only the token-emission templates inside the `conversion_tests!` proc-macro body (`quote!` string literals, kept per D5) — never an actual test fn in either workspace member.
+1. No handwritten plain `#[test]` attribute remains on an actual test fn
+   in either workspace member: `grep -rn '#\[test\]' src macros/src --include='*.rs'` matches only the token-emission templates inside the `lsp_macros` bodies (`quote!` string literals, kept per D5) and the doc comments describing them — never a test fn. `#[tokio::test]` remains on async fns by design, always beneath `#[rstest]` (§4.3).
+
+   *Erratum, 2026-09-20: the original probe `grep -rn '#\[test\]\|#\[tokio::test\]' ...` was self-contradictory — §4.3's mandated `#[rstest]`-above/`#[tokio::test]`-below stacking keeps `#[tokio::test]` on every async test fn, so its half of the probe could never match "only the emission templates". Corrected to the plain-`#[test]` probe above.*
 2. `fs::write` appears only inside fixture/guard internals — the 107
    baseline collapses to the single `TempWorkspace::write`.
 3. Manual `fs::remove_dir_all` tails exist only in the guard's `Drop`.
 4. Both harness modules are smaller than their pre-cycle selves, with
    the §6 audit explaining every surviving item.
+
+   *Deviation, 2026-09-20: `src/testing.rs` grew 362→524 lines — growth this spec's own §3.1 architecture mandates (the `TempWorkspace` guard, the state-fixture family, `SeededWorkspace`), net of the T9c deletions; `src/server/testing.rs` stayed byte-identical to `main` (D3). The criterion's intent — no unjustified growth, every surviving item explained — is met through the T9c reference-count audit.*
 5. Battery green (both legs), dupes 0/0, deny green.
 6. Mutants disposition table reconciled against the collected name
    maps.

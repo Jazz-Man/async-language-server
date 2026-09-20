@@ -452,32 +452,37 @@ fn wrapped(alsp: &Ident, request: &Path, core: &TokenStream) -> TokenStream {
 mod tests {
     use super::*;
     use quote::{ToTokens, quote};
+    use rstest::rstest;
 
-    #[test]
-    fn parses_plain_row() {
-        let r: DispatchRow =
-            syn::parse2(quote! { hover: hover @ crate::lsp_requests::HoverRequest })
-                .expect("row parses");
-        assert_eq!(r.trait_method, "hover");
-        assert_eq!(r.alsp, "hover");
-        assert_eq!(
-            r.request.to_token_stream().to_string(),
-            "crate :: lsp_requests :: HoverRequest",
-        );
+    /// A row parses into the full triple with `resolve` unset — matching
+    /// names and name-diverging rows alike.
+    #[rstest]
+    #[case::plain_row(
+        "hover: hover @ crate::lsp_requests::HoverRequest",
+        "hover",
+        "hover",
+        "crate :: lsp_requests :: HoverRequest"
+    )]
+    #[case::diverging_names(
+        "rename_prepare: prepare_rename @ crate::lsp_requests::RenamePrepareRequest",
+        "rename_prepare",
+        "prepare_rename",
+        "crate :: lsp_requests :: RenamePrepareRequest"
+    )]
+    fn parses_dispatch_row(
+        #[case] input: &str,
+        #[case] trait_method: &str,
+        #[case] alsp: &str,
+        #[case] request: &str,
+    ) {
+        let r: DispatchRow = syn::parse2(input.parse().expect("tokens")).expect("row parses");
+        assert_eq!(r.trait_method, trait_method);
+        assert_eq!(r.alsp, alsp);
+        assert_eq!(r.request.to_token_stream().to_string(), request);
         assert!(!r.resolve);
     }
 
-    #[test]
-    fn parses_diverging_names() {
-        let r: DispatchRow = syn::parse2(
-            quote! { rename_prepare: prepare_rename @ crate::lsp_requests::RenamePrepareRequest },
-        )
-        .expect("row parses");
-        assert_eq!(r.trait_method, "rename_prepare");
-        assert_eq!(r.alsp, "prepare_rename");
-    }
-
-    #[test]
+    #[rstest]
     fn engine_emits_url_anchored_skeleton() {
         let r: DispatchRow = syn::parse2(quote! { hover: hover @ R }).expect("row parses");
         let text = engine(&r).to_string();
@@ -506,7 +511,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[rstest]
     fn engine_emits_sole_document_path_for_resolve_rows() {
         let mut r: DispatchRow =
             syn::parse2(quote! { completion_resolve: completion_resolve @ R }).expect("row parses");
@@ -521,7 +526,7 @@ mod tests {
         assert!(!text.contains("CONTENT_MODIFIED"));
     }
 
-    #[test]
+    #[rstest]
     fn table_parses_mixed_rows_and_trailing_comma() {
         let table: DispatchTable = syn::parse2(quote! {
             hover: hover @ A,
@@ -532,7 +537,7 @@ mod tests {
         assert!(table.0[1].resolve);
     }
 
-    #[test]
+    #[rstest]
     fn rejects_row_missing_at() {
         assert!(syn::parse2::<DispatchRow>(quote! { hover: hover A }).is_err());
     }

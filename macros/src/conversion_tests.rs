@@ -183,36 +183,29 @@ pub(super) fn entry(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 mod tests {
     use super::*;
     use quote::quote;
+    use rstest::rstest;
 
-    #[test]
-    fn parses_minimal_row() {
-        let table: TestTable = syn::parse2(quote! {
-            t: R { params: |uri| P::new(uri) }
-        })
-        .expect("parses");
+    /// The optional hook pairs fill exactly when written: a `params`-only
+    /// row leaves both `None`, the all-fields row fills both.
+    #[rstest]
+    #[case::minimal_row("t: R { params: |uri| P::new(uri) }", false, false)]
+    #[case::full_row(
+        "t: R { params: p, incoming: i, expects: e, response: r, outgoing: o, returns: x }",
+        true,
+        true
+    )]
+    fn parses_row_with_optional_hook_pairs(
+        #[case] input: &str,
+        #[case] incoming: bool,
+        #[case] response: bool,
+    ) {
+        let table: TestTable = syn::parse2(input.parse().expect("tokens")).expect("parses");
         assert_eq!(table.0.len(), 1);
-        assert!(table.0[0].incoming.is_none());
-        assert!(table.0[0].response.is_none());
+        assert_eq!(table.0[0].incoming.is_some(), incoming);
+        assert_eq!(table.0[0].response.is_some(), response);
     }
 
-    #[test]
-    fn parses_full_row() {
-        let table: TestTable = syn::parse2(quote! {
-            t: R {
-                params: p,
-                incoming: i,
-                expects: e,
-                response: r,
-                outgoing: o,
-                returns: x,
-            }
-        })
-        .expect("parses");
-        assert!(table.0[0].incoming.is_some());
-        assert!(table.0[0].response.is_some());
-    }
-
-    #[test]
+    #[rstest]
     fn emits_test_fn_with_fixtures() {
         let out = expand(quote! {
             t: R { params: |uri| P::new(uri) }
@@ -224,23 +217,20 @@ mod tests {
         assert!(text.contains("modify_params"));
     }
 
-    #[test]
-    fn rejects_unknown_duplicate_and_stray_row_tokens() {
-        let cases: [(&str, &str); 4] = [
-            ("t: R { params: p, bogus: b }", "unknown row field"),
-            (
-                "t: R { params: p, incoming: i, expects: e, incoming: i2, expects: e2 }",
-                "duplicate row field",
-            ),
-            ("t: R { params: p, 42 }", "expected identifier"),
-            ("t: R { params: p 42 }", "unexpected tokens"),
-        ];
-        for (i, (input, needle)) in cases.into_iter().enumerate() {
-            let err = expand(input.parse().expect("tokens")).expect_err("rejected");
-            assert!(
-                err.to_string().contains(needle),
-                "case {i}: {needle:?} missing from {err}",
-            );
-        }
+    /// Malformed rows reject with a spanned error naming the defect class.
+    #[rstest]
+    #[case::unknown_row_field("t: R { params: p, bogus: b }", "unknown row field")]
+    #[case::duplicate_row_field(
+        "t: R { params: p, incoming: i, expects: e, incoming: i2, expects: e2 }",
+        "duplicate row field"
+    )]
+    #[case::stray_int_tokens("t: R { params: p, 42 }", "expected identifier")]
+    #[case::missing_separator("t: R { params: p 42 }", "unexpected tokens")]
+    fn rejects_malformed_rows(#[case] input: &str, #[case] needle: &str) {
+        let err = expand(input.parse().expect("tokens")).expect_err("rejected");
+        assert!(
+            err.to_string().contains(needle),
+            "{needle:?} missing from {err}",
+        );
     }
 }
