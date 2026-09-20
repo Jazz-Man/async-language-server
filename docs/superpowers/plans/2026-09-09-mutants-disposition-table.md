@@ -40,6 +40,25 @@ Core inventory (152, artifacts excluded): 111 b + 20 c + 21 d.
   behavior and tier. Tier marks: W0 = inline/sibling unit test; wire = `src/server/tests`
   harness (only where W0 cannot observe).
 
+**Name reconciliation (2026-09-19, rstest-migration cycle close, Task 9c).** The cycle's
+test-renaming waves (task 02–07 name maps, T9a's one deletion, T9b's four case-slug renames)
+were applied to the covering-test cells above; the touched rows carry their provenance inline.
+Summary: 11 rows re-pointed to current ids (`from_lsp_maps_each_supported_kind` /
+`from_lsp_panics_on_unknown_kind`; `sub_resolves_relative_positions` case rows in bytes/lsp/
+tree_sitter, absorbing `sub_bounds_are_relative_to_range_length` and
+`sub_rejects_end_of_text_position_mismatches`; `refresh_gate_tracks_client_refresh_support`
+T9b slugs; `absolute_position_folds_deltas` T7 rows; `replace_full_text` and
+`refresh_workspace_documents` :118 cells corrected per B7 deviations 2–3). Zero rows dropped —
+every mutated function still exists. The one test deleted this cycle,
+`closing_non_workspace_documents_removes_them` (T9a, subsumed by the close matrix's other
+rows), has no table row — it was never a survivor's oracle; its coverage is recorded in the
+task-09a report's corrected entry. The cycle also added two new oracles, not survivor
+dispositions (no row class applies): `closing_a_matched_document_outside_every_root_removes_it`
+and `closing_an_unmatched_document_inside_the_roots_removes_it` in `state/tests.rs`, isolating
+the keep-gate's `url_is_in_roots` and matcher conjuncts under an advertised state — closing a
+T9a review gap: every pre-existing removal-path close test rode the `enabled()` conjunct
+(unadvertised or disabled), which masked those two conjuncts suite-wide.
+
 ---
 
 ## 1. text_utils conversions — 16 rows (14 b, 2 c, 0 d)
@@ -54,7 +73,7 @@ surface delegating to doctest-pinned inherent methods.
 |---|---|---|---|---|
 | `Encoding::as_str` @ encoding.rs:48 | `-> &str with ""` | c | Wire-representation contract is pinned by the type-level doctest (`assert_eq!(Encoding::UTF8.as_str(), "utf-8")`, encoding.rs:15); a constant replacement breaks it | doctest `Encoding` (encoding.rs:10) |
 | `Encoding::as_str` @ encoding.rs:48 | `-> &str with "xyzzy"` | c | Same assertion catches it | doctest `Encoding` (encoding.rs:10) |
-| `Encoding::from_lsp` @ encoding.rs:62 | `-> Self with Default::default()` | b | Documented `# Panics` contract + per-kind mapping ("Creates an encoding from its lsp_types counterpart") is load-bearing: mis-mapping silently re-labels client positions | W0 `from_lsp_round_trips_all_supported_kinds_and_panics_on_unknown` (new, encoding.rs tests): all three kinds + panic on `utf-7` |
+| `Encoding::from_lsp` @ encoding.rs:62 | `-> Self with Default::default()` | b | Documented `# Panics` contract + per-kind mapping ("Creates an encoding from its lsp_types counterpart") is load-bearing: mis-mapping silently re-labels client positions | W0 `from_lsp_maps_each_supported_kind::case_{1..3}` + `from_lsp_panics_on_unknown_kind` (encoding.rs tests; the proposed round-trip name split into per-kind rows + panic body at implementation): all three kinds + panic on `utf-7` |
 | `Encoding::from_lsp` @ encoding.rs:63 | `== with !=` (UTF8 arm) | b | Same mapping contract; UTF8 input must not fall through to UTF16 | same test |
 | `Encoding::from_lsp` @ encoding.rs:65 | `== with !=` (UTF16 arm) | b | Same | same test |
 | `Encoding::from_lsp` @ encoding.rs:67 | `== with !=` (UTF32 arm) | b | Same | same test |
@@ -86,7 +105,7 @@ mid-text, or boundary asymmetry. (c) rows: nextest never runs the trait doctests
 | function@file | mutation | disp | reason | covering test / doctest |
 |---|---|---|---|---|
 | `ByteRange::split_at` @ bytes.rs:12 | `- with +` (len calc) | b | Trait contract: `PositionOutOfRange` "if `at` lies beyond the end of the range" (mod.rs:78); `end + start` deflates the bound for any non-zero start | W0 `sub_and_split_at_reject_invalid_positions` (bytes_tests.rs, split_at case): range `5..10`, at 6 → `Err`; doctest's `0..7` ranges mask this |
-| `ByteRange::sub` @ bytes.rs:31 | `- with +` (len calc) | b | Same contract via mod.rs:117 ("beyond the end of the range") | W0 `sub_bounds_are_relative_to_range_length` (bytes_tests.rs): range `5..10`, from/to 6 → `Err` |
+| `ByteRange::sub` @ bytes.rs:31 | `- with +` (len calc) | b | Same contract via mod.rs:117 ("beyond the end of the range") | W0 `sub_resolves_relative_positions::case_3_end_relative_boundary` + `::case_5_one_past_len` (bytes_tests.rs; T4 merged `sub_bounds_are_relative_to_range_length` into this table): range `5..10`, from/to 6 → `Err` |
 | `ByteRange::sub` @ bytes.rs:32 | `> with ==` (`from > len`) | b | Boundary: `from == len` is legal (end-relative) and `from = len + 1` must still error | same test: from = len (5) → `Ok` — the `==` mutant errors on this legal boundary; from = 6 (to = 6) → `Err` pins the other side |
 | `ByteRange::sub` @ bytes.rs:32 | `> with >=` (`from > len`) | b | Boundary: `>=` widens the bound to reject the legal end-relative `from == len` | same test: from = 5 → `Ok` (the `>=` mutant errors there) |
 | `ByteRange::sub` @ bytes.rs:32 | `> with >=` (`to > len`) | b | Boundary: `to == len` selects the whole tail and must stay `Ok` | same test: to = 5 → `Ok` (the `>=` mutant errors there) |
@@ -115,7 +134,7 @@ mid-text, or boundary asymmetry. (c) rows: nextest never runs the trait doctests
 
 | function@file | mutation | disp | reason | covering test / doctest |
 |---|---|---|---|---|
-| `LspRange::sub` @ lsp.rs:76 | `+ with -` (`start.line + from.line`) | b | mod.rs:110–121 contract: relative positions resolved against the range's start; trait doctest is byte-flavored only, existing lsp_tests use `from.line == 0` | W0 `sub_resolves_relative_positions` (lsp_tests.rs, across-lines case): start line 5, `from` (2, 3) → absolute line 7 |
+| `LspRange::sub` @ lsp.rs:76 | `+ with -` (`start.line + from.line`) | b | mod.rs:110–121 contract: relative positions resolved against the range's start; trait doctest is byte-flavored only, existing lsp_tests use `from.line == 0` | W0 `sub_resolves_relative_positions::case_4_offset_by_range_start_across_lines` (lsp_tests.rs): start line 5, `from` (2, 3) → absolute line 7 |
 | `LspRange::sub` @ lsp.rs:94 | `&& with \|\|` (from bounds check) | d | **revised (b) → (d) by owner decision 2026-09-09: accept as equivalent mutant.** The from-check is unreachable in the original — after the `from > to` → `StartAfterEnd` gate, the absolute mapping is monotone (line-major `Ord`; the `line == 0` character split cannot invert order), so `from_absolute ≤ to_absolute ≤ end`, and `from_absolute ≥ start` holds unconditionally. The De Morgan mutant fires only when both bounds are violated — jointly impossible. Evidence: monotonicity proof (Task 2 report, FLAGGED ROW), brute force 115,200 inputs (0 differences), reviewer re-derivation from source, and the full 268-test suite passing under the applied baseline patch. The check stays as a defense-in-depth invariant; this mutant is a permanent, documented survivor in every sweep | — |
 
 ### tree_sitter.rs — 10 rows (10 b, 0 c) — all gated `#[cfg(feature = "tree-sitter")]`
@@ -124,12 +143,12 @@ mid-text, or boundary asymmetry. (c) rows: nextest never runs the trait doctests
 |---|---|---|---|---|
 | `TsRange::split_at` @ tree_sitter.rs:12 | `- with +` (check_text_length arg) | b | Exact-text-length contract (mod.rs:183–186); existing tree_sitter_tests use `start_byte == 0` | W0 `split_at_validates_text_length_on_nonzero_start_ranges` (tree_sitter_tests.rs): `start_byte: 5` range, mismatched text → `Err` |
 | `TsRange::split_at` @ tree_sitter.rs:16 | `== with !=` (`at.row == 0`) | b | Relative-position contract: row-0 columns offset from the range's start column | W0 `split_at_divides_the_range_at_a_relative_position` (tree_sitter_tests.rs, start-column case): start_point.column 3, `at` (0, 1) → column 4 |
-| `TsRange::sub` @ tree_sitter.rs:115 | `+ with -` (`start_point.row + from.row`) | b | Same relative-position contract, rows | W0 `sub_resolves_relative_positions` (tree_sitter_tests.rs, start-row case): start row 2, `from` (1, 0) → row 3 |
-| `TsRange::sub` @ tree_sitter.rs:141 | `&& with \|\|` (from-hit in scan loop) | b | Byte-offset resolution must find the actual `from` position, not the first iteration | W0 `sub_resolves_relative_positions` (tree_sitter_tests.rs, mid-text case): `from` mid-text → start_byte correct |
-| `TsRange::sub` @ tree_sitter.rs:163 | `&& with \|\|` (from end-of-text check) | b | "a position that is nowhere in the text is out of range" (fn comment/mod.rs:117) | W0 `sub_rejects_end_of_text_position_mismatches` : from beyond text → `Err` |
-| `TsRange::sub` @ tree_sitter.rs:163 | `== with !=` (row part) | b | Same end-of-text exactness | same test: exact-end position → `Ok`, one row off → `Err` |
+| `TsRange::sub` @ tree_sitter.rs:115 | `+ with -` (`start_point.row + from.row`) | b | Same relative-position contract, rows | W0 `sub_resolves_relative_positions::case_5_offset_by_range_start_row` (tree_sitter_tests.rs): start row 2, `from` (1, 0) → row 3 |
+| `TsRange::sub` @ tree_sitter.rs:141 | `&& with \|\|` (from-hit in scan loop) | b | Byte-offset resolution must find the actual `from` position, not the first iteration | W0 `sub_resolves_relative_positions::case_6_mid_text` (tree_sitter_tests.rs): `from` mid-text → start_byte correct |
+| `TsRange::sub` @ tree_sitter.rs:163 | `&& with \|\|` (from end-of-text check) | b | "a position that is nowhere in the text is out of range" (fn comment/mod.rs:117) | W0 `sub_positions_beyond_the_text_return_position_out_of_range::case_3_past_its_own_row` (tree_sitter_tests.rs; T4 merged `sub_rejects_end_of_text_position_mismatches` into this table): from beyond text → `Err` |
+| `TsRange::sub` @ tree_sitter.rs:163 | `== with !=` (row part) | b | Same end-of-text exactness | same test: `::case_4_empty_row_column_exactness` → `Ok`, one row off → `Err` |
 | `TsRange`::sub @ tree_sitter.rs:163 | `== with !=` (col part) | b | Same | same test, column dimension |
-| `TsRange::sub` @ tree_sitter.rs:170 | `== with !=` (to end-of-text check) | b | Same, for `to` | same test |
+| `TsRange::sub` @ tree_sitter.rs:170 | `== with !=` (to end-of-text check) | b | Same, for `to` | same test (`::case_5_past_last_row`) |
 | `TsRange::sub_delimited_tri` @ tree_sitter.rs:275 | `- with +` (check_text_length arg) | b | Exact-text-length contract, non-zero start | W0 `mismatched_text_length_returns_text_range_mismatch` (tree_sitter_tests.rs, non-zero-start tri case) |
 | `TsRange::sub_delimited_tri` @ tree_sitter.rs:280 | `- with +` (`remainder.start_byte - self.start_byte`) | b | Remainder slicing must be relative to the range start | W0 `sub_delimited_tri_slices_three_segments` (tree_sitter_tests.rs, non-zero-start case) |
 
@@ -202,7 +221,7 @@ fire-and-forget client requests are observable only on the wire.
 | `can_request_configuration` @ diagnostics.rs:82 | `-> bool with true` | b | Capability gating is the documented contract; `true` interrogates clients that never opted into `workspace.configuration` | W0 `request_configuration_requires_client_capability_and_setting` (inline tests): flag off → `false`; flag on + Configurable → `true` |
 | `can_request_configuration` @ diagnostics.rs:82 | `&& with \|\|` | b | A client without the capability but with any `Configurable` setting must not pass | same test: flag off + Configurable → `false` |
 | `can_register_configuration` @ diagnostics.rs:86 | `-> bool with false` | b | Dynamic registration is a named mechanism of the contract | W0 `register_configuration_requires_dynamic_registration_support`: flag on + Configurable → `true` |
-| `can_refresh` @ diagnostics.rs:93 | `-> bool with true` | b | `workspace/diagnostic/refresh` may only be sent to clients that support it (refresh_support gate) | W0 `refresh_gate_tracks_client_refresh_support`: flag off → `false`, on → `true` |
+| `can_refresh` @ diagnostics.rs:93 | `-> bool with true` | b | `workspace/diagnostic/refresh` may only be sent to clients that support it (refresh_support gate) | W0 `refresh_gate_tracks_client_refresh_support::refresh_support_1_false` / `::refresh_support_2_true` (T9b renamed the case slugs): flag off → `false`, on → `true` |
 | `can_refresh` @ diagnostics.rs:93 | `-> bool with false` | b | Refresh must still fire for supporting clients | same test (on arm) |
 | `next_generation` @ diagnostics.rs:125 | `-> u64 with 0` | b | Generation staleness guard: responses captured against an older generation must be dropped (structure.md staleness design) | W0 `next_generation_is_monotonic`: 1 then 2; stale compare drops |
 | `next_generation` @ diagnostics.rs:125 | `-> u64 with 1` | b | Same | same test |
@@ -279,7 +298,7 @@ hooks; every survivor is a custom hook or semantic-tokens helper the rows don't 
 | `modify_outgoing_location_link` @ conversion.rs:270 | `with ()` | b | LocationLink ranges (origin selection, target range/selection) must convert; sole caller is the locations outgoing path (conversion.rs:315) | W0 `location_link_outgoing_converts_origin_and_target_ranges` (conversion.rs tests): link over the UTF-16 fixture |
 | `convert_seeded_token_stream` @ conversion.rs:766 | `== with !=` (`delta_line == 0`) | b | Semantic-token delta encoding contract: same-line tokens accumulate, new-line tokens restart; flipped, the frames swap | W0 `seeded_token_stream_recomputes_deltas_across_lines` (conversion.rs tests): stream with a line-crossing token, asymmetric columns |
 | `convert_seeded_token_stream` @ conversion.rs:782 | `== with !=` (target-line check) | b | Outgoing deltas must be relative to the previous *target* position on the same line | same test |
-| `absolute_position` @ conversion.rs:968 | `-> Position with Default::default()` | b | Delta-fold seed for semanticTokens/full/delta: the inserted stream re-anchors at the cached prefix's end | W0 `absolute_position_folds_deltas`: `[(1,3),(0,5)]` → `{1, 8}`; empty → origin — **corrected 2026-09-09:** the original example `[(1,0),(0,5)]` → `{1, 5}` is a fixpoint under the `@974 == with !=` mutant (both branches agree); the discriminating input was required to make this row's kill real (B5 report note 1, reviewer-confirmed) |
+| `absolute_position` @ conversion.rs:968 | `-> Position with Default::default()` | b | Delta-fold seed for semanticTokens/full/delta: the inserted stream re-anchors at the cached prefix's end | W0 `absolute_position_folds_deltas::case_2_line_crossing_token_restarts_then_accumulates`: `[(1,3),(0,5)]` → `{1, 8}`; empty → origin (`::case_1_empty_prefix_folds_from_the_document_origin`, T7 unfolded the body into two named rows) — **corrected 2026-09-09:** the original example `[(1,0),(0,5)]` → `{1, 5}` is a fixpoint under the `@974 == with !=` mutant (both branches agree); the discriminating input was required to make this row's kill real (B5 report note 1, reviewer-confirmed) |
 | `absolute_position` @ conversion.rs:974 | `== with !=` (`delta_line == 0`) | b | Same fold's line-branch selection | same test (multi-line prefix) |
 | `splice_semantic_tokens_cache` @ conversion.rs:1018 | `+ with *` (`start + delete_count`) | b | Cache coherence: edits splice by exact flat-array span (structure.md: the cache holds the server's UTF-8 data the client's result_id refers to) | W0 `splice_applies_edit_delete_counts_at_nonzero_offsets`: start 5, delete 3 → exact spliced stream |
 
@@ -311,7 +330,7 @@ installed generation cannot diverge from the working text"; `query()`'s document
 | `finalize_edited_tree` @ documents.rs:465 | `with ()` | b | The re-parse is what keeps the installed generation equal to the working text | same test |
 | `parse_rope` @ documents.rs:486 | `== with !=` (EOF check) | b | Flipped, the chunk callback answers "" for every in-range offset → empty parse → stale/empty tree | same test (post-edit query non-empty) |
 | `parse_rope` @ documents.rs:490 | `- with +` (`offset - chunk_start`) | b | Multi-chunk ropes slice the wrong region; every existing fixture is a single rope chunk | W0 `parse_rope_serves_multi_chunk_ropes` (gated): doc large enough for multiple rope chunks → correct tree |
-| `replace_full_text` @ documents.rs:519 | `with ()` (non-tree-sitter flavor) | b | A range-less didChange must replace the whole text on the no-default leg too | W0 `full_text_did_change_replaces_document_text` (state/tests.rs; runs in both feature legs) |
+| `replace_full_text` @ documents.rs:519 | `with ()` (non-tree-sitter flavor) | b | A range-less didChange must replace the whole text on the no-default leg too | W0 `full_content_change_replaces_document_text` (state/tests.rs; runs in both feature legs — B7 deviation 2: the proposed `full_text_did_change_replaces_document_text` was never written, the pre-existing test already pins the behavior and a sibling would trip the zero-tolerance dupes gate; kill verified on the `--no-default-features` leg) |
 | `tree_sitter_edit` @ documents.rs:553 | `-> Option<InputEdit> with None` | b | `None` skips `tree.edit` → stale tree while text advances | W0 `tree_sitter_edit_computes_new_end_from_inserted_text` (gated): asymmetric edits → tree coherent |
 | `tree_sitter_edit` @ documents.rs:558 | `+ with -` (`start_byte + text.len()`) | b | InputEdit's new_end_byte must count the inserted bytes | same test (non-zero start + non-empty insert) |
 | `tree_sitter_edit` @ documents.rs:558 | `+ with *` (same site) | b | Same | same test |
@@ -337,7 +356,7 @@ folder removal drops that folder's workspace snapshots.
 |---|---|---|---|---|
 | `document_urls` @ workspace.rs:59 | `-> Vec<Url> with vec![]` | b | Early-return paths of `refresh_workspace_documents` must still report currently tracked documents, not an empty batch | W0 `refresh_without_roots_reports_tracked_documents` (state/tests.rs): open doc + disabled/no-roots → url present |
 | `remove_workspace_documents_in_roots` @ workspace.rs:137 | `== with !=` (origin check) | b | Retention predicate: Open kept, workspace snapshots inside removed roots dropped — mutated, fully inverted | W0 `removing_folder_roots_keeps_open_drops_workspace_documents`: open doc survives, workspace doc dropped |
-| `refresh_workspace_documents` @ workspace.rs:118 | `\|\| with &&` — **artifact** | b | The freshly loaded set must be retained; mutated, refreshed workspace docs are dropped right after loading | W0 `refresh_retains_freshly_loaded_workspace_documents` |
+| `refresh_workspace_documents` @ workspace.rs:118 | `\|\| with &&` — **artifact** | b | The retention predicate's `Open` disjunct alone must keep an open document the fresh walk no longer lists (B7 deviation 3 corrected the mechanism: freshly loaded docs always ride `in_urls`; the discriminating case is an Open document inside the roots whose file vanished from disk — kept by the original, evicted by the mutant) | W0 `refresh_retains_open_documents_absent_from_the_fresh_set` (state/tests.rs; B7 wrote it under the corrected contract, T2 kept the name) |
 | `remove_workspace_documents_in_roots` @ workspace.rs:132 | `with ()` — **artifact** | b | Same retention contract; body deletion keeps stale snapshots forever | same test as :137 row |
 | `remove_workspace_documents_in_roots` @ workspace.rs:137 | `\|\| with &&` — **artifact** | b | Conjunctive retention drops Open documents inside the roots | same test (open-doc-survives arm) |
 | `remove_workspace_documents_in_roots` @ workspace.rs:137 | `delete !` — **artifact** | b | Inverts root membership: workspace docs outside the removed roots get dropped | same test |

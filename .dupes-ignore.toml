@@ -20,7 +20,7 @@ reason = "DocumentMatcher builder pair with_url_globs/with_lang_strings: mirror-
 
 [[ignore]]
 fingerprint = "5e64d1f8cb621fc2"
-reason = "examples' full_report helper appears in both minimal.rs and batch_diagnostics.rs; examples stay self-contained and didactically parallel by design"
+reason = "examples' full_report helper appears in all three examples (minimal.rs, tree_sitter.rs, batch_diagnostics.rs); examples stay self-contained and didactically parallel by design"
 
 [[ignore]]
 fingerprint = "6c4db5f43053b240"
@@ -52,7 +52,7 @@ reason = "outgoing per-item range loops (document_links, code_lenses): the regis
 
 [[ignore]]
 fingerprint = "7fc169e91fd317f7"
-reason = "per-file `item` fixture builders in the four hierarchy test modules (incoming/outgoing calls, supertypes/subtypes): the lsp-types CallHierarchyItem/TypeHierarchyItem pair is structurally identical, so a crate::testing builder home would itself be a twin pair; the three-place pattern mandates per-method test modules with local fixtures"
+reason = "per-file `item` builder fns in the four hierarchy test modules (incoming/outgoing calls, supertypes/subtypes): the lsp-types CallHierarchyItem/TypeHierarchyItem pair is structurally identical, so a crate::testing builder home would itself be a twin pair; the three-place pattern mandates per-method test modules with local fixtures"
 
 [[ignore]]
 fingerprint = "3ca1c2536ff13cb7"
@@ -84,7 +84,7 @@ reason = "file-operations state handlers (handle_files_renamed, handle_files_del
 
 [[ignore]]
 fingerprint = "3f792e39a2cd77aa"
-reason = "hierarchy convert_params free fns (incoming/outgoing calls, supertypes/subtypes): the item converters take (state, document, &mut Item, Direction) while the lsp_request incoming hook takes the whole params, so a field-extraction wrapper is mandatory; unifying the four would need a field-access trait over four distinct foreign params types — dedup-only ceremony per the typing criterion (successor of e65ad068648fc2a0's impl-method form; family of 3ca1c2536ff13cb7's mirror converter pair)"
+reason = "lsp_request hook wrapper fns normalizing to one shape (the four hierarchy convert_params fns — incoming/outgoing calls, supertypes/subtypes — plus code_lens_resolve and document_link_resolve's convert_params/convert_response pairs): the item converters take (state, document, &mut Item, Direction) or the file's item converter while the lsp_request hook takes the whole params or response, so an extraction/delegation wrapper is mandatory; unifying the eight would need a field-access trait over distinct foreign params types — dedup-only ceremony per the typing criterion (successor of e65ad068648fc2a0's impl-method form; family of 3ca1c2536ff13cb7's mirror converter pair and 796b160440b3f2f3's resolve twins)"
 
 [[ignore]]
 fingerprint = "8f2f2ab783a0dc96"
@@ -100,7 +100,7 @@ reason = "oneshot test fixtures' server_options pins (TestServer width 1 for per
 
 [[ignore]]
 fingerprint = "b784a964c3143666"
-reason = "server_capabilities impls in examples/batch_diagnostics.rs (LongLineServer) and tests/termination.rs (ConfigurableServer): the example must read standalone (6c4db5f43053b240 precedent) while the test needs its own trait-mandated impl (f83853ca365213c9 capture-server precedent); the shared diagnostic_provider shape is the trait's, not drift"
+reason = "server_capabilities impls across the example and the wire/wrapper tests (LongLineServer in examples/batch_diagnostics.rs, ConfigurableServer in tests/termination.rs, RefreshServer in server/tests/workspace_diagnostics.rs): the example must read standalone (6c4db5f43053b240 precedent) while each test needs its own trait-mandated impl (f83853ca365213c9 capture-server precedent); the shared diagnostic_provider shape is the trait's, not drift"
 
 [[ignore]]
 fingerprint = "3ffa2d6b3cf079fc"

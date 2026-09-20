@@ -224,6 +224,76 @@ fn closing_workspace_documents_removes_them_when_workspace_diagnostics_are_disab
     assert!(state.document(&uri).is_none());
 }
 
+/// The keep-gate's in-roots conjunct under an advertised state: a
+/// matcher-matching document outside every workspace root is removed on
+/// close. Isolates `url_is_in_roots` — every earlier removal-path close
+/// test rides the `enabled()` conjunct instead (unadvertised or disabled),
+/// which masks the other two; a `url_is_in_roots`→true mutant survives
+/// those and dies only here, because the file on disk makes the mutant's
+/// keep-branch re-insert the snapshot the removal asserts away.
+#[rstest]
+fn closing_a_matched_document_outside_every_root_removes_it() {
+    // Two roots are needed — the document's directory and the (different)
+    // configured root. rstest resolves injections by the parameter's own
+    // name, so an injected `workspace` would shadow the fixture; both
+    // instances come from calling the fixture as a standard function — the
+    // documented mechanism — and both keep the guard's Drop cleanup.
+    let workspace_a = workspace("state");
+    let workspace_b = workspace("state");
+    let uri = workspace_a.write("outside.test", "disk");
+
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    // The roots point at a different directory: the document matches the
+    // plain-text suite but sits outside the (non-empty) roots.
+    state.set_workspace_folders([workspace_folder(&workspace_b)]);
+    advertise_workspace_diagnostics(&state);
+    open_document(&mut state, uri.clone(), "open");
+
+    let _ = state.handle_document_close(DidCloseTextDocumentParams {
+        text_document: TextDocumentIdentifier::new(uri.clone()),
+    });
+
+    assert!(
+        state.document(&uri).is_none(),
+        "a matched document outside every root is removed on close",
+    );
+}
+
+/// The keep-gate's matcher conjunct under an advertised state: a
+/// non-matching document inside a workspace root is removed on close.
+/// Isolates the `find_url(..).is_some()` conjunct — `enabled()` is true
+/// and the URL is inside the roots, so only the matcher decides; the file
+/// on disk means a matcher→true mutant keeps the snapshot and fails the
+/// removal assert.
+#[rstest]
+fn closing_an_unmatched_document_inside_the_roots_removes_it(
+    #[with("state")] workspace: TempWorkspace,
+) {
+    // `.txt` matches no url glob of the plain-text suite (`*.test`); the
+    // matcher conjunct is URL-glob-only and never consults the language id.
+    let uri = workspace.write("unmatched.txt", "disk");
+
+    let mut state = ServerState::with_options::<TestServer>(
+        ClientSocket::new_closed(),
+        &ServerOptions::default(),
+    );
+    state.set_workspace_folders([workspace_folder(&workspace)]);
+    advertise_workspace_diagnostics(&state);
+    open_document(&mut state, uri.clone(), "open");
+
+    let _ = state.handle_document_close(DidCloseTextDocumentParams {
+        text_document: TextDocumentIdentifier::new(uri.clone()),
+    });
+
+    assert!(
+        state.document(&uri).is_none(),
+        "an unmatched document inside the roots is removed on close",
+    );
+}
+
 /// Close-removal together with the token-cache eviction, on an
 /// unadvertised state: no folders and no advertisement, so `enabled()`
 /// is false and removal rides that conjunct — the keep branch's other
@@ -1555,11 +1625,4 @@ fn watcher_globs_skip_invalid_configured_names() {
         &ServerOptions::default().with_ignore_filenames([".valid", "bad[glob"]),
     );
     assert_eq!(state.watcher_globs(), ["**/.gitignore", "**/.valid"]);
-}
-
-#[rstest]
-fn ignore_configuration_defaults_to_inert() {
-    let options = ServerOptions::default();
-    assert!(options.ignore_filenames.is_empty());
-    assert!(options.global_ignore_file.is_none());
 }

@@ -335,4 +335,11 @@ mod tests {
         assert_eq!(item.section.as_deref(), Some("test"));
         assert_eq!(key.section(), "test");
     }
+
+    #[rstest]
+    fn ignore_configuration_defaults_to_inert() {
+        let options = ServerOptions::default();
+        assert!(options.ignore_filenames.is_empty());
+        assert!(options.global_ignore_file.is_none());
+    }
 }

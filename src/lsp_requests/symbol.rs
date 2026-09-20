@@ -77,8 +77,6 @@ fn convert_symbol_location(
               field is marked `#[deprecated]` yet still required in struct literals"
 )]
 mod tests {
-    use std::fs;
-
     use async_lsp::lsp_types::{
         Location, OneOf, SymbolInformation, SymbolKind, Url, WorkspaceLocation, WorkspaceSymbol,
         WorkspaceSymbolResponse,
@@ -87,12 +85,14 @@ mod tests {
 
     use crate::lsp_requests::Request;
     use crate::server::ServerState;
-    use crate::testing::{same_line, state_with_documents, temp_workspace, utf16_state};
+    use crate::testing::{TempWorkspace, same_line, state_with_documents, utf16_state, workspace};
 
     use super::SymbolRequest;
 
     #[rstest]
-    fn symbol_flat_locations_convert_tracked_from_disk_or_pass_through() {
+    fn symbol_flat_locations_convert_tracked_from_disk_or_pass_through(
+        #[with("requests")] workspace: TempWorkspace,
+    ) {
         let (state, _plain, emoji) = state_with_documents();
 
         // Tracked: store-first converts against the tracked snapshot.
@@ -117,10 +117,7 @@ mod tests {
         // "x🙂🙂" maps byte 1 to UTF-16 1, where the tracked document maps
         // byte 1 to UTF-16 0 (floored into its emoji), so a fallback
         // against the wrong text fails here.
-        let root = temp_workspace("requests", "symbol");
-        let on_disk = root.join("sym.txt");
-        fs::write(&on_disk, "x🙂🙂").expect("temp file can be written");
-        let disk_uri = Url::from_file_path(&on_disk).expect("path converts to a URL");
+        let disk_uri = workspace.write("sym.txt", "x🙂🙂");
         let mut disk = Some(WorkspaceSymbolResponse::Flat(vec![SymbolInformation {
             name: "d".into(),
             kind: SymbolKind::FUNCTION,
@@ -140,7 +137,7 @@ mod tests {
 
         // Nonexistent file: passes through unchanged.
         let missing_uri =
-            Url::from_file_path(root.join("missing.txt")).expect("path converts to a URL");
+            Url::from_file_path(workspace.join("missing.txt")).expect("path converts to a URL");
         let mut missing = Some(WorkspaceSymbolResponse::Flat(vec![SymbolInformation {
             name: "m".into(),
             kind: SymbolKind::FUNCTION,
@@ -157,8 +154,6 @@ mod tests {
             panic!("expected flat symbols");
         };
         assert_eq!(symbols[0].location.range, same_line(0, 4, 5));
-
-        fs::remove_dir_all(root).expect("temp workspace can be removed");
     }
 
     #[rstest]

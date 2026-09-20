@@ -126,20 +126,6 @@ pub(crate) fn advertise_workspace_diagnostics(state: &ServerState) {
     configure_capabilities(state, &mut result, &ClientCapabilities::default());
 }
 
-/// Creates a millisecond-unique temp workspace under `std::env::temp_dir()`.
-///
-/// `prefix` names the calling test module (`"state"`, `"workspace"`,
-/// `"oneshot"`, ...) so a leaked directory can be attributed to its file.
-pub(crate) fn temp_workspace(prefix: &str, name: &str) -> PathBuf {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time is after epoch")
-        .as_millis();
-    let root = std::env::temp_dir().join(format!("async-language-server-{prefix}-{name}-{millis}"));
-    fs::create_dir_all(&root).expect("temp workspace can be created");
-    root
-}
-
 /// Wraps a workspace root path as a named `WorkspaceFolder`.
 pub(crate) fn workspace_folder(path: &Path) -> WorkspaceFolder {
     let uri = Url::from_file_path(path).expect("path can be converted to a URL");
@@ -162,9 +148,8 @@ impl TempWorkspace {
     fn new(prefix: &str) -> Self {
         // Uniqueness rides three axes: the process id separates the
         // sibling processes nextest runs tests in, the per-process
-        // counter separates back-to-back constructions (the role `name`
-        // plays for `temp_workspace`), and the millisecond stamp keeps a
-        // leaked directory time-attributable.
+        // counter separates back-to-back constructions, and the
+        // millisecond stamp keeps a leaked directory time-attributable.
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let pid = std::process::id();
         let millis = SystemTime::now()
@@ -234,16 +219,6 @@ pub(crate) fn state() -> ServerState {
 #[fixture]
 pub(crate) fn utf16_state() -> (ServerState, Url, Url) {
     state_with_documents()
-}
-
-#[fixture]
-pub(crate) fn gated_state() -> ServerState {
-    let state = ServerState::with_options::<TestServer>(
-        ClientSocket::new_closed(),
-        &ServerOptions::default(),
-    );
-    advertise_workspace_diagnostics(&state);
-    state
 }
 
 /// The state-setup triplet (folders + advertise + refresh) collapsed.
