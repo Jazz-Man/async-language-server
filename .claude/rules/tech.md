@@ -75,6 +75,13 @@ battery never runs it. Nothing heavy runs concurrently with
 `make mutants`: its per-scenario timeout is auto-derived from the baseline
 run, and a competing build poisons it.
 
+`cargo expand` is the investigation tool for this macro-heavy crate
+(owner directive 2026-09-20): when an agent needs to understand what
+`lsp_request!`/`lsp_dispatch!`/`conversion_tests!` (or any macro) actually
+generate — before reasoning about behavior, asserting on emission, or
+editing a macro — expand the invocation and read the real output; never
+reason about generated code from the macro's source alone.
+
 Miri runs on demand (`make miri`, one-time preparation via
 `make miri-setup`): the no-default-features leg, cross-interpreted for
 `x86_64-apple-darwin` because the aarch64 host trips ropey/str_indices NEON
