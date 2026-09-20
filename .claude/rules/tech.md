@@ -40,6 +40,14 @@ remain (`make help` is authoritative):
 - `make test-no-default-features` — `cargo nextest run --workspace --no-default-features`, then `cargo test --doc --workspace --no-default-features`
 - `make dylint` — `cargo dylint --all -- --all-targets`
 
+Rustc warnings are errors for every cargo invocation through `[build]
+rustflags` in `.cargo/config.toml` (the per-target `RUSTFLAGS` prefixes once
+on the test and dylint lines are gone with it — a fresh CI compile cannot
+whisper). An environment `RUSTFLAGS` replaces the config list, which is both
+the one-off escape hatch (`RUSTFLAGS="" cargo <cmd>`) and the deliberate
+opt-out on `make mutants`: a warning-only mutant must die to a test oracle,
+not to a compile error.
+
 The dylint pass is a nightly-pinned lint pass (`nightly-2026-05-28`, shared
 by both suites); the first run downloads the toolchain and builds the
 drivers, cached afterwards via `~/.dylint_drivers`/`~/.rustup/toolchains`.

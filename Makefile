@@ -41,17 +41,17 @@ doc:
 
 ## test: all-features leg — nextest binaries, then doctests (gate)
 test:
-	@RUSTFLAGS="-D warnings" $(CARGO_BIN) nextest run --workspace --all-features
-	@RUSTFLAGS="-D warnings" $(CARGO_BIN) test --doc --workspace --all-features
+	@$(CARGO_BIN) nextest run --workspace --all-features
+	@$(CARGO_BIN) test --doc --workspace --all-features
 
 ## test-no-default-features: no-default-features leg — nextest, then doctests (gate)
 test-no-default-features:
-	@RUSTFLAGS="-D warnings" $(CARGO_BIN) nextest run --workspace --no-default-features
-	@RUSTFLAGS="-D warnings" $(CARGO_BIN) test --doc --workspace --no-default-features
+	@$(CARGO_BIN) nextest run --workspace --no-default-features
+	@$(CARGO_BIN) test --doc --workspace --no-default-features
 
 ## dylint: external lint suites via their pinned nightlies, warnings are errors (gate)
 dylint:
-	@RUSTFLAGS="-D warnings" $(CARGO_BIN) dylint --all -- --all-targets
+	@$(CARGO_BIN) dylint --all -- --all-targets
 
 ## battery: the full pre-done gate (CI parity)
 battery: fmt clippy doc test test-no-default-features dylint
@@ -69,8 +69,12 @@ bench:
 	@$(CARGO_BIN) bench --bench oneshot_diagnostics
 
 ## mutants: mutation-testing sweep (on demand, heavy; run it alone — a concurrent build poisons its auto-derived per-scenario timeout). Optional FILE=src/foo.rs scopes the sweep to one file. Exit code 2 means survivors were found: this is a diagnostic sweep, not a gate — the battery never runs it.
+# RUSTFLAGS is cleared for the sweep: a mutant that merely triggers a rustc
+# warning must die to a test oracle, not to a compile error (the global
+# -D warnings in .cargo/config.toml would inflate "caught" with non-oracle
+# kills).
 mutants:
-	@$(CARGO_BIN) mutants $(if $(FILE),-f $(FILE))
+	@RUSTFLAGS="" $(CARGO_BIN) mutants $(if $(FILE),-f $(FILE))
 
 ## miri: UB interpreter over the no-default-features leg, cross-interpreted for
 ## x86_64 (the ropey/str_indices NEON path is not interpretable on an aarch64 host);

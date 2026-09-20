@@ -1,3 +1,10 @@
+# Rustc warnings are errors for every cargo invocation in this workspace (the
+# zero-warning bar). An environment RUSTFLAGS replaces this list entirely —
+# `RUSTFLAGS="" cargo <cmd>` is the escape hatch; the mutants target uses it
+# so a warning-only mutant dies to a test oracle, not to a compile error.
+[build]
+rustflags = ["-D", "warnings"]
+
 [env]
 RA_DISABLE_INCREMENTAL_SYNC = "0"
 
