@@ -55,7 +55,13 @@ impl ServerState {
         ControlFlow::Continue(())
     }
 
-    pub(crate) fn workspace_roots(&self) -> Vec<PathBuf> {
+    /// Returns the workspace root directories the state tracks, sorted.
+    ///
+    /// Populated from `initialize` and maintained across
+    /// `workspace/didChangeWorkspaceFolders`; empty before `initialize`
+    /// or when the client opened no folders.
+    #[must_use]
+    pub fn workspace_roots(&self) -> Vec<PathBuf> {
         let mut roots: Vec<_> = self
             .workspace_roots
             .iter()
