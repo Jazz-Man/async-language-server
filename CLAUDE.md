@@ -10,7 +10,7 @@ Library crate (no binary) that wraps `async-lsp` to make language servers with l
 
 - Local verification is `make battery` (CI parity); `make help` lists all targets
 - CI (`.github/workflows/ci.yml`) runs on push/PR to `main` and via `workflow_dispatch` on any branch: a `checks` job (`cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`) plus a two-leg test matrix (`cargo test --workspace --all-features` and `--no-default-features`) in parallel, and a `dylint` job (`cargo dylint --all -- --all-targets`, stock Trail of Bits + `perfectionist` suites via pinned nightly) that the release job gates on, with Cargo caching (`rust-cache`, saves on `main` only); on pushes to `main`, a release job tags (`v` prefix; `#major`/`#minor`/`#patch`/`#none` commit-message tokens) and publishes a GitHub Release with changelog. The `default` test leg returns when a second, non-default feature exists (today `default` ≡ `--all-features`)
-- `cargo nextest run <filter>` — run a single test; tests are inline `#[cfg(test)] mod tests` blocks inside each `src/` module, or sibling `tests.rs` files for the larger modules
+- `cargo nextest run <filter>` — run a single test (case rows and target scoping need `-E` selectors — see `.claude/rules/testing.md`); tests are inline `#[cfg(test)] mod tests` blocks inside each `src/` module, or sibling `tests.rs` files for the larger modules
 - `make clippy` — `clippy::all` is `deny` in `Cargo.toml` `[workspace.lints.clippy]`, so default lints are hard errors; `pedantic`/`cargo` deny, with an explicit allow list there
 - `make dylint` — nightly-pinned dylint pass running the stock Trail of Bits suites + the third-party `perfectionist` suite (configured in `dylint.toml`); part of the battery
 - `make deny` — cargo-deny dependency-hygiene policies over `deny.toml` (advisories, duplicate bans, licenses, sources); on demand, not in the battery — deny-level findings gate, warnings advise
@@ -61,6 +61,6 @@ The `lsp_dispatch!` table glues each async-lsp method to a `Server` method throu
 
 - All written documents and artifacts (specs, plans, code and doc comments, commit messages) are in English only.
 - Public docs use `///` doc comments with `# Errors` sections on fallible functions, `# Panics` where a panic path exists, and `# Examples` doctests on doctest-friendly API; `missing_docs` is enabled in `[workspace.lints.rust]`
-- Tests are inline per module — `#[cfg(test)] mod tests` blocks, or sibling `tests.rs` files for the larger modules — and create real temp workspaces on disk (millisecond-unique names under `std::env::temp_dir()`).
+- Tests are inline per module — `#[cfg(test)] mod tests` blocks, or sibling `tests.rs` files for the larger modules; test conventions (rstest, fixtures, temp workspaces) are owned by `.claude/rules/testing.md`.
 - Rust edition 2024 — let-chains (`if let ... && ...`) are used freely.
 

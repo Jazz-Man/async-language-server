@@ -130,10 +130,9 @@ tree-sitter-gated API so they compile under `--no-default-features`, and use
 
 Tests live inline as `#[cfg(test)] mod tests` at the bottom of each `src/`
 module, or in a sibling `tests.rs` file for the larger modules
-(`#[cfg(test)] mod tests;`) — not in a separate tests directory. They create
-real temporary workspaces on disk with millisecond-unique names under
-`std::env::temp_dir()`; follow the pattern in the
-`src/server/with_state/tests.rs` tests.
+(`#[cfg(test)] mod tests;`) — not in a separate tests directory. Test
+conventions (rstest fixtures, temp workspaces) are owned by
+`.claude/rules/testing.md`.
 
 ## Dependencies
 

@@ -1,134 +1,247 @@
 # Testing
 
-This rule is normative for all test work in this crate. It documents the
-pipeline built in the 2026-08 testing cycle (spec:
-`docs/superpowers/specs/2026-08-31-testing-implementation-design.md`;
-test-catalog numbering per the research,
-`docs/superpowers/research/2026-08-31-testing-strategy.md` §4.3).
+This rule is normative for all test work in this crate. The suite runs on
+rstest 0.27 (2026-09 migration; design
+`docs/superpowers/specs/2026-09-19-rstest-migration-design.md`, spike findings
+`docs/superpowers/research/2026-09-19-rstest-integration.md` §Q2, verdicts and
+audits in `.superpowers/sdd/task-09b-report.md` and `task-09c-report.md`).
+Test-catalog numbering per
+`docs/superpowers/research/2026-08-31-testing-strategy.md` §4.3.
 
 ## Philosophy
 
 Type first, test second. Before writing a test, ask whether a type can
-remove the invalid state the test would pin: `RangeError` made `RangeExt`
-fallible and deleted its `# Panics` contracts, and the cycle's signature
-audit applied the same criterion across the public surface, approving one
-further type — `QueryError` on `Document::query`. A test exists only for
-behavior no type can express; there are no tests for quantity or coverage
+remove the invalid state it would pin — `RangeError` made `RangeExt`
+fallible and deleted its `# Panics` contracts; `QueryError` on
+`Document::query` is the same criterion. A test exists only for behavior
+no type can express; there are no tests for quantity or coverage
 statistics. The typing criterion: a type must remove a representable
-invalid state or separate a genuinely confusable pair — otherwise the
-type is ceremony.
+invalid state or separate a genuinely confusable pair — otherwise it is
+ceremony.
+
+## Survey before you write
+
+The project-wide survey-first principle (`~/.claude/rules/principles.md`)
+lands in test work as the cure for this suite's duplication debt:
+task-scoped agents wrote tests for behavior a neighbor already pinned —
+same unit, same inputs, same outcome under different names, another
+file, or appended at the end of this one.
+
+Before planning a test — and before planning the feature work that will
+ask for one — survey what exists:
+
+1. Find every test that already touches the production unit: LSP
+   references, plus identifier greps (macro-emitted callers live in
+   `macros/src/`, invisible to reference tools). Read them.
+2. Name the neighbors in the plan or brief: which existing tests pin
+   adjacent behavior, which fixture already builds the state you need.
+   Controllers put this in every SDD test brief; implementers hold the
+   same duty for any test they touch.
+3. Extend before you add: a new `#[case]` row in the family table beats
+   a new fn; an injected fixture beats re-derived setup; the lowest tier
+   that can see the behavior beats a new file.
+4. Same unit + same inputs + same asserted outcome = no new oracle, no
+   new test — regardless of renamed variables, file, or placement.
+
+The dupes gate is a floor, not permission. Reshaping a body so
+`cargo dupes` stops matching it — renamed locals, reshuffled asserts,
+spurious bindings — is a workaround in the `no-workarounds` sense: if
+two tests are one oracle, delete one; if they pin different axes, name
+the mutator each kills — that name is the difference that justifies
+both.
 
 ## The two tiers
 
 | tier | where | what it pins |
 |---|---|---|
 | W0 unit | inline `#[cfg(test)] mod tests` / sibling `tests.rs` | arithmetic, conversion math, state machines, `Request` conversion hooks |
-| wire | `src/server/tests/` | framing + serde + the real middleware stack (`serve::run_over_streams`) over `tokio::io::duplex` through the internal seam, driven by a raw JSON-RPC client |
+| wire | `src/server/tests/` | framing + serde + the real middleware stack (`serve::run_over_streams`) over `tokio::io::duplex`, driven by a raw JSON-RPC client |
 
-Choose the lowest tier that can express the assertion. The wire tier
-exists only for what unit tests cannot see: lifecycle gating, staleness
-retry, panic mapping, the concurrency bound, termination, wire encoding.
+Choose the lowest tier that can express the assertion. The wire tier exists
+only for what unit tests cannot see: lifecycle gating, staleness retry,
+panic mapping, the concurrency bound, termination, wire encoding. The
+concurrency test (`at_most_limit_requests_run_concurrently`,
+`src/server/tests/robustness.rs`) pins bound and recovery: at most
+`available_parallelism()` handlers run at once and the overflow handler
+enters and completes — the dependency is git-pinned to async-lsp's PR #30
+fix (`Cargo.toml`, matching `allow-git` in `deny.toml`). If the
+overflow-blocked failure reappears, the pin was lost: a crates.io release
+without the fix replaced the dependency.
 
-The concurrency test (`at_most_limit_requests_run_concurrently`, in
-`src/server/tests/robustness.rs`) pins both the bound and the recovery:
-at most `available_parallelism()` handlers run at once, and — since the
-dependency pins async-lsp's PR #30 fix (drive in-flight tasks while
-waiting for `poll_ready`, oxalica/async-lsp#30; git-pinned to the fix
-branch in `Cargo.toml`, with the matching `allow-git` in `deny.toml`) —
-the overflow handler enters and every response arrives once the gates
-release. History: async-lsp 0.2.4 from crates.io deadlocked here (the
-overflow never proceeded and the server task had to be aborted); the
-absence-check failure after swapping the dependency was the flip signal,
-executed 2026-09-18. If the overflow-blocked failure ever reappears, the
-git pin was lost — a crates.io release without the fix replaced the
-dependency.
+## The rstest shape
 
-## Harness inventory
+Every handwritten test fn runs under `#[rstest]` — single-case tests
+included: one uniform attribute, fixtures always injectable — with
+`#[tokio::test]` below it where the test is async. The one exemption, from
+the migration spec (D5): rows stamped by `conversion_tests!` keep plain
+`#[test]` emission — the macro is the table harness; its per-row fns are
+not handwritten tests. (Owner 2026-09-19: migrating those 27 tables is a
+deferred follow-up — re-adjudicate before extending the exemption.)
 
-- `crate::testing` (`src/testing.rs` — a `#[cfg(test)] pub(crate)` module
-  declared in `src/lib.rs`, scopeless like `src/error.rs`) — the single
-  shared home for fixtures: `line_position`, `line_range`, `same_line`
-  (LSP positions and ranges), `token` (a `SemanticToken` from relative
-  columns, type and modifiers zero), `url`, `TestServer`, `open_document`,
-  `state_with_documents`, `temp_workspace(prefix, name)`,
-  `workspace_folder`, `diagnostic`, and `json_matchers`
-  (tree-sitter-gated). The `"🙂abc"` document and the UTF-16 encoding in
-  `state_with_documents` are load-bearing: U+1F642 is 4 UTF-8 bytes but
-  2 UTF-16 units, so byte offset 4 == UTF-16 offset 2. The byte and
-  tree-sitter `r()` twins stay local in their own test files: each flavor
-  names its local range builder `r`, with types specific to that flavor —
-  they are not (and need not be) the shared LSP fixtures.
-- `src/server/testing.rs` — the wire scaffolding: `spawn_wire_server`,
-  `RawClient`, `EchoServer`, `bounded`; the server halves of the duplex
-  cross to the futures traits through `tokio-util`'s `compat`
-  (dev-dependency). `GatedServer` / `PanickingServer` stay local to
-  `src/server/tests/robustness.rs`, their only consumers.
+1. Import `use rstest::{fixture, rstest};` only — never `use rstest::*`
+   (`wildcard_imports` is pedantic-deny). `#[case]`, `#[values]`,
+   `#[future]`, `#[with]`, `#[default]` are attribute tokens the `#[rstest]`
+   macro consumes; never import them.
+2. Keep all rstest code in `src/` `#[cfg(test)]` modules; never create a
+   `tests/` target (`tests/architecture.rs`, the arch-lint self-test, is
+   the one standing exception). arch-lint scans `tests/` as production
+   code (`std::fs` there trips `no-sync-io`), and clippy's test context
+   is syntactic — a `#[fixture]` outside `#[cfg(test)]` gets no
+   `allow-expect-in-tests`.
+3. Name every case row descriptively (`#[case::end_relative_boundary]`);
+   bare `case_N` is forbidden. Generated names — `case_N_name` for named
+   rows, `{arg}_{i}_{value}` for `#[values]` — feed nextest selectors, the
+   mutants disposition table, and dupes legibility. When a `#[values]`
+   value does not slug readably (URLs, globs, whitespace), use named rows
+   or 0.27's doc-comment name override.
+4. Gate a single row with `#[cfg_attr(feature = "tree-sitter",
+   case::gated(...))]`; a gated test keeps `#[cfg(feature)]` on the fn.
+   Both battery legs must compile and pass; keep shared harness code free
+   of tree-sitter API.
+5. Reference only real paths in doc comments — dylint
+   `nonexistent-path-in-comment` denies stale ones.
+6. Select with `-E`: `cargo nextest run -E 'binary(async_language_server)'`
+   scopes to the lib target, `-E 'test(wired_methods)'` matches a fn and
+   all its case rows. A plain name substring still works within the lib
+   binary; it never matches an integration target's name.
 
-## Conventions
+## Rows and bodies
 
-- Tests live inline per module, or in a sibling `tests.rs` for larger
-  modules — never a stray file.
-- Real temp workspaces on disk with millisecond-unique names under
-  `std::env::temp_dir()`, created through `temp_workspace(prefix, name)`;
-  the prefix names the calling test module so a leaked directory can be
-  attributed to its file.
-- Determinism: channel gates, never sleeps. Every cross-task await is
-  bounded by `tokio::time::timeout` (`WIRE_TIMEOUT`, five seconds in
-  the wire harness) — futures-rs has no timer, so the bound rides the
-  `time` feature of the tokio dev-dependency. `processId: null` in test
-  `initialize` keeps `ClientProcessMonitorLayer` inert; shutdown asserts
-  the expected EOF instead of hanging. Parallel-gate tests use the same
-  grammar — fill a bounded pool through channels or semaphores, bound
-  every wait, assert on what entered — never on elapsed time
-  (`for_each_bounded`'s width test, the wire concurrency tripwire).
-- Every feature configuration CI runs must compile and pass — `--all-features` and `--no-default-features` (plus `default` again once a non-default feature exists). Keep shared
-  harness code free of tree-sitter API; a test that needs the feature
-  gates itself with `#[cfg(feature = "tree-sitter")]`.
-- `expect`/`unwrap` are allowed in tests (`allow-unwrap-in-tests` and
-  `allow-expect-in-tests` in `clippy.toml`). Production `src/` is
-  `unwrap`/`expect`-clean outside the one blessed invariant — the
-  has-tree `expect` in `src/server/state/documents.rs` — and its
-  remaining panicking paths are documented invariants under
-  `error-handling.md`.
+- Make a family `#[case]` rows only when members differ in data, not
+  orchestration — a different await/setup flow is a separate test, not a
+  row.
+- Unfold an internal fresh-state loop over data into named rows; a
+  same-state sequential contrast (write, assert, then mutate) stays a body.
+- Reserve `#[values]` for one-axis sweeps whose oracle is invariant across
+  the values and whose slugs read — the two adopted sites are the
+  `refresh_support` and `advertised` bools in `src/workspace/diagnostics.rs`.
+  A matrix only when every combination is a distinct oracle; multi-column
+  tables and per-value heterogeneous expectations keep named rows.
+- Keep tests that mutate files mid-test (stamp/watch/watcher families)
+  single tests — rows carry data, not sequences.
+- Delete a migrating family member only when no mutator class
+  distinguishes it (the mutation oracle); textual similarity is never the
+  criterion, count deltas are renames only.
+
+## The harness
+
+Two homes by tier, both `#[cfg(test)] pub(crate)`. All temp-disk work goes
+through the `TempWorkspace` Drop-guard in `src/testing.rs`: inject it as
+`#[with("walker")] workspace: TempWorkspace` (the prefix names the owning
+module, so a leaked directory is attributable); `write(rel, text) -> Url`
+does write + canonicalize + URL in one call and creates parent dirs;
+`Drop` removes the tree — also on unwind. Directory names are
+pid+seq+millisecond-unique under `std::env::temp_dir()`; in the suite's
+`#[cfg(test)]` code, manual `fs::write`/`canonicalize`/
+`fs::remove_dir_all` tails exist nowhere else (doctests do their own
+temp dirs — they cannot see the `pub(crate)` guard).
+
+Crate-tier fixtures: `workspace` (the guard); `state()` — a matcher-less
+`TestServer` state, compose `test_document_matchers`,
+`extension_matchers`, or feature-gated `json_matchers` explicitly; and
+`utf16_state()`, the canonical UTF-16 conversion fixture wrapping
+`state_with_documents` (the `"🙂abc"` document is load-bearing: U+1F642 is
+4 UTF-8 bytes but 2 UTF-16 units, so byte offset 4 == UTF-16 offset 2).
+`seed_workspace(&TempWorkspace) -> SeededWorkspace` is a plain async
+helper, not a fixture: the refresh must run after the test's writes, and
+fixtures resolve before the body — the same sequencing rule that keeps
+wire spawn explicit. Its matcher contract is `*.test`-only; seeding
+another extension yields an empty `urls`. Position/token/URL builders
+stay plain fns (`url` is called mid-test, not at injection time).
+
+The wire tier stays plain fns (D3: 17 of 26 spawn sites were bespoke
+servers — a default fixture would chase handshake variations):
+`spawn_wire_server`, `RawClient`, `EchoServer`, `bounded`, `WIRE_TIMEOUT`
+in `src/server/testing.rs`; `GatedServer` (shared robustness→staleness)
+and `PanickingServer` (local to `robustness.rs`) stay in
+`src/server/tests/`; a file whose tests share a handshake tail wraps it in a
+local plain async helper (`spawn_initialized` in
+`src/server/tests/workspace_diagnostics.rs`). Wire tests run under
+`#[rstest]` + `#[tokio::test]` and inject crate-tier fixtures freely.
+
+Injection mechanics: `#[with(...)]` resolves by parameter name, so an
+injected fixture parameter must be named `workspace`; one fixture cannot
+be injected twice by name — for a second root call the fixture as a
+function: `workspace("requests")`.
+
+`#[fixture]` emits `#[allow(dead_code)]`, so liveness never surfaces in
+the lint — sweep by reference count at cycle ends. Beware the
+macro-emitted-caller trap: `prime_conversion_fallback`,
+`warn_once_default`, `document_version`, `sole_document`,
+`dispatch_allowed`, `state_with_documents`, and
+`assert_converted_position` have keeping callers in macro-emitted code
+(`macros/src/`); src/-only sweeps misjudge them. `expect`/`unwrap` are
+allowed in tests (`clippy.toml`); production `src/` stays clean outside
+the one blessed `expect` in `src/server/state/documents.rs`.
+
+## rstest surface, adjudicated
+
+| capability | verdict |
+|---|---|
+| `#[case]` named rows | adopted suite-wide |
+| `#[values]` | single-axis invariant-oracle sweeps only (2 sites) |
+| `#[timeout(...)]` | the three gate-driven wire tests — whole-test failsafe, never an oracle |
+| `#[once]` | rejected — every test needs isolated state |
+| `#[files]` family | rejected — files resolve at compile time against the checkout; this suite builds runtime temp trees |
+| `#[context]` | rejected — no name-dependent logic; elapsed-time measurement is the anti-pattern below |
+| `#[by_ref]` | rejected — no cross-argument lifetimes to tune |
+| `#[from(...)]` | rejected — the fixture graph is flat |
+| `#[ignore]` | rejected — `#[tokio::test]` injects no arguments |
+| `#[trace]`/`#[notrace]` | rejected — named rows and assert output carry the semantics; `Debug` bounds on fixtures buy nothing |
+| `#[test_attr(...)]` | rejected — one runtime, nothing to deconflict |
+| `#[awt]` / async fixtures | rejected — the sequencing rule keeps `seed_workspace` a helper |
+| `rstest_reuse` | rejected — stale crate, `rand`/`getrandom` lock cost, no shared case lists |
+
+Re-adjudicate against the evidence in `task-09b-report.md`, not from
+memory.
+
+## Determinism
+
+Channel gates, never sleeps. Every cross-task await is bounded by
+`tokio::time::timeout` (`WIRE_TIMEOUT`, five seconds, in the wire
+harness). `processId: null` in test `initialize` keeps
+`ClientProcessMonitorLayer` inert; shutdown asserts the expected EOF
+instead of hanging. Parallel-gate tests fill a bounded pool through
+channels or semaphores, bound every wait, and assert on what entered.
+`#[timeout(Duration::from_secs(60))]` on the three gate-driven wire tests
+(12× `WIRE_TIMEOUT`) caps a wedged gate and names the failure — a
+failsafe, not an oracle; no test asserts elapsed time because of it. CI
+should set `RSTEST_TIMEOUT=120` on the test steps (recorded
+recommendation): the env var is read at compile time, its value in
+seconds.
 
 ## The duplication gate
 
-`make dupes` is a gate, not a report: `dupes.toml` pins
-`max_exact_duplicates = 0` and `max_near_duplicates = 0`, and tests sit
-inside the analysis (owner call: tests are code). There is no
-`exclude_tests` knob and none is to be added. Deliberate parallelism —
-spec-matrix rows, mirror pairs — carries one
-reasoned entry per group in `.dupes-ignore.toml`; a NEW unignored group
-must fail the check, and thresholds are never loosened to hide one. List
-maintenance has exactly one automatic step: at cycle ends, run
-`cargo dupes cleanup`, which removes entries whose groups no longer
-exist — dry-run first (`--dry-run` lists the stale entries; the plain
-invocation drops them). Dissolving a group that still exists is
-refactoring; keeping every reason truthful is human/agent review. The
-tool does neither. The
-command runs on demand or periodically, outside the per-task battery
-(see `tech.md`). The criterion bench (`make bench`) also runs on demand, outside the battery.
+`make dupes` is a gate, not a report: `dupes.toml` pins 0 exact / 0 near,
+tests included. Deliberate parallelism — spec-matrix rows, mirror pairs —
+carries one reasoned entry per group in `.dupes-ignore.toml`; a new
+unignored group must fail the check, and thresholds are never loosened to
+hide one. At cycle ends run `cargo dupes cleanup` (dry-run first) — it
+drops only entries whose GROUP vanished — then audit every surviving
+entry by hand: does the group still exist, is the reason still truthful,
+is the parallelism still deliberate? Plain `cargo dupes` output APPLIES
+the ignore list, so it reports 0 groups while ignored ones exist —
+enumerate live groups with the list temporarily set aside and
+set-difference fingerprints (2026-09-19 audit: 36 entries ↔ 36 live groups).
 
 ## Mutation-driven test design
 
-cargo-mutants (`make mutants`, on demand — never in the battery; `tech.md`
-owns the invocation constraints) is a teacher, not a gate to satisfy: a
-survivor means the suite has no oracle the mutants runner can see for a
-behavior difference (doctest kills are invisible to the runner), never
-that the code is wrong. Read each survivor through its mutator class —
-the class names the test-design dimension the missing test forgot:
+cargo-mutants (`make mutants`, on demand, never in the battery; scope with
+`FILE=src/foo.rs`) is a teacher, not a gate: a survivor means the suite
+has no oracle the runner can see for a behavior difference (doctest kills
+are invisible), never that the code is wrong. Read each survivor through
+its mutator class — the class names the dimension the missing test forgot:
 
 | mutator class | design dimension it demands |
 |---|---|
 | range boundary shift | boundary values one step past each edge, not just interior samples |
 | comparison flip | one sample beyond the equivalence class, on both sides |
-| removed call | every side effect of the call carries at least one observable assertion |
+| removed call | every side effect carries at least one observable assertion |
 | literal replacement | degenerate and neutral-element cases (`0`, `1`, `""`) |
 | removed `?` / replaced return | assert the error surfaces — the failing case itself, never `is_ok()` on the happy path |
 
 Every survivor lands in one of four baskets — Philosophy's type-first
-question applies before all four — and only the first basket writes a
-test:
+question applies before all four — and only the first writes a test:
 
 | basket | action |
 |---|---|
@@ -137,59 +250,34 @@ test:
 | dead logic | propose deleting the code instead of testing it |
 | test-pleasing | reject — a test whose only statement is "this mutant dies" is not a test |
 
-The survivor database is the disposition table
-(`docs/superpowers/plans/2026-09-09-mutants-disposition-table.md`),
+The disposition table is
+`docs/superpowers/plans/2026-09-09-mutants-disposition-table.md`,
 maintained by reconciliation: a survivor absent from the table is new
-work; a row whose code no longer exists is dropped. Never write a test
-whose only purpose is the kill — if the only behavior it can state is
-the mutant's death, the mutant was equivalent or the logic dead, and
-the basket above says so.
-
-Scoped runs beat full ones: `make mutants FILE=src/foo.rs` over the file
-just touched, a re-run over the diff's files after a refactor, the full
-sweep only at cycle acceptance points.
+work; a row whose code no longer exists is dropped. Migrations that
+rename tests record old→new name maps and a final pass applies them —
+the rstest migration re-pointed 11 rows, dropped none.
 
 ## Adding a test for a new `Server` method
 
-The method already follows the three-place pattern (`structure.md`):
-the `#[lsp_request]` struct in its own file under `src/lsp_requests/`, the
-`lsp_method!`/`lsp_resolve_method!` block for the trait method, one
-`lsp_dispatch!` row. The `#[lsp_request]` attribute fields cover the
-common shapes (`document(...)`, `incoming_position(...)`); hand-write
-hooks only for response-shaped or multi-position methods, as free
-`convert_*` fns wired through `incoming_custom`/`outgoing`.
+The method already follows the three-place pattern (`structure.md`);
+testing adds one piece: a W0 conversion test — `conversion_tests!` rows in
+the `#[cfg(test)] mod tests` block next to the marker struct in
+`src/lsp_requests/`, importing `crate::testing` fixtures (`utf16_state` is
+the standard). Dispatch needs nothing new: the wire unknown-method test
+pins the router default, and `wired_methods_dispatch` fails loudly if a
+dispatch row is lost while its fixture still lists the method. Wire-note:
+params validation lives inside each registered handler, so an unknown name
+answers `-32601` before any deserialization — even garbage params cannot
+turn it into `-32602`; the dispatch-row test sends minimally valid params
+for exactly that reason.
 
-Testing adds one piece: a W0 conversion test — `conversion_tests!` rows
-in the `#[cfg(test)] mod tests` block next to the marker struct —
-importing fixtures from `crate::testing` (`state_with_documents` is the
-standard UTF-16 fixture).
-Dispatch needs nothing new: the wire unknown-method test
-(`unknown_methods_answer_method_not_found`) pins the router default —
-`-32601` under a method name no handler is registered for. Every
-client-to-server request `lsp_types` defines IS registered (the 48 dispatch rows,
-`workspace/diagnostic` and `initialize` by the wrapper, `shutdown` by
-the trait default), so only a synthetic name outside `lsp_types`
-reaches that reply; surface growth adds no wire tests, and a dispatch
-row lost while the fixture still lists its method fails
-`wired_methods_dispatch` loudly.
-
-Wire-note: params validation lives inside each registered handler, so
-an unknown name answers `-32601` before any deserialization — even
-garbage params cannot turn it into `-32602`. A registered method with
-garbage params, by contrast, fails with `-32602` inside its handler and
-never reaches the engine; the dispatch-row test sends minimally valid
-params for exactly that reason.
-
-Known ceiling of the echo round-trip tests (#2 and #6 in the catalog:
-`utf16_positions_round_trip_through_real_serialization` and
-`incremental_did_change_applies_over_the_wire`): an echo server that
-returns the position it received cannot distinguish "conversion works"
-from "conversion was deleted" — both are fixpoints on the sent column.
-They do fail under either single-direction regression; if a stronger pin
-is ever needed, an asserting server that fails unless the handler sees
-the UTF-8 byte column breaks the symmetry.
+Known ceiling of the echo round-trip tests (#2 and #6 in the catalog): an
+echo server that returns the position it received cannot distinguish
+"conversion works" from "conversion was deleted" — both are fixpoints on
+the sent column. They fail under either single-direction regression; if a
+stronger pin is ever needed, an asserting server that fails unless the
+handler sees the UTF-8 byte column breaks the symmetry.
 
 ---
-_Tests pin only what types cannot express, at the lowest tier that can
-see it, on the shared harness — and the duplication gate keeps the
-harness itself honest._
+_Tests pin only what types cannot express, at the lowest tier that can see
+it — under `#[rstest]`, on the shared harness, with the gates honest._
