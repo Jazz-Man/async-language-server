@@ -116,24 +116,32 @@ pub fn lsp_request(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Stamps one `#[test]` per row for a `crate::lsp_requests::Request`'s
-/// conversion hooks — the table-driven W0 harness. Both the
-/// `incoming`/`expects` pair and the `response`/`outgoing`/`returns` triple
-/// are optional per row:
+/// Stamps one `#[rstest]` case-table for a `crate::lsp_requests::Request`'s
+/// conversion hooks — the table-driven W0 harness. One row of the table per
+/// table row, each keeping its name as the case name; the table fn injects
+/// the `crate::testing::utf16_state` fixture through its fully-qualified
+/// `#[from]` path, so the invoking test module needs no extra imports, and
+/// takes a stamped row struct with one field per row-grammar field:
 ///
 /// - `params` — `Fn(Url) -> Params`, building params against the **emoji**
 ///   document (the request's document), positions expressed in the CLIENT
 ///   encoding (UTF-16 in the shared fixture).
 /// - `incoming`/`expects` — `Fn(&Params) -> Position` and the UTF-8
-///   (byte-column) position it must equal after `modify_params`.
+///   (byte-column) position it must equal after `modify_params`; both
+///   optional together.
 /// - `response` — `Fn(Url, Url) -> Response` receiving
 ///   `(plain_url, emoji_url)`, positions built in UTF-8.
 /// - `outgoing`/`returns` — `Fn(&Response) -> Position` and the
-///   client-encoding position it must equal after `modify_response`.
+///   client-encoding position it must equal after `modify_response`; all
+///   three optional together.
 ///
 /// Coverage boundary: a single incoming position and an optional single
 /// outgoing position; richer tests stay hand-written next to their
 /// `Request` impls.
+///
+/// Row closures must be non-capturing: the stamped row struct stores them
+/// as fn pointers, so a capturing closure fails to compile at the row
+/// site (E0308) — build the value inside the closure instead.
 ///
 /// # Examples
 ///

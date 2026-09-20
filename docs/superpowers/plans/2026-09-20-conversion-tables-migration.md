@@ -98,6 +98,23 @@ Same steps as Task 2; subtypes/supertypes carry the two-response shapes — flag
 
 ---
 
+## Erratum (2026-09-20, after Task 1): waves re-scoped away
+
+The plan modeled Waves A–C as per-file conversion edits — wrong model: the
+27 tables share ONE emission point (the macro), so Task 1's emission
+rework converted every table at once with zero table-file edits (the
+emission is self-contained: `#[from(crate::testing::utf16_state)]` +
+path-qualified `#[rstest::rstest]`). Semantic risk is structural (one
+centrally-reviewed template + verbatim row interpolation; ~19
+response-bearing rows fail the battery if the template weakens), and the
+Task-1 review verified six tables spanning every grammar shape. Waves A–C
+are therefore CANCELLED; Task 5 (consequences) absorbs the remainder: the
+full 30-row disposition map (plan's "31 rows" was a miscount — references.rs
+has one row), the stale-mention sweep now including `src/testing.rs:217`
+(the utf16_state doc), the steering edit, and the §7 probes. The STOP rule
+survives: any per-file surprise found during Task 5 escalates to the
+controller.
+
 ## Self-review notes (plan-author, 2026-09-20)
 
 - Spec coverage: D1–D6 map to Tasks 1–5 (D5 risk-first = Task 1's gate; consequences D1 = Task 5); §7 criteria verified at Task 5.

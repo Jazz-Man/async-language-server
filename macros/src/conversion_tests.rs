@@ -1,16 +1,19 @@
-//! `conversion_tests!` — stamp one `#[test]` per row for a request's
-//! conversion hooks. The W0 table harness: each stamped test drives
-//! `modify_params`/`modify_response` through the `crate::testing` fixtures,
-//! and the emitted code uses call-site `crate::` paths.
+//! `conversion_tests!` — stamp one `#[rstest]` case-table per request's
+//! conversion hooks. The W0 table harness: the table fn drives
+//! `modify_params`/`modify_response` through the `crate::testing::utf16_state`
+//! fixture (injected via its fully-qualified `#[from]` path, so the stamped
+//! table needs nothing in the invoking module's scope), each row becomes a
+//! `#[case::name]` carrying only data (a typed row struct mirrors the row
+//! grammar), and the emitted code uses call-site `crate::` paths.
 
-use proc_macro2::TokenStream;
-use quote::quote;
+use proc_macro2::{Span, TokenStream};
+use quote::{ToTokens, format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::{Expr, Ident, Token, Type};
 
 /// One row of the table: the request under test plus its fixture closures.
 struct TestRow {
-    /// The stamped test's name.
+    /// The stamped case's name.
     name: Ident,
     /// The request marker type (full path).
     request: Type,
@@ -115,60 +118,166 @@ impl Parse for TestTable {
     }
 }
 
-/// Expands the table into one `#[test]` fn per row, each driving the
-/// request's hooks through the `crate::testing` fixtures — the emitted
-/// code uses call-site `crate` paths.
+/// Converts a CamelCase type stem to its snake-cased name:
+/// `CallHierarchyPrepare` → `call_hierarchy_prepare`.
+fn snake_case(name: &str) -> String {
+    let mut out = String::with_capacity(name.len() + 4);
+    for (index, ch) in name.char_indices() {
+        if ch.is_uppercase() && index > 0 {
+            out.push('_');
+        }
+        out.push(ch.to_ascii_lowercase());
+    }
+    out
+}
+
+/// The table's names: the request type's last path segment, minus a
+/// trailing `Request`, yields the snake-cased table fn prefix and the
+/// CamelCase row-struct name (`HoverRequest` → `hover_conversion_round_trips`
+/// + `HoverConversionRow`).
+fn table_names(request: &Type) -> syn::Result<(Ident, Ident)> {
+    let segment = match request {
+        Type::Path(path) => path.path.segments.last(),
+        _ => None,
+    };
+    let segment = segment
+        .map(|last| last.ident.to_string())
+        .ok_or_else(|| syn::Error::new_spanned(request, "request must be a path type"))?;
+    let stem = segment.strip_suffix("Request").unwrap_or(&segment);
+    let prefix = snake_case(stem);
+    Ok((
+        format_ident!("{prefix}_conversion_round_trips"),
+        format_ident!("{stem}ConversionRow"),
+    ))
+}
+
+/// The rows' shared request type, spanned-erroring if any row names a
+/// different one: the table fn and row struct are stamped from one request,
+/// so a mixed table has no shape.
+fn uniform_request(rows: &[TestRow]) -> syn::Result<&Type> {
+    let first = rows
+        .first()
+        .ok_or_else(|| syn::Error::new(Span::call_site(), "empty conversion table"))?;
+    let request = &first.request;
+    let request_name = request.to_token_stream().to_string();
+    for row in &rows[1..] {
+        if row.request.to_token_stream().to_string() != request_name {
+            return Err(syn::Error::new_spanned(
+                &row.request,
+                "all rows in a table must name the same request type",
+            ));
+        }
+    }
+    Ok(request)
+}
+
+/// Stamps one `#[case::name(...)]` attribute per row: the row struct
+/// literal carrying the row's closures and expected positions, `None`
+/// where the optional hook pairs are absent.
+fn case_attrs(rows: &[TestRow], row_struct: &Ident) -> TokenStream {
+    let cases = rows.iter().map(|row| {
+        let name = &row.name;
+        let params = &row.params;
+        let (incoming, expects) = match &row.incoming {
+            Some((extract, expected)) => (quote! { Some(#extract) }, quote! { Some(#expected) }),
+            None => (quote! { None }, quote! { None }),
+        };
+        let (response, outgoing, returns) = match &row.response {
+            Some((build, extract, expected)) => (
+                quote! { Some(#build) },
+                quote! { Some(#extract) },
+                quote! { Some(#expected) },
+            ),
+            None => (quote! { None }, quote! { None }, quote! { None }),
+        };
+        quote! {
+            #[case::#name(#row_struct {
+                params: #params,
+                incoming: #incoming,
+                expects: #expects,
+                response: #response,
+                outgoing: #outgoing,
+                returns: #returns,
+            })]
+        }
+    });
+    quote! { #(#cases)* }
+}
+
+/// The typed row-struct definition: one field per row-grammar field, types
+/// derived from the request's `Request` associated types — `params` and
+/// `response` as fn pointers from `Url` arguments, the extractors as fn
+/// pointers from shared references, the optional columns as `Option`.
+fn row_struct_def(request: &Type, row_struct: &Ident) -> TokenStream {
+    let params_type = quote! { fn(async_lsp::lsp_types::Url) -> <#request as crate::lsp_requests::Request>::Params };
+    let response_type = quote! { Option<fn(async_lsp::lsp_types::Url, async_lsp::lsp_types::Url) -> <#request as crate::lsp_requests::Request>::Response> };
+    let incoming_type = quote! { Option<fn(&<#request as crate::lsp_requests::Request>::Params) -> async_lsp::lsp_types::Position> };
+    let outgoing_type = quote! { Option<fn(&<#request as crate::lsp_requests::Request>::Response) -> async_lsp::lsp_types::Position> };
+    let position_type = quote! { Option<async_lsp::lsp_types::Position> };
+    quote! {
+        struct #row_struct {
+            params: #params_type,
+            incoming: #incoming_type,
+            expects: #position_type,
+            response: #response_type,
+            outgoing: #outgoing_type,
+            returns: #position_type,
+        }
+    }
+}
+
+/// Expands the table into one `#[rstest]` fn driving the request's hooks
+/// through the injected `crate::testing::utf16_state` fixture, with one
+/// `#[case::name]` per row carrying a typed row struct — the emitted code
+/// uses call-site `crate` paths.
 ///
 /// # Errors
 ///
 /// Spanned errors for malformed rows: a missing first `params` field, an
 /// unknown or duplicated row field, a missing `expects`/`outgoing`/
-/// `returns` partner, or stray tokens inside the braces.
+/// `returns` partner, stray tokens inside the braces, an empty table, a
+/// non-path request type, or rows naming different request types.
 fn expand(input: TokenStream) -> syn::Result<TokenStream> {
     let rows = syn::parse2::<TestTable>(input)?.0;
-    let tests = rows.iter().map(|row| {
-        let TestRow {
-            name,
-            request,
-            params,
-            incoming,
-            response,
-        } = row;
-        let incoming = incoming.as_ref().map(|(extract, expects)| {
-            quote! {
+    let request = uniform_request(&rows)?;
+    let (table_fn, row_struct) = table_names(request)?;
+    let cases = case_attrs(&rows, &row_struct);
+    let row_struct_def = row_struct_def(request, &row_struct);
+
+    Ok(quote! {
+        #row_struct_def
+
+        #[rstest::rstest]
+        #cases
+        fn #table_fn(
+            #[from(crate::testing::utf16_state)] utf16_state: (crate::server::ServerState, async_lsp::lsp_types::Url, async_lsp::lsp_types::Url),
+            #[case] row: #row_struct,
+        ) {
+            let (state, _plain, emoji) = utf16_state;
+            let #row_struct { params, incoming, expects, response, outgoing, returns } = row;
+            let document = state.document(&emoji).expect("emoji document is tracked");
+            let mut params = (params)(emoji.clone());
+            <#request as crate::lsp_requests::Request>::modify_params(&state, &document, &mut params);
+            if let (Some(incoming), Some(expects)) = (incoming, expects) {
                 crate::testing::assert_converted_position(
                     &params,
-                    #extract,
-                    #expects,
+                    incoming,
+                    expects,
                     "incoming position must be converted to the UTF-8 byte column",
                 );
             }
-        });
-        let response = response.as_ref().map(|(build, extract, returns)| {
-            quote! {
-                let mut response = (#build)(_plain.clone(), emoji.clone());
+            if let (Some(response), Some(outgoing), Some(returns)) = (response, outgoing, returns) {
+                let mut response = (response)(_plain.clone(), emoji.clone());
                 <#request as crate::lsp_requests::Request>::modify_response(&state, &document, &mut response);
                 crate::testing::assert_converted_position(
                     &response,
-                    #extract,
-                    #returns,
+                    outgoing,
+                    returns,
                     "outgoing position must be converted to the client encoding",
                 );
             }
-        });
-        quote! {
-            #[test]
-            fn #name() {
-                let (state, _plain, emoji) = crate::testing::state_with_documents();
-                let document = state.document(&emoji).expect("emoji document is tracked");
-                let mut params = (#params)(emoji.clone());
-                <#request as crate::lsp_requests::Request>::modify_params(&state, &document, &mut params);
-                #incoming
-                #response
-            }
         }
-    });
-    Ok(quote! { #(#tests)* })
+    })
 }
 
 /// Entry point of the macro: expands the invocation or maps the spanned
@@ -205,20 +314,43 @@ mod tests {
         assert_eq!(table.0[0].response.is_some(), response);
     }
 
+    /// The emission is one `#[rstest]` table fn per request: a typed row
+    /// struct named from the request, one `#[case::name]` per row, the
+    /// `utf16_state` fixture injected through its fully-qualified `#[from]`
+    /// path (the stamped table needs no imports in the invoking module),
+    /// and the conversion script — never a plain `#[test]`.
     #[rstest]
-    fn emits_test_fn_with_fixtures() {
-        let out = expand(quote! {
-            t: R { params: |uri| P::new(uri) }
-        })
-        .expect("expands");
+    #[case::simple_request(
+        "t: R { params: |uri| P::new(uri) }",
+        "r_conversion_round_trips",
+        "RConversionRow"
+    )]
+    #[case::multiword_request(
+        "t: crate::lsp_requests::CallHierarchyPrepareRequest { params: |uri| P::new(uri) }",
+        "call_hierarchy_prepare_conversion_round_trips",
+        "CallHierarchyPrepareConversionRow"
+    )]
+    fn emits_rstest_table_with_typed_row_struct(
+        #[case] input: &str,
+        #[case] table_fn: &str,
+        #[case] row_struct: &str,
+    ) {
+        let out = expand(input.parse().expect("tokens")).expect("expands");
         let text = out.to_string();
-        assert!(text.contains("# [test]"));
-        assert!(text.contains("state_with_documents"));
+        assert!(text.contains("# [rstest :: rstest]"));
+        assert!(text.contains("# [case :: t ("));
+        assert!(text.contains(row_struct));
+        assert!(text.contains(table_fn));
+        assert!(text.contains("# [from (crate :: testing :: utf16_state)]"));
+        assert!(text.contains("crate :: server :: ServerState"));
         assert!(text.contains("modify_params"));
+        assert!(text.contains("modify_response"));
+        assert!(!text.contains("# [test]"));
     }
 
     /// Malformed rows reject with a spanned error naming the defect class.
     #[rstest]
+    #[case::empty_table("", "empty conversion table")]
     #[case::unknown_row_field("t: R { params: p, bogus: b }", "unknown row field")]
     #[case::duplicate_row_field(
         "t: R { params: p, incoming: i, expects: e, incoming: i2, expects: e2 }",
@@ -231,6 +363,22 @@ mod tests {
         assert!(
             err.to_string().contains(needle),
             "{needle:?} missing from {err}",
+        );
+    }
+
+    /// Rows naming different request types reject: the table fn and row
+    /// struct are stamped from one request, so a mixed table has no shape.
+    #[rstest]
+    fn rejects_mixed_request_types() {
+        let err = expand(quote! {
+            first: R { params: |uri| P::new(uri) }
+            second: S { params: |uri| P::new(uri) }
+        })
+        .expect_err("rejected");
+        let text = err.to_string();
+        assert!(
+            text.contains("same request type"),
+            "uniformity error missing from {text}",
         );
     }
 }
