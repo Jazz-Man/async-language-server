@@ -18,10 +18,12 @@
 //!
 //! The `conversion_tests!` macro — a procedural macro in the workspace
 //! `lsp_macros` crate, imported directly from there by test modules — is
-//! the table-driven W0 harness: one row stamps the standard conversion
-//! test (fixture → `modify_params` → UTF-8 assert → `modify_response` →
-//! client assert). Rows pin the single-incoming-position shape; richer
-//! tests stay hand-written next to their `Request` impls.
+//! the table-driven W0 harness: one table stamps the standard conversion
+//! test as an rstest case table (injected fixture → `modify_params` →
+//! UTF-8 assert → `modify_response` → client assert, the script once per
+//! table; each row is a `#[case]` carrying only data). Rows pin the
+//! single-incoming-position shape; richer tests stay hand-written next to
+//! their `Request` impls.
 
 use crate::server::{DocumentMatcher, Server, ServerOptions, ServerState};
 use crate::text_utils::Encoding;
@@ -214,8 +216,10 @@ pub(crate) fn state() -> ServerState {
 }
 
 /// The canonical UTF-16 conversion fixture (`"🙂abc"` document). Wraps
-/// [`state_with_documents`], which stays: the `conversion_tests!` macro's
-/// emitted code calls it (spec D5).
+/// [`state_with_documents`], which stays load-bearing through this
+/// fixture: `conversion_tests!`-stamped tables inject the fixture via
+/// `#[from(crate::testing::utf16_state)]`, and the fixture body calls the
+/// helper.
 #[fixture]
 pub(crate) fn utf16_state() -> (ServerState, Url, Url) {
     state_with_documents()

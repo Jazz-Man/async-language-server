@@ -59,6 +59,18 @@ the keep-gate's `url_is_in_roots` and matcher conjuncts under an advertised stat
 T9a review gap: every pre-existing removal-path close test rode the `enabled()` conjunct
 (unadvertised or disabled), which masked those two conjuncts suite-wide.
 
+**Name reconciliation (2026-09-20, conversion-tables cycle close, Task CT5).** The
+`conversion_tests!` emission rework re-stamped all 30 conversion rows at once (the 27 tables
+share one emission point; the per-file waves were cancelled): each row is now a `#[case]` of
+its table fn, ids `module::tests::<stem>_conversion_round_trips::case_N_<old_name>` (N
+1-based; full old→new map in `.superpowers/sdd/ct-task-01-report.md`). Zero rows of this
+table were re-pointed: no row carries a stamped conversion id as its covering test — the
+stamped rows were never a survivor's oracle (every covering test here is a handwritten W0
+or wire test, or a doctest; cluster 9's survivors are precisely the custom hooks and
+semantic-tokens helpers the stamped rows
+never reached). Zero rows dropped — every mutated fn still exists. The cycle plan's
+"31 rows" was a miscount: `references.rs` has one row, not two; 30 rows total, all accounted.
+
 ---
 
 ## 1. text_utils conversions — 16 rows (14 b, 2 c, 0 d)

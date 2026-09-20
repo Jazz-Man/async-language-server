@@ -72,11 +72,16 @@ without the fix replaced the dependency.
 
 Every handwritten test fn runs under `#[rstest]` — single-case tests
 included: one uniform attribute, fixtures always injectable — with
-`#[tokio::test]` below it where the test is async. The one exemption, from
-the migration spec (D5): rows stamped by `conversion_tests!` keep plain
-`#[test]` emission — the macro is the table harness; its per-row fns are
-not handwritten tests. (Owner 2026-09-19: migrating those 27 tables is a
-deferred follow-up — re-adjudicate before extending the exemption.)
+`#[tokio::test]` below it where the test is async. No plain-`#[test]`
+emission remains: the D5 exemption (the `conversion_tests!` tables) is
+closed — the 2026-09-20 emission rework
+(`docs/superpowers/specs/2026-09-20-conversion-tables-migration-design.md`)
+stamps each table as one `#[rstest]` fn whose rows are data-only
+`#[case::old_name]`s; the macro is the table harness, and its emitted fns
+are not handwritten tests. Stamped tables are self-contained: the fixture
+rides the emission (`#[from(crate::testing::utf16_state)]`), so an
+invoking module needs no fixture import — the macro alone injects it
+(row-expression builders still import normally).
 
 1. Import `use rstest::{fixture, rstest};` only — never `use rstest::*`
    (`wildcard_imports` is pedantic-deny). `#[case]`, `#[values]`,
@@ -179,13 +184,14 @@ the one blessed `expect` in `src/server/state/documents.rs`.
 | capability | verdict |
 |---|---|
 | `#[case]` named rows | adopted suite-wide |
+| macro-stamped tables (`conversion_tests!`) | adopted — one `#[rstest]` case-table per request; data-only `#[case]` rows, fixture via `#[from]` (2026-09-20) |
 | `#[values]` | single-axis invariant-oracle sweeps only (2 sites) |
 | `#[timeout(...)]` | the three gate-driven wire tests — whole-test failsafe, never an oracle |
 | `#[once]` | rejected — every test needs isolated state |
 | `#[files]` family | rejected — files resolve at compile time against the checkout; this suite builds runtime temp trees |
 | `#[context]` | rejected — no name-dependent logic; elapsed-time measurement is the anti-pattern below |
 | `#[by_ref]` | rejected — no cross-argument lifetimes to tune |
-| `#[from(...)]` | rejected — the fixture graph is flat |
+| `#[from(...)]` | rejected for handwritten tests — the fixture graph is flat; the macro-stamped tables' emission is the one user (row above) |
 | `#[ignore]` | rejected — `#[tokio::test]` injects no arguments |
 | `#[trace]`/`#[notrace]` | rejected — named rows and assert output carry the semantics; `Debug` bounds on fixtures buy nothing |
 | `#[test_attr(...)]` | rejected — one runtime, nothing to deconflict |
@@ -260,10 +266,11 @@ the rstest migration re-pointed 11 rows, dropped none.
 ## Adding a test for a new `Server` method
 
 The method already follows the three-place pattern (`structure.md`);
-testing adds one piece: a W0 conversion test — `conversion_tests!` rows in
-the `#[cfg(test)] mod tests` block next to the marker struct in
-`src/lsp_requests/`, importing `crate::testing` fixtures (`utf16_state` is
-the standard). Dispatch needs nothing new: the wire unknown-method test
+testing adds one piece: a W0 conversion test — a `conversion_tests!` table
+in the `#[cfg(test)] mod tests` block next to the marker struct in
+`src/lsp_requests/`, one row per round-trip (`utf16_state` is injected by
+the emission; the module needs no fixture import). Dispatch needs nothing
+new: the wire unknown-method test
 pins the router default, and `wired_methods_dispatch` fails loudly if a
 dispatch row is lost while its fixture still lists the method. Wire-note:
 params validation lives inside each registered handler, so an unknown name
