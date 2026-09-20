@@ -42,8 +42,9 @@ tower = "0.5.3"
 tracing = "0.1.44"
 tree-sitter = "0.27.0"
 # Pinned exactly: 0.4 -> 0.5 silently changed what the "strict" preset means,
-# and a `cargo update` must not shift preset semantics.
-arch-lint = "=0.5.0"
+# and 0.5 -> 0.6 changed it again (AL009-AL012 joined) — a `cargo update`
+# must not shift preset semantics.
+arch-lint = "=0.6.0"
 tree-sitter-json = "0.24.8"
 
 # Fixture-based test framework

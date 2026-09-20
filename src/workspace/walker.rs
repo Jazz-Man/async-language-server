@@ -88,7 +88,6 @@ impl WorkspaceWalker {
                 let global = global.clone();
                 Box::new(move |entry| match entry {
                     Ok(entry) => {
-                        // arch-lint: allow(no-sync-io) reason="the ignore-crate walk is a synchronous batch scan by design"
                         if entry.file_type().is_some_and(|ty| ty.is_file())
                             && global.as_ref().is_none_or(|matcher| {
                                 // Parents walk with the match: a

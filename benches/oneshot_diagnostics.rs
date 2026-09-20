@@ -271,17 +271,14 @@ fn bench_glob_walk(criterion: &mut Criterion) {
         bench.iter(|| {
             seen.store(0, Ordering::Relaxed);
             WalkBuilder::new(&root).build_parallel().run(|| {
-                Box::new(|entry| {
-                    match entry {
-                        Ok(entry) => {
-                            // arch-lint: allow(no-sync-io) reason="FileType::is_file reads a flag off metadata the walker already collected; no filesystem access happens in this closure"
-                            if entry.file_type().is_some_and(|ty| ty.is_file()) {
-                                seen.fetch_add(1, Ordering::Relaxed);
-                            }
-                            WalkState::Continue
+                Box::new(|entry| match entry {
+                    Ok(entry) => {
+                        if entry.file_type().is_some_and(|ty| ty.is_file()) {
+                            seen.fetch_add(1, Ordering::Relaxed);
                         }
-                        Err(_) => WalkState::Continue,
+                        WalkState::Continue
                     }
+                    Err(_) => WalkState::Continue,
                 })
             });
             std::hint::black_box(seen.load(Ordering::Relaxed))

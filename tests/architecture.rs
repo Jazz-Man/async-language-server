@@ -1,9 +1,9 @@
 //! Architecture checks via `arch-lint`, wired programmatically.
 //!
-//! The `check!()` macro path applies preset defaults only: behavior knobs
-//! (complexity thresholds, `allow_in_tests`, ...) configured in `[rules.*]`
-//! TOML sections are parsed but never consulted. Building the analyzer here
-//! makes the wiring explicit and every knob real, keeps `arch-lint` a
+//! `check!()` and the CLI honor `[rules.*]` options since arch-lint 0.6,
+//! but they always run a preset's whole rule set. Building the analyzer
+//! here wires exactly the six rules this crate wants (the unwrap/expect
+//! and handler-complexity axes stay with clippy), keeps `arch-lint` a
 //! dev-dependency, and still loads the declarative layer rules from
 //! `arch-lint.toml` (scopes and `deny-scope-dep`).
 //!

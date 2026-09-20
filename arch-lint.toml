@@ -2,10 +2,10 @@
 # Real documentation: https://github.com/ynishi/arch-lint
 #
 # The rule set itself is wired programmatically in tests/architecture.rs:
-# through check!() the preset picks hardcoded defaults and every [rules.*]
-# behavior option (allow_patterns, allow_in_tests, thresholds) is parsed but
-# never consulted. Only the [[scopes]] / [[deny-scope-dep]] sections below
-# are loaded, by load_rules_from_toml in the test.
+# check!() and the CLI honor [rules.*] options since arch-lint 0.6, but they
+# run a preset's whole rule set — the test wires exactly six rules instead.
+# Only the [[scopes]] / [[deny-scope-dep]] sections below are loaded, by
+# load_rules_from_toml in the test.
 #
 # Per-item suppressions in src/ use the comment form (arch-lint is a
 # dev-dependency, so its attribute form cannot compile inside the lib):
