@@ -49,15 +49,16 @@ checksum = "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000"
 
 [[package]]
 name = "arch-lint"
-version = "0.6.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4e7a56f27b473ae992fa1aa468b20bd662d55ce8b19bdd11fbfdc32dd260bbe"
+checksum = "6fca86bdbb37d87b8da7d957b283921ab26250a71d5c2c04e796c6fe34e1ac86"
 dependencies = [
  "arch-lint-core",
  "arch-lint-macros",
  "arch-lint-rules",
  "home",
  "schemars",
+ "serde",
  "serde_json",
  "thiserror",
  "toml",
@@ -66,9 +67,9 @@ dependencies = [
 
 [[package]]
 name = "arch-lint-core"
-version = "0.6.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee7da8e9b4f99213e50ca107362d0256d93fd5406526efc148abb448cdf6fecf"
+checksum = "e7878fbba4eea7730775411d2aa4aefedf4e693eef8094a6c1ff172d8098dfe5"
 dependencies = [
  "glob",
  "ignore",
@@ -86,9 +87,9 @@ dependencies = [
 
 [[package]]
 name = "arch-lint-macros"
-version = "0.6.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30b40847755217a28f7082557439b2000139850a34c860f01419794c95e461ea"
+checksum = "4655c7ca4fd0ccbc40e43ed4dbe96d09ddbdee6447e7fdb4d4d4d198c1c98cd8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -97,9 +98,9 @@ dependencies = [
 
 [[package]]
 name = "arch-lint-rules"
-version = "0.6.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e0d55b782adb76f1ce2353f2d4cf1509ae8881cbccb30212eb2586590c8f34d"
+checksum = "18240983ab7cd853926e5755b60e0aea00be00a9a8279b068c9c5517f38a25e6"
 dependencies = [
  "arch-lint-core",
  "proc-macro2",
